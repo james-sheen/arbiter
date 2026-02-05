@@ -133,7 +133,7 @@ An **Operational Reasoning System (ORS)** is a software platform that applies st
 |----------|-------------|-------------------|
 | **Business Intelligence** | Visualize data | Reason and recommend with explanations |
 | **AI Chatbot** | Converse | Solve structured problems with proofs |
-| **Expert System** | Rigid rules | Learn and adapt |
+| **Expert System** | Rigid rules | Structured reasoning with flexible coverage |
 | **RPA** | Automate tasks | Reason about problems |
 
 ### The Arbiter Difference: Empty Quadrant

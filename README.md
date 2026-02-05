@@ -23,7 +23,7 @@ Arbiter is an **Operational Reasoning System (ORS)** — a software platform tha
 
 | Deployment Mode | Description | Status |
 |-----------------|-------------|--------|
-| API/Engine | Direct integration for applications | Production |
+| API/Engine | Direct integration for applications and services | Production |
 | Bot | Community engagement via GitHub/Slack/Teams | Ready to Deploy |
 | Platform UI | Enterprise interface with case management | Planned |
 
