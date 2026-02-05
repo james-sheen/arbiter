@@ -131,7 +131,7 @@ An **Operational Reasoning System (ORS)** is a software platform that applies st
 
 | Category | What They Do | What Arbiter Does |
 |----------|-------------|-------------------|
-| **Business Intelligence** | Visualize data | Execute decisions |
+| **Business Intelligence** | Visualize data | Reason and recommend with explanations |
 | **AI Chatbot** | Converse | Solve structured problems with proofs |
 | **Expert System** | Rigid rules | Learn and adapt |
 | **RPA** | Automate tasks | Reason about problems |
@@ -408,8 +408,7 @@ The platform's domain-agnostic architecture enables expansion to industries requ
 1. **Architectural Complexity**: Seven-layer integrated stack with hybrid reasoning
 2. **Proprietary Enhancement Pipeline**: Core platform value
 3. **Implementation Model**: Designed for deep customer embedding that creates switching costs
-4. **Domain Transfer**: Reasoning patterns developed in one domain accelerate expansion into new domains
-5. **Multi-Domain Design**: Same platform across verticals accelerates expansion
+4. **Domain Transfer**: Domain-agnostic architecture enables reasoning patterns from one domain to accelerate expansion into new verticals
 
 ### Key Differentiators
 
@@ -547,7 +546,7 @@ We're happy to share:
 
 **Q: What is an Operational Reasoning System?**
 
-A: An ORS is a software platform that applies structured problem-solving methodologies to deliver expert-level analysis. Unlike chatbots that converse or BI tools that visualize, an ORS reasons about problems, provides recommendations with explanations, and can execute workflows.
+A: An ORS is a software platform that applies structured problem-solving methodologies to deliver expert-level analysis. Unlike chatbots that converse or BI tools that visualize, an ORS reasons about problems, provides recommendations with full explanations, and is designed to evolve toward workflow execution.
 
 **Q: How is Arbiter different from ChatGPT or other AI assistants?**
 
@@ -589,7 +588,7 @@ A: Yes. The architecture is designed for enterprise-grade security including enc
 
 **Q: Does Arbiter meet regulatory requirements?**
 
-A: Yes. Our explainability features are designed to meet regulatory requirements. Every decision includes full reasoning traces and audit documentation.
+A: Our architecture is designed with regulatory requirements in mind. Every decision includes full reasoning traces and audit documentation. Formal certifications (SOC 2, HIPAA, GDPR) are on the roadmap.
 
 ---
 
