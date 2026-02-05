@@ -408,7 +408,7 @@ The platform's domain-agnostic architecture enables expansion to industries requ
 1. **Architectural Complexity**: Seven-layer integrated stack with hybrid reasoning
 2. **Proprietary Enhancement Pipeline**: Core platform value
 3. **Implementation Model**: Designed for deep customer embedding that creates switching costs
-4. **Data Network Effects**: Cross-customer learning improves all deployments
+4. **Domain Transfer**: Reasoning patterns developed in one domain accelerate expansion into new domains
 5. **Multi-Domain Design**: Same platform across verticals accelerates expansion
 
 ### Key Differentiators
