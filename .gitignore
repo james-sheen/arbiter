@@ -1,0 +1,19 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Draft/working files
+drafts/
+*.draft.md
+*.wip.md
+
+# Local notes (not for public)
+CLAUDE.md
+notes/
