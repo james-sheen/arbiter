@@ -123,7 +123,7 @@ Deployment modes:
 An **Operational Reasoning System (ORS)** is a software platform that applies structured problem-solving methodologies at machine speed to deliver expert-level analysis across multiple domains.
 
 **Why "Operational Reasoning System"**:
-- **Operational**: Executes decisions, not just analyzes
+- **Operational**: Designed to act on decisions, not just analyze
 - **Reasoning**: Applies structured methodologies with traceable paths
 - **System**: Complete platform with storage, reasoning, enhancement, and execution
 
