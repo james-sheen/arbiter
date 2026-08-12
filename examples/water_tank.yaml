@@ -1,0 +1,92 @@
+# A worked example: a two-tank water system.
+#
+# Deliberately synthetic. It is here to teach the schema and to give the engine
+# something to run against out of the box -- it is NOT one of the curated
+# domain models, which are not published. Every one of the eight axioms is
+# declared at least once below, so this file doubles as the schema reference.
+
+domain:
+  id: water-tank
+  name: Two-Tank Water System
+  description: >
+    A supply tank feeding a header tank through a pump, with a controller
+    holding the header level at setpoint. Small enough to read in one sitting.
+
+  entity_types:
+    - Tank
+    - Pump
+    - Controller
+
+  relationship_types:
+    - feeds
+    - controls
+
+  indicators:
+    Tank:
+      # BOUNDEDNESS -- an upper bound. Thresholds are upper bounds ONLY; for a
+      # lower-is-worse quantity use HOMEOSTASIS against a baseline instead.
+      - name: level_pct
+        type: NUMERIC
+        axioms: [BOUNDEDNESS, HOMEOSTASIS]
+        warning: 85
+        critical: 95
+        window: 1h
+
+      # CONSERVATION -- what flows in should leave or accumulate. The nested
+      # block is what makes this configurable from YAML at all.
+      - name: inflow_lps
+        type: NUMERIC
+        axioms: [CONSERVATION]
+        window: 15m
+        conservation:
+          output_properties: [outflow_lps]
+          tolerance: 0.05
+
+      - name: outflow_lps
+        type: NUMERIC
+        axioms: [] # observation-only: recorded, never checked per cycle
+
+      # CONSISTENCY -- two independent readings that should agree.
+      - name: level_pct_redundant
+        type: NUMERIC
+        axioms: [CONSISTENCY]
+        window: 15m
+
+    Pump:
+      # STABILITY -- does it settle, or hunt?
+      - name: speed_rpm
+        type: NUMERIC
+        axioms: [STABILITY, BOUNDEDNESS]
+        warning: 2800
+        critical: 3200
+        window: 30m
+
+      # MONOTONICITY -- a lifetime counter may only rise. allow_reset covers
+      # the genuine restart case rather than treating it as a violation.
+      - name: run_hours_total
+        type: NUMERIC
+        axioms: [MONOTONICITY]
+        window: 24h
+        monotonicity:
+          direction: increasing
+          allow_reset: true
+
+      # CONNECTIVITY -- a pump with nothing to feed is a modelling error.
+      - name: feeds_a_tank
+        type: RELATIONSHIP
+        axioms: [CONNECTIVITY]
+        target_type: Tank
+        relation_type: feeds
+        min_cardinality: 1
+        max_cardinality: 2
+        violation_severity: HIGH
+
+    Controller:
+      # RESPONSIVENESS -- the deadline is part of the claim.
+      - name: setpoint_error_pct
+        type: NUMERIC
+        axioms: [RESPONSIVENESS, HOMEOSTASIS]
+        warning: 5
+        critical: 12
+        window: 30m
+        timeout: 10m

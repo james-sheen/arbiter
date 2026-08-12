@@ -1,52 +1,194 @@
 # Arbiter
 
-**Operational Reasoning Systems for Complex Domains**
+**A detection engine that reports what it did not check.**
 
-Arbiter delivers enterprise-grade AI reasoning for mid-market and growth-stage organizations — expert-level decisions in complex domains at a fraction of traditional cost.
+Most checkers answer one question: *what is wrong?* When they return nothing, you cannot tell
+whether they looked and found nothing, or never looked at all. Those two results are printed
+identically, and only one of them is good news.
 
-## Overview
+Arbiter separates them. Every evaluation that declines to run is recorded — with a machine-readable
+reason — alongside the findings, and every pass reports how many evaluations it attempted. A clean
+result means *these invariants were tested and held*, and it is distinguishable from *nothing was
+testable*.
 
-Arbiter is an **Operational Reasoning System (ORS)** — a software platform that combines formal ontology (structured knowledge) with neural AI (flexible reasoning) in a unified architecture that can both understand and act.
+## The envelope
 
-### Key Metrics
+A detection pass returns findings, declines, and a denominator:
 
-| Metric | Value |
-|--------|-------|
-| Technical Accuracy | 95.8% (production validated) |
-| Response Time (P95) | <15 seconds |
-| Enhancement Pipeline | 0.5 seconds |
-| Domain Agnostic | Zero hardcoded patterns |
+```
+problems              what was found
+not_evaluated         what was NOT evaluated, and why
+evaluations_attempted how many (axiom, entity, indicator) evaluations were tried
+```
 
-### Product
+`not_evaluated` entries carry a reason from a closed vocabulary — `missing_property`,
+`insufficient_samples`, `missing_threshold`, `missing_config`, `missing_edge`, `missing_node`,
+`missing_entity_type`, `missing_relationship`, `missing_response`, `missing_dynamics`,
+`missing_connectivity` — so a decline is data, not a log line.
 
-**Arbiter Engine** — Core AI reasoning platform (Production)
+**Why the denominator matters.** Findings and declines do not sum to the total: an evaluation that
+ran and found nothing appears in neither. Without `evaluations_attempted`, the statement *checked N
+invariants* has no honest value of N — and an envelope reporting a fabricated denominator is the
+exact failure the envelope exists to prevent.
 
-| Deployment Mode | Description | Status |
-|-----------------|-------------|--------|
-| API/Engine | Direct integration for applications and services | Production |
-| Bot | Community engagement via GitHub/Slack/Teams | Ready to Deploy |
-| Platform UI | Enterprise interface with case management | Planned |
+All eight axiom checkers emit declines (15 call sites). This is not a property of one checker that
+the others aspire to.
+
+## The eight axioms
+
+Declared per-indicator in a domain model, not in code:
+
+| Axiom | Asks |
+|---|---|
+| `BOUNDEDNESS` | does this stay within its bounds? |
+| `STABILITY` | does it settle, or oscillate? |
+| `HOMEOSTASIS` | does it return to baseline after disturbance? |
+| `MONOTONICITY` | does it move only in the permitted direction? |
+| `CONSERVATION` | does what goes in come out? |
+| `CONNECTIVITY` | is the topology intact? |
+| `CONSISTENCY` | do related values agree? |
+| `RESPONSIVENESS` | does it react within its deadline? |
+
+```yaml
+- name: cpuUsageNanoCores
+  type: NUMERIC
+  axioms: [STABILITY, BOUNDEDNESS, HOMEOSTASIS]
+  warning: 3
+  critical: 10
+  window: 1h
+```
+
+An empty `axioms: []` is meaningful — the values flow into observation history without a per-cycle
+check. Silence is a declaration here, not an omission.
+
+## Quickstart
+
+**Not on PyPI yet.** The package builds — `arbiter_engine-0.1.0` as both sdist and wheel — but it
+has not been published, and a project whose subject is unverifiable claims should not open with an
+install line it cannot honour.
+
+```bash
+git clone <this repo> && cd arbiter
+pip install -e .          # requires numpy and pyyaml, and nothing else
+
+python3 -c "
+from arbiter_engine.api import EngineSession, model_describe
+
+s = EngineSession()
+s.load_model('examples/water_tank.yaml')
+print(model_describe(s).to_dict()['checked'])"
+```
+
+That prints `{'invariants': 0, 'entities': 3, 'declared_invariants': 10}` — three entities, ten
+declared invariants, and **zero evaluated**, because no observations have been supplied yet. The
+zero is the point: it is reported rather than left for you to infer from an empty finding list.
+
+**Everything above is on the supported surface.** Until 2026-08-11 this example imported
+`load_domain` from a deep module path — which works, and which this same README calls importable and
+unsupported three sections down. The first thing a reader runs should not be the one thing the
+document tells them not to depend on.
+
+`examples/water_tank.yaml` is a deliberately synthetic two-tank water system that **declares all
+eight axioms in one file**, so it doubles as the schema reference. It is not one of the curated
+domain models — those are not published — and reading it is the fastest way to learn the shape.
+
+**Dependencies are two, and that was measured rather than assumed.** `numpy` and `pyyaml` are
+required. `scipy` and `rdflib` are extras (`[confidence]`, `[rdf]`) because they are reached only
+through two deep modules that the public API never touches — so the naive reading of the import list
+says four, and the measurement says two.
+
+## The public API
+
+**11 names.** Everything else in the package is importable and **unsupported** — reaching for a deeper
+path is legitimate and unpromised, and those paths may move without a major version.
+
+```python
+from arbiter_engine import (
+    TopologyTraverser,          # the kernel: problem-solving as graph traversal
+    UnifiedAxiomReasoner,       # evaluates axioms, produces the envelope
+    DomainModel,                # your YAML, loaded
+    InMemoryObservationHistory, # a concrete history, so it runs without a store
+    Entity, Problem, RelationshipGraph, Observation, Axiom, Severity,
+    api,                        # the tool surface — see below
+)
+```
+
+**Ten of those are types and the kernel; the eleventh is a module, and the split is deliberate.**
+`arbiter_engine.api` is the tool surface: five verbs over a session, each returning the envelope above.
+
+```python
+from arbiter_engine.api import EngineSession, model_describe, check, traverse, gaps, attest
+
+session = EngineSession()
+session.load_model("examples/water_tank.yaml")
+model_describe(session)   # what is declared: entity types, indicators, axioms
+check(session)            # evaluate the declared invariants over supplied observations
+gaps(session)             # what the model says should exist and nothing has been observed
+```
+
+They are a supported contract, and they are listed here as **one name rather than six** because they
+serve a different caller: an agent invoking tools, not a library user composing objects. `check` is not
+a peer of `Entity`, and flattening them into one namespace would say it was. The module is the promise;
+its membership is documented here and does not change inside a minor version.
+
+The same five are exposed over MCP by `arbiter_engine.mcp.server`, which is a thin transport over
+exactly these functions and needs the optional `mcp` extra. That module is a deep path — importable,
+and not part of the eleven.
+
+## What is not here, and why
+
+The engine is open. The knowledge and the operations are not.
+
+- **Domain models.** The engine reads them; the curated packs are not published. The mechanism is
+  the contribution — the models are the accumulated work. `examples/water_tank.yaml` is a synthetic
+  teaching model, deliberately not one of them.
+- **The operator half.** Clinic, planning, the Kubernetes executor, the introspection layer. These
+  are welded to a running deployment and are not v0.1.
+- **Two lazy imports reach outside the cut, and they behave differently.** One root-cause wiring
+  module and an LLM client are imported lazily and are not shipped, so the package still imports
+  cleanly. The root-cause wiring **degrades to a no-op** — its callsite is guarded and the feature it
+  reports is optional telemetry. The LLM path **raises**, with a message saying so; it is reachable
+  only through `NLTraversalTranslator`, which is not part of the supported surface, and the
+  deterministic `translate()` needs no client. Both measured by running them, not read off the
+  imports.
+
+## Status
+
+**v0.1.** 56 Python files, 54 modules importing on the declared dependencies alone, 11 supported
+names — **counted in this repository**, which is the package you are holding.
+
+That basis is stated because the obvious alternative is wrong here. The extraction is derived from a
+larger private tree, and the closure in that tree is 51 files: five fewer, because the build adds one
+`__init__.py` per package level. This line published the 51 until 2026-08-12, where any reader could
+falsify it with `find . -name '*.py' | wc -l` — a checkable false claim, in the Status section of a
+project whose subject is checkable claims. Count the artifact, never the thing it came from.
+
+The import figure carries the same hazard one layer down, and read 55 until 2026-08-12. That count was taken in an environment where `scipy` happened to be installed. `scipy` is an OPTIONAL extra, so a reader who runs `pip install -e .` and sweeps the package gets 54: `propagation.lp_confidence` is the one module that needs it, and it is a deep path outside the supported surface. Count the artifact **in the state the reader will have it**, not in the state the person measuring happens to be standing in.
+
+Honest boundaries, stated because you would otherwise find them yourself:
+
+- **PREDICT is plumbed but unfed.** The traversal mode exists and nothing produces projected values
+  outside a test. It is not a working forecast.
+- **Not published to any index yet**, so installation is from a clone.
+- **One worked example ships, not a library of them.** Modelling a real system is your work.
+- Stage I and Stage II of this project are **archived, not running**. Anything describing them as
+  production is out of date.
 
 ## Documentation
 
-- [Business Plan Overview](business-plan-overview.md) — Public business plan covering problem, solution, architecture, market, and go-to-market strategy
+Evidence and technical write-ups live in `evidence/` — architecture, deployment runbook,
+fault-scenario catalogue, and the observation logs from the closed-loop alpha, including the
+findings that went against us.
 
-## Domain Applications
+## Licence
 
-| Domain | Status |
-|--------|--------|
-| Technical Support (Expert System) | Production |
-| Infrastructure Operations | Development |
-| Financial Services, Healthcare, Legal | Planned |
+**Apache License 2.0.** See `LICENSE` and `NOTICE`.
 
-## Contact
+`TRADEMARK.md` is separate and narrower: Apache Section 6 withholds any trademark grant, and that
+file says what use of the name *is* permitted. *Arbiter* is a project name, not a licence grant.
 
-For more information, demos, or investor inquiries, please reach out through appropriate channels.
+## Contributing
 
-## License
-
-This work is licensed under [CC BY-NC 4.0](LICENSE) (Creative Commons Attribution-NonCommercial 4.0 International).
-
----
-
-*Arbiter: The AI that reasons and decides.*
+See `CONTRIBUTING.md`. Adversarial findings are the most useful thing you can send: if the engine
+reports a clean pass over something it did not actually evaluate, that is the bug this project most
+wants to hear about.

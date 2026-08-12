@@ -1,0 +1,30 @@
+# Line endings: normalize to LF in the repository, checkout per platform
+*text=auto eol=lf
+
+# Documentation and configuration files (explicit text)
+*.md text
+*.txt text
+*.rst text
+*.yaml text
+*.yml text
+*.json text
+*.cff text
+*.toml text
+
+# Binary file safety
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.svg text
+*.pdf binary
+*.zip binary
+*.tar.gz binary
+*.ico binary
+
+# Language hints for GitHub Linguist
+*.md linguist-documentation
+LICENSE linguist-documentation
+NOTICE.md linguist-documentation
+AUTHORS.md linguist-documentation
+TRADEMARK.md linguist-documentation

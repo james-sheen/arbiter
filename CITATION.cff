@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you reference Arbiter in academic work, please cite as follows."
+title: "Arbiter: Operational Reasoning System for Complex Domains"
+abstract: "Operational Reasoning System combining formal ontology with neural AI for enterprise decision-making across complex domains. Domain-agnostic engine configured through YAML is in production for technical support, in development for infrastructure operations, and planned for financial services, healthcare, and legal."
+type: software
+authors:
+  - family-names: "Sheen"
+    given-names: "James"
+    alias: "james-sheen"
+  - name: "Arbiter Project"
+license: Apache-2.0
+version: "0.1.0-alpha"
+date-released: "2026-06-12"
+repository-code: "https://github.com/james-sheen/arbiter"
+url: "https://github.com/james-sheen/arbiter"
+keywords:
+  - operational-reasoning
+  - ontology
+  - large-language-models
+  - digital-twin
+  - decision-support
