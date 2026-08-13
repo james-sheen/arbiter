@@ -2,7 +2,7 @@
 
 **Status**: design doc. Scenario priority and implementation order are undecided; nothing here has been implemented.
 **Created**: 2026-06-19 (the second evaluation round Day 6 of 21)
-**Scope**: failure-mode candidates NOT covered by current 6-scenario FAULT_SCHEDULE (rate_limit_burst / tenant_scope_drift / adversarial_burst / patron_outage_simulation / cost_budget_approach / pre_deadline_stress)
+**Scope**: failure-mode candidates NOT covered by current 6-scenario FAULT_SCHEDULE (rate_limit_burst / tenant_scope_drift / adversarial_burst / load_generator_outage_simulation / cost_budget_approach / pre_deadline_stress)
 **Goal**: widen substrate coverage by introducing failure modes that exercise capabilities currently unexercised, and produce new L5 surprises beyond the 19 captured in Alpha-1 + reference-VPS-replay. Coverage of unexercised paths is the objective; a scenario that surfaces nothing is still a result.
 
 ---
@@ -89,7 +89,7 @@ Each scenario: **PRE** (what to set up) / **STIMULUS** (the injected fault) / **
 - **VALUE**: the least-exercised path here — whether the DT is resilient to substrate-attacking prompts. Untested; the scenario exists to find out, not to confirm.
 - **EFFORT**: ~2h (prompt design + verification path)
 
-### Scenario 14 — `patron_dies_mid_fault`
+### Scenario 14 — `load_generator_dies_mid_fault`
 
 - **PRE**: the load generator in fault window (e.g. rate_limit_burst at peak)
 - **STIMULUS**: SSH the reference VPS → `docker stop the load generator` mid-fault
@@ -128,7 +128,7 @@ Ranked by **(partner-pitch value × novelty) / effort**:
 | 2 | #12 cross_component_cascade_failure | 5 × 4 = 20 | 1h | 20 |
 | 3 | #7 pod_oom_kill | 4 × 3 = 12 | 0.5h | 24 |
 | 4 | #8 gateway_down_core_up | 4 × 4 = 16 | 1h | 16 |
-| 5 | #14 patron_dies_mid_fault | 3 × 4 = 12 | 0.5h | 24 |
+| 5 | #14 load_generator_dies_mid_fault | 3 × 4 = 12 | 0.5h | 24 |
 | 6 | #11 slow_memory_leak_in_core | 5 × 3 = 15 | 2h | 7.5 |
 | 7 | #15 cross_environment_drift | 4 × 4 = 16 | 1h | 16 |
 | 8 | #10 malformed_jwt_observation_stream | 3 × 3 = 9 | 0.75h | 12 |

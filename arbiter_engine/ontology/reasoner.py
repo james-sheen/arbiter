@@ -14,7 +14,7 @@ Flow:
 import logging
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 from ..interfaces import (
     AxiomChecker,
@@ -220,8 +220,15 @@ class UnifiedAxiomReasoner(OntologyReasonerInterface):
         # Log axiom readiness summary (once per run, not per entity)
         self._log_readiness_summary(entities, history)
 
+        # built once per run, not per entity: CONNECTIVITY needs to
+        # resolve edge targets and target types against what was actually
+        # declared, and rebuilding this inside the loop would make an O(n)
+        # check O(n^2) on the largest domain packs.
+        entity_map: Mapping[str, Entity] = {e.id: e for e in entities}
+
         for entity in entities:
-            entity_problems = self._detect_entity(entity, graph, history)
+            entity_problems = self._detect_entity(
+                entity, graph, history, entities=entity_map)
             # surface what this pass declined to evaluate.
             not_evaluated.extend(
                 getattr(entity_problems, "not_evaluated", ()))
@@ -319,7 +326,9 @@ class UnifiedAxiomReasoner(OntologyReasonerInterface):
         self,
         entity: Entity,
         graph: RelationshipGraph,
-        history: ObservationHistory
+        history: ObservationHistory,
+        *,
+        entities: Optional[Mapping[str, Entity]] = None,
     ) -> List[Problem]:
         """Detect problems for a single entity.
 
@@ -347,7 +356,8 @@ class UnifiedAxiomReasoner(OntologyReasonerInterface):
         for indicator in indicators:
             for axiom in indicator.relevant_axioms:
                 indicator_problems = self.check_axiom(
-                    axiom, entity, indicator, graph, history
+                    axiom, entity, indicator, graph, history,
+                    entities=entities,
                 )
                 problems.extend(indicator_problems)
                 # `extend` keeps the problems and drops the
@@ -493,7 +503,9 @@ class UnifiedAxiomReasoner(OntologyReasonerInterface):
         entity: Entity,
         indicator: IndicatorSpec,
         graph: RelationshipGraph,
-        history: ObservationHistory
+        history: ObservationHistory,
+        *,
+        entities: Optional[Mapping[str, Entity]] = None,
     ) -> List[Problem]:
         """Check a specific axiom for an entity/indicator.
 
@@ -512,7 +524,17 @@ class UnifiedAxiomReasoner(OntologyReasonerInterface):
             )
 
         try:
-            problems = checker.check(entity, indicator, graph, history)
+            # hand the entity registry to checkers that declare they
+            # need it. CONNECTIVITY has to answer "does an entity of this type
+            # exist" and "does this edge target resolve", and neither question
+            # is answerable from `entity` and `graph` alone; it previously
+            # approximated both by scanning edge-endpoint id strings for a
+            # `<type>/` prefix, which passed on phantoms.
+            if getattr(checker, "wants_entities", False):
+                problems = checker.check(entity, indicator, graph, history,
+                                         entities=entities)
+            else:
+                problems = checker.check(entity, indicator, graph, history)
             _record_fires(axiom, entity, indicator, problems)
             # (callsite) — emit axiom-verdict (axiom, entity)
             # at production-readiness shape. Verdict semantics: empty problems

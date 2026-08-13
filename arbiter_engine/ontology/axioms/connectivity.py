@@ -15,7 +15,7 @@ Works from cold start (no history required for basic checks).
 import logging
 import re
 from datetime import timedelta
-from typing import List, Optional, Set
+from typing import List, Mapping, Optional, Set
 
 from ...interfaces import (
     Entity,
@@ -47,12 +47,21 @@ class ConnectivityChecker:
     def __init__(self, params: Optional[AxiomParameters] = None):
         self.params = params or AxiomParameters()
 
+    # declared capability, read by the reasoner's dispatch boundary.
+    # A flag rather than an isinstance check there: the seven other checkers
+    # take four positional arguments and would break on a fifth, and a
+    # capability the checker announces about itself extends to the next one
+    # that needs entity state without touching the dispatch again.
+    wants_entities = True
+
     def check(
         self,
         entity: Entity,
         indicator: IndicatorSpec,
         graph: RelationshipGraph,
-        history: ObservationHistory
+        history: ObservationHistory,
+        *,
+        entities: Optional[Mapping[str, Entity]] = None,
     ) -> List[Problem]:
         """
         Check CONNECTIVITY for an entity/indicator.
@@ -93,15 +102,53 @@ class ConnectivityChecker:
         # Skip check if target entity type doesn't exist in graph.
         # E.g., don't flag pods for missing scheduledOn→Node when no
         # Node entities have been observed yet (cold start / limited scope).
+        # resolve the target type against the ENTITY REGISTRY when
+        # the caller supplies one. The scan below asked whether any id
+        # appearing as an edge endpoint began with `<type>/`, which is a
+        # different question and answers it wrongly in both directions. A
+        # declared `Hub/h1` with no edge was declined as "no entity of type
+        # 'Hub' has been observed", in a session holding exactly one. An edge
+        # to `Hub/ghost`, with no Hub declared anywhere, passed clean.
+        #
+        # (Written as prose deliberately: an aligned two-column layout does not
+        # survive into the published artifact, where runs of spaces inside a
+        # comment are collapsed. Continuation lines then read as fragments.)
+        #
+        # The second is the dangerous one. A decline is reported and a reader
+        # can see the coverage they did not get; a pass on a fabricated
+        # topology is indistinguishable from a real one. Any inventory that
+        # lags its edges — which is every discovery pipeline mid-sync — emits
+        # exactly that shape.
+        #
+        # It also enforced an id convention (`<lowercased type>/<name>`) that
+        # appears in no schema, no README and no example, while the shipped
+        # `water_tank.yaml` satisfies it by accident. That is a hardcoded
+        # domain pattern inside a domain-agnostic checker.
+        typed_ids: Optional[set] = None
+        if entities is not None and indicator.target_type:
+            wanted = indicator.target_type.strip().lower()
+            typed_ids = {
+                eid for eid, ent in entities.items()
+                if (getattr(ent, "type", "") or "").strip().lower() == wanted
+            }
+
         if indicator.target_type:
-            target_prefix = indicator.target_type.lower() + "/"
-            has_target_type = any(
-                eid.lower().startswith(target_prefix)
-                for eid in graph.edges
-            ) or any(
-                eid.lower().startswith(target_prefix)
-                for eid in graph.reverse_edges
-            )
+            if typed_ids is not None:
+                has_target_type = bool(typed_ids)
+            else:
+                # Degraded path: no registry supplied, so the type question is
+                # genuinely unanswerable here and this approximates it. Kept
+                # only for callers that construct the checker directly; the
+                # reasoner always supplies the registry, and a test pins that
+                # so production cannot quietly fall back to this.
+                target_prefix = indicator.target_type.lower() + "/"
+                has_target_type = any(
+                    eid.lower().startswith(target_prefix)
+                    for eid in graph.edges
+                ) or any(
+                    eid.lower().startswith(target_prefix)
+                    for eid in graph.reverse_edges
+                )
             if not has_target_type:
                 # this was a bare `return problems`, and it is the
                 # highest-value silence in the engine. The model declares that
@@ -130,7 +177,20 @@ class ConnectivityChecker:
         related = graph.get_relationships(entity.id, relation_type)
         if not related:
             related = graph.get_relationships(entity.id, raw_relation_type)
-        actual_count = len(related)
+
+        # count edges that RESOLVE. `len(related)` counted every
+        # edge of the right relation type regardless of what sat on the far
+        # end, so an edge to an id no entity ever claimed satisfied
+        # `min_cardinality` and the invariant reported as held. Crediting a
+        # dangling reference toward a cardinality floor is how a phantom
+        # topology passes.
+        dangling: List[str] = []
+        if typed_ids is not None and entities is not None:
+            resolved = [t for t in related if t in typed_ids]
+            dangling = [t for t in related if t not in entities]
+            actual_count = len(resolved)
+        else:
+            actual_count = len(related)
 
         # Check minimum cardinality
         if indicator.min_cardinality and actual_count < indicator.min_cardinality:
@@ -146,6 +206,35 @@ class ConnectivityChecker:
                     'expected_min': indicator.min_cardinality,
                     'actual': actual_count,
                     'target_type': indicator.target_type,
+                    # say why the count is what it is when edges
+                    # exist but do not resolve. Without this the finding reads
+                    # `actual: 0` beside a graph that plainly has an edge.
+                    'edges_of_type': len(related),
+                    'unresolved_targets': dangling,
+                },
+                confidence=1.0,
+            ))
+
+        # a dangling reference is a topology defect in its own
+        # right, and reporting it is what stops it from being silently
+        # credited. Raised even when cardinality is otherwise satisfied,
+        # because "the edge exists and its target does not" is true either
+        # way. MEDIUM matches `excess_relationships` below: a structural
+        # complaint about the model, not an outage.
+        if dangling:
+            problems.append(Problem.from_entity(
+                entity=entity,
+                problem_type=f'dangling_relationship:{indicator.name}',
+                severity=Severity.MEDIUM,
+                reason=(
+                    f"{relation_type} points at "
+                    f"{len(dangling)} entity id(s) that were never declared"),
+                axiom=Axiom.CONNECTIVITY,
+                source_layer=DetectionLayer.ONTOLOGY,
+                evidence={
+                    'relationship': relation_type,
+                    'target_type': indicator.target_type,
+                    'unresolved_targets': dangling,
                 },
                 confidence=1.0,
             ))

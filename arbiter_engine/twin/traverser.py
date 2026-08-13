@@ -66,7 +66,7 @@ Matching is on underscore-delimited tokens. The previous form
     ``policy_intent``, ``root_cause_indicators``, ``seal_integrity``,
     ``wear_indicators``, ``sensor_invalid_read_rate``, ``freeze_instrument``
     and ``periodic_detection_interval``, plus ``days_outstanding`` and
-    ``patron_outage_simulation`` on the outflow side. None of those carry
+    ``load_generator_outage_simulation`` on the outflow side. None of those carry
     flow, and summing them manufactures a conservation deficit from nothing.
 
     Token matching rather than ``endswith`` is deliberate: the unit-suffixed

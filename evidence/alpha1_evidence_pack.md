@@ -68,7 +68,7 @@ The T1 catalog is a library of diagnostic signatures matched at session start to
 | 18 | `Pattern N.c upstream-timeout-502-cascade-bound` | | Identifies upstream-stability cascade (distinct mechanism from N.b) |
 | 25 | `delta > 0 AND blocklist_size = 0` (phantom-healthy) | | Detects partner-misleading dashboard state (oscillatory TTL window) |
 
-Full T1 catalog with diagnostic algorithm + reference CDs lives in the alpha-recursive-examination memory body (load-bearing for `/reae` skill execution).
+Full T1 catalog with diagnostic algorithm + reference CDs lives in the alpha-recursive-examination memory body (load-bearing for internal tooling skill execution).
 
 ---
 
@@ -134,7 +134,7 @@ Alpha-1 work was structured by the recursive-examination framework (Recursive Ex
 
 **T-1 extension** (operator-diagnostic-question-as-T-minus-1, PROVEN): a single operator diagnostic question after a "clean" T0-T5 closure can surface more substrate gaps than the planned probes. 2026-06-12 codification: invite one such question explicitly at session end before declaring done.
 
-the recursive-examination framework codified in the alpha-recursive-examination memory body; tier-by-tier execution recipes available via the `/reae` skill body.
+the recursive-examination framework codified in the alpha-recursive-examination memory body; tier-by-tier execution recipes available via the internal tooling skill body.
 
 ---
 
