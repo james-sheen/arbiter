@@ -83,7 +83,16 @@ domain:
 
     Controller:
       # RESPONSIVENESS -- the deadline is part of the claim.
-      - name: setpoint_error_pct
+      #
+      # THE NAME IS LOAD-BEARING HERE. This checker decides whether the axiom
+      # applies by reading the indicator's name, which must contain `response`
+      # or `latency`; CONSISTENCY does the same with `count`, `pct` or `ratio`.
+      # An indicator that declares one of those axioms under a name it does not
+      # recognise is not an error -- it declines `not_applicable` and the pass
+      # stays green, which is why this is called out rather than left to be
+      # discovered. This file read `setpoint_error_pct` until 2026-08-14 and
+      # that declaration could never fire.
+      - name: setpoint_response_error_pct
         type: NUMERIC
         axioms: [RESPONSIVENESS, HOMEOSTASIS]
         warning: 5

@@ -21,10 +21,15 @@ not_evaluated         what was NOT evaluated, and why
 evaluations_attempted how many (axiom, entity, indicator) evaluations were tried
 ```
 
-`not_evaluated` entries carry a reason from a closed vocabulary — `missing_property`,
-`insufficient_samples`, `missing_threshold`, `missing_config`, `missing_edge`, `missing_node`,
-`missing_entity_type`, `missing_relationship`, `missing_response`, `missing_dynamics`,
-`missing_connectivity` — so a decline is data, not a log line.
+`not_evaluated` entries carry a reason from a closed vocabulary of eight — `not_applicable`,
+`insufficient_samples`, `missing_property`, `missing_config`, `missing_entity_type`,
+`no_threshold`, `wrong_indicator_type`, `checker_error` — so a decline is data, not a log line.
+
+Two of the eight will account for most of what you see. `insufficient_samples` reports both the
+count it had and the count it needed, so it tells you how much longer to collect.
+`not_applicable` means the checker decided the axiom does not apply to that indicator at all —
+worth reading closely, because some checkers make that decision from the indicator's NAME, which
+is a rough edge rather than a rule to infer.
 
 **Why the denominator matters.** Findings and declines do not sum to the total: an evaluation that
 ran and found nothing appears in neither. Without `evaluations_attempted`, the statement *checked N
