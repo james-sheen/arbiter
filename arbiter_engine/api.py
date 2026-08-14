@@ -33,7 +33,7 @@ from arbiter_engine.interfaces import (
 from arbiter_engine.ontology.domain_loader import load_domain
 from arbiter_engine.ontology.reasoner import UnifiedAxiomReasoner
 
-#: withheld `projected` until fed it. landed
+#: An internal ruling withheld `projected` until an internal ruling fed it. An internal ruling landed
 #: 2026-08-04 (`TopologyTraverser.project_values`), so the mode is now
 #: offered — and `traverse` below projects before traversing, because
 #: offering the mode without running the producer would reinstate the
@@ -63,7 +63,7 @@ class EngineSession:
     def load_model(self, source: Any) -> None:
         self.model = load_domain(source)
         reasoner = UnifiedAxiomReasoner()
-        # removed the seam this used to work around: the loader now
+        # An internal ruling removed the seam this used to work around: the loader now
         # ingests IndicatorSpec objects directly, so the typed form the engine
         # loader emits no longer round-trips through a dict to satisfy a
         # parser the caller does not need.
@@ -237,9 +237,9 @@ def traverse(session: EngineSession, start_nodes: Sequence[str],
             )
     result = traverser.traverse(request)
 
-    # set this to 0 on the premise that a traversal evaluates no
+    # An internal ruling set this to 0 on the premise that a traversal evaluates no
     # invariants. That was true when written and stopped being true at
-    #which carried the declared thresholds onto the nodes so
+    # an internal ruling, which carried the declared thresholds onto the nodes so
     # `_evaluate_axioms` can fire. Reporting 0 beside a non-empty `findings`
     # list would be the same defect fixed, pointing the other way:
     # an envelope that understates what it did is no more honest than one

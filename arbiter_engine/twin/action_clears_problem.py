@@ -11,7 +11,7 @@ template's ``parameters_schema`` (an ``entity_property`` key per
 effect-bearing parameter), with a generic parameter-name fallback when
 no ``entity_property`` is declared. The applier is a generic loop over
 ``parameters_schema`` — there is NO per-action-type branch — so the
-substrate is domain-agnostic (per CLAUDE.md).
+substrate is domain-agnostic (per the project's design guidance).
 
 Per read-only-by-design — the live state is never mutated; each
 Monte Carlo sample operates on a deep copy.
@@ -193,7 +193,7 @@ def estimate_action_clears_problem(
     Composes ``make_action_clears_problem_simulation_step`` over the
     ``MonteCarloPredictor``. Returns the ``MonteCarloOutcomeDistribution``
     for the ``action_clears_problem`` outcome — its
-    ``confidence_interval_95`` lower bound is what feeds the
+    ``confidence_interval_95`` lower bound is what an internal ruling feeds the
      ACTIVE-mode policy as ``confidence_lower_bound``.
 
     ``max_perturbation_seconds`` caps the per-call Monte Carlo wall-clock

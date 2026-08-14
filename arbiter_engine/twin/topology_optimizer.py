@@ -82,7 +82,7 @@ class TopologyOptimizer:
     extension per Lever 1) +
     HypothesisGenerator (hypotheses-as-objective-candidates).
 
-    Per CLAUDE.md domain-agnostic foundation: objective_function +
+    Per the domain-agnostic foundation rule: objective_function +
     constraints are opaque expressions evaluated against AxiomState; per-
     domain semantics come from YAML topology only.
     """

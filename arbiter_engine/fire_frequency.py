@@ -1,16 +1,16 @@
 """FireFrequencyTracker — dedicated rolling-window fire counter.
 
 Per the FireCounterMixin (date-bucket Counter shape) was the
-v1 instrumentation; lands the dedicated v2 tracker with:
+v1 instrumentation; an internal ruling lands the dedicated v2 tracker with:
 
 - Per-(axiom, domain, indicator) granularity (the mixin only
-  tracked (domain) — adds the axiom + indicator dimensions
+  tracked (domain) — an internal ruling adds the axiom + indicator dimensions
   the state_api spec called for).
 - Deque-based exact rolling-window counting (no day-bucket
   approximation; sliding window of arbitrary length).
 - -style cadence WARN on suspiciously high fire rates.
 
- landed that migration: the mixin is gone, and the reasoner records
+An internal ruling landed that migration: the mixin is gone, and the reasoner records
 every axiom's fires into the shared tracker at its dispatch boundary. This
 module moved from ``reflection/`` to ``detection/`` at the same time, so the
 eight checkers can be counted without ``detection`` importing ``reflection`` —

@@ -28,7 +28,7 @@ which had to be added — findings and declines were countable,
 three values the established pattern established across ~50 endpoint modules —
 ``live`` / ``warming_up`` / ``unavailable`` — with ``reason`` populated
 whenever it is not ``live``. Diverging here would be the vocabulary-drift
- decided against, in the newest public surface.
+An internal ruling decided against, in the newest public surface.
 
 **What this module does NOT do**: it does not decide whether a finding is
 important, rank findings, or summarise them in prose. It reports what the

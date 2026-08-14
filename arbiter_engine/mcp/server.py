@@ -9,7 +9,7 @@ round-trip.
 
 The SDK import is **lazy**, inside :func:`build_server`. Importing this module
 must not require ``mcp`` to be installed — the engine is the dependency, the
-transport is not (the scope ruling in holds the platform; the server
+transport is not (the scope ruling holds the platform; the server
 holds neither).
 
 Run with:
@@ -19,7 +19,7 @@ Run with:
 (Inside the orchestrator repo the same module runs at its in-repo path, from
 the repo parent on the path. That path is deliberately not spelled out here.)
 
-This module now SHIPS -- the public-API ruling in decided the
+This module now SHIPS -- the public-API ruling decided the
 surface is a permanent public contract -- so its own docstring is public text. It previously gave only
 the in-repo invocation, with an absolute operator path in front of it: a private
 package name and a private filesystem path, both in a docstring, where the
@@ -36,7 +36,7 @@ from arbiter_engine.api import (
     EngineSession, attest, check, gaps, model_describe, traverse,
 )
 
-#: The five primitives, in the order lists them. Each entry is the
+#: The five primitives, in the order an internal ruling lists them. Each entry is the
 #: name, a one-line description for the client, and the JSON-Schema input.
 TOOL_SPECS: List[Dict[str, Any]] = [
     {
@@ -74,7 +74,7 @@ TOOL_SPECS: List[Dict[str, Any]] = [
                     "type": "string",
                     "enum": ["forward", "reverse", "bidirectional"],
                 },
-                # fed PROJECTED (2026-08-04), so the enum offers it.
+                # An internal ruling fed PROJECTED (2026-08-04), so the enum offers it.
                 # It was withheld while the mode was inert; advertising a
                 # capability nothing implements is the shape, and so
                 # is leaving a withholding note whose stated reason has since

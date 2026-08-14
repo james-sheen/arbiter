@@ -697,7 +697,7 @@ class OntologyLoader:
 
         Inventing indicators the user never declared is the opposite of what
         this engine claims to do, and it is domain-specific behaviour living in
-        a shared component, which CLAUDE.md forbids outright. The seed is now
+        a shared component, which the project's design guidance forbids outright. The seed is now
         opt-in via ``builtin_k8s_indicators``.
         """
         # Check domain-loaded indicators first. defense: also

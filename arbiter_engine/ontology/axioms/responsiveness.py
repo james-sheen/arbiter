@@ -720,7 +720,7 @@ Every one of these paths used to return ``0.0``, and the
         # a package calling itself domain-agnostic.
         #
         # The `not _domain_id` clause was compensating for unreliable stamping,
-        # not expressing an intent: found the registry lookup that
+        # not expressing an intent: an internal ruling found the registry lookup that
         # should resolve `Pod -> kubernetes` never consulted the declaration,
         # so entities arrived unstamped and this clause kept K8s detection
         # alive. With that fixed, absent means absent.

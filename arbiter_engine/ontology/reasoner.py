@@ -38,7 +38,7 @@ from ..types import (
 # this imported a constants module from the surrounding distribution
 # — the engine's only module-level import reaching outside `detection/`, and
 # enough on its own to make the package non-extractable. The originating
-# package was named here verbatim until, which is how a comment
+# package was named here verbatim until an internal ruling, which is how a comment
 # recording a leak becomes the last copy of it: the build's stray scan matches
 # import statements only, deliberately, so prose naming it passes every net.
 # `detection.types.Severity` already carries
@@ -72,7 +72,7 @@ def _record_fires(
 ) -> None:
     """count axiom fires at the dispatch boundary.
 
-     decided all eight checkers should report fire counts; had
+    An internal ruling decided all eight checkers should report fire counts; had
     wired a mixin into three of them, at each individual problem-creation
     site. Recording here instead of inside the checkers is deliberate:
 

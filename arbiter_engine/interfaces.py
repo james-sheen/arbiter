@@ -481,7 +481,7 @@ class RelationshipGraph:
 
         # always populate metadata, even when called with no
         # extra kwargs. Consumers can rely on the dict having
-        # properties / strength / discovered_at keys. adds
+        # properties / strength / discovered_at keys. An internal ruling adds
         # source_domain / target_domain keys for cross-domain edges.
         self._edge_metadata[(source_id, relation_type, target_id)] = {
             "properties": dict(properties) if properties else {},
@@ -499,7 +499,7 @@ class RelationshipGraph:
     ) -> Optional[Dict[str, Any]]:
         """ (G4b drain): return the parallel metadata for an
         edge or ``None`` if the edge is unknown. Returned dict carries
-        ``properties / strength / discovered_at`` keys; adds
+        ``properties / strength / discovered_at`` keys; an internal ruling adds
         ``source_domain / target_domain`` for cross-domain edges.
         Callers can read each with a default. Returns a fresh dict
         each call — caller mutation does not affect storage.
@@ -839,11 +839,11 @@ class DetectionResult:
     duration_ms: float = 0.0
     timestamp: datetime = field(default_factory=datetime.utcnow)
     metadata: Dict[str, Any] = field(default_factory=dict)
-    #What this run declined to evaluate, and why. Empty is a real
+    # What this run declined to evaluate, and why. Empty is a real
     # answer here — it means every declared axiom was actually evaluated — so
     # this field distinguishes a clean pass from a pass that measured nothing.
     not_evaluated: List[NotEvaluated] = field(default_factory=list)
-    #How many (axiom, entity, indicator) evaluations this pass
+    # How many (axiom, entity, indicator) evaluations this pass
     # attempted, declined ones included. Without it "checked N invariants"
     # cannot be stated — only findings and declines were countable, and their
     # sum is not the total, because an evaluation that ran and found nothing
@@ -907,7 +907,7 @@ This **is** a ``list`` of :class:`Problem`, so every existing
     thing ``[]`` used to mean, and still equal to it.
     """
 
-    # adds `evaluations_attempted`. Note `__slots__` here is real, not
+    # An internal ruling adds `evaluations_attempted`. Note `__slots__` here is real, not
     # decorative: it is effective on a list subclass (verified — no __dict__,
     # and an unlisted attribute raises), so a field must be declared here
     # before it can be set anywhere.

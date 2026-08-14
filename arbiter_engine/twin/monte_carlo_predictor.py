@@ -831,7 +831,7 @@ async def make_layered_detector_runtime_callable_async(
 # — Canonical AxiomParameters threshold_injector.
 #
 # ships the v2 substrate hook (`threshold_injector: Optional[Callable]`)
-# on the reference detection_callable factory; lands the canonical
+# on the reference detection_callable factory; an internal ruling lands the canonical
 # injector mapping the `Dict[(entity_type, indicator, axiom),
 # Tuple[warn, critical]]` shape onto a concrete target.
 #
@@ -852,7 +852,7 @@ async def make_layered_detector_runtime_callable_async(
 # the established pattern substrate scope: ships the injector helper + factory.
 # Axiom-checker-level integration (each axiom reads from the sentinel
 # key before falling back to AxiomParameters) deferred to.
-# Until lands, the override is set on entities but NOT consumed —
+# Until an internal ruling lands, the override is set on entities but NOT consumed —
 # operators wire a custom LayeredDetector that pre-reads the sentinel
 # at detect_all time OR the work updates each axiom checker.
 # ===========================================================================
@@ -973,7 +973,7 @@ def make_entity_properties_threshold_injector() -> Callable[
             snapshot_to_inputs=my_extractor,
             threshold_injector=make_entity_properties_threshold_injector())
 
-    Once lands the axiom-checker-level integration, the override
+    Once an internal ruling lands the axiom-checker-level integration, the override
     dict written by this injector becomes load-bearing for calibration
     validation.
     """

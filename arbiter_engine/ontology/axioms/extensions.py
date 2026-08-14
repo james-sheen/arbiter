@@ -63,7 +63,7 @@ class AxiomExtensionRegistry:
         # comment above says this filter prevents ("K8s checks on BMC
         # entities"), left open for the one case that cannot defend itself.
         #
-        # Same shape as, which closed it in the built-in K8s tail:
+        # Same shape as an internal ruling, which closed it in the built-in K8s tail:
         # an absent domain was read as "match everything" rather than "match
         # nothing". Absent means absent, here too.
         #

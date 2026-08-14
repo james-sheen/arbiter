@@ -71,7 +71,7 @@ class HypothesisGenerator:
     """Walks a DigitalTwinTopology + emits hypotheses per structural pattern.
 
     Composes with TopologyTraverser kernel via evidence_traversal_id
-    backlink. Per CLAUDE.md domain-agnostic foundation: pattern types are
+    backlink. Per the domain-agnostic foundation rule: pattern types are
     kernel-substrate; per-domain content comes from EdgeDirection +
     FlowType + AxiomState that the underlying topology carries.
     """

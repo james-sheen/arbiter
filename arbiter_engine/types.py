@@ -397,7 +397,7 @@ Before this, a checker had exactly two things it could say —
     observations_count: Optional[int] = None
     required_count: Optional[int] = None
 
-    #`observations_count` is counted INSIDE the evaluation window;
+    # `observations_count` is counted INSIDE the evaluation window;
     # `required_count` is a global floor. Reporting them as a bare ratio
     # invites the reading "collect more data", which can be false: with a
     # 1-hour window and a floor of 3, an indicator sampled daily reports

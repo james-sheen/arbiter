@@ -237,7 +237,7 @@ class TopologyBuilder:
         BOUNDEDNESS bounds from exactly that dict, so it compared every value
         against ``None`` and returned no problems **on either builder path**.
         The traversal findings leg could not fire from a declaration at all —
-        the same shape as, which found the gaps leg permanently empty
+        the same shape as an internal ruling, which found the gaps leg permanently empty
         on one of these builders, one leg over.
         """
         states: Dict[str, AxiomState] = {}

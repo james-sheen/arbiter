@@ -123,7 +123,7 @@ def domain_alias_map(domains_dir: Optional[Union[str, Path]] = None,
     """Map every declared alias to its domain's declared id.
 
     Aliases come from the domain files themselves (Option A), never
-    from a table in shared code — CLAUDE.md forbids domain-specific branches,
+    from a table in shared code — the project's design guidance forbids domain-specific branches,
     and an alias table is one wearing a dict costume.
 
     Companion files are skipped via `is_domain_model`, so a directory scan
@@ -191,7 +191,7 @@ class DomainModel:
     #: file's stem and its declared id can differ (`k8s.yaml` declares
     #: `kubernetes`; `docker.yaml` declares `docker-swarm`), and six shared
     #: sites carry the stem as a literal. Declaring the alias in the file that
-    #: causes the split beats an alias table in shared code, which CLAUDE.md
+    #: causes the split beats an alias table in shared code, which the project's design guidance
     #: forbids anyway. Absent means no aliases.
     aliases: List[str] = field(default_factory=list)
     indicators: Dict[str, List[IndicatorSpec]] = field(default_factory=dict)

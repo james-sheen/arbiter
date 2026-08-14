@@ -632,7 +632,7 @@ This is the producer PREDICT mode never had. ``_get_values``
         axioms delegate to registered checkers if available" — described an
         intention, not the code: the body has only ever handled BOUNDEDNESS,
         and the `axiom_checkers` constructor argument it referred to was
-        stored and never read. removed the argument and corrected this
+        stored and never read. An internal ruling removed the argument and corrected this
         sentence rather than leaving a docstring promising dispatch that does
         not happen.
 
