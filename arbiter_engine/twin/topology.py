@@ -302,6 +302,16 @@ class TraversalResult:
     questions_generated: List[TopologyQuestion] = field(default_factory=list)
     conservation_violations: List[Problem] = field(default_factory=list)
     traversal_time_ms: float = 0.0
+    #:. Axiom evaluations this traversal ATTEMPTED, counted where they
+    #: happen. The envelope's denominator was previously derived in `api.py` by
+    #: counting `axiom_states` on each walked node, which counts what the
+    #: builder SEEDED rather than what ran: a node carries one state per
+    #: declared axiom, `_evaluate_axioms` handles BOUNDEDNESS only, and it
+    #: skips any state whose property is absent from the values. With
+    #: `collect_axiom_violations=False` — no evaluation at all — that
+    #: derivation still returned the full seeded count. Counting in the caller
+    #: was a second implementation of a predicate only the traverser knows.
+    axiom_evaluations_attempted: int = 0
 
 
 # ---------------------------------------------------------------------------

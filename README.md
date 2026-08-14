@@ -131,6 +131,26 @@ check(session)            # evaluate the declared invariants over supplied obser
 gaps(session)             # what the model says should exist and nothing has been observed
 ```
 
+**Three kinds of input, one feeder each.** A session takes the current value of a property, the
+series behind it, and the edges between entities — and every axiom reads one or both of the first
+two, except `CONNECTIVITY`, which reads only the third.
+
+```python
+session.add_entity("pump1", "Pump", properties={"speed_rpm": 2900})
+session.add_observations("pump1", "speed_rpm", [2900, 2905, 2890, ...])
+session.add_relationship("pump1", "feeds", "header")   # source, relation, target
+```
+
+The first two are easy to conflate and worth separating deliberately: threshold checks read the
+entity's current `properties`, and the temporal axioms read observation history. **Supplying one
+and not the other is the commonest way to get a clean result over a value that is plainly out of
+range** — the threshold checker never saw it, because the current value lives on the entity.
+
+Omit the third and `CONNECTIVITY` will report a missing relationship, which is correct: a model
+that declares a pump must feed a tank is asserting something, and an absent edge falsifies it. That
+finding is not a complaint that you forgot to load edges — the engine cannot tell those apart, so
+it reports what the model asserted and lets you decide which it was.
+
 They are a supported contract, and they are listed here as **one name rather than six** because they
 serve a different caller: an agent invoking tools, not a library user composing objects. `check` is not
 a peer of `Entity`, and flattening them into one namespace would say it was. The module is the promise;

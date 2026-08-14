@@ -89,6 +89,29 @@ class EngineSession:
                 now - timedelta(seconds=(count - i) * interval_seconds),
             )
 
+    def add_relationship(self, source_id: str, relation_type: str,
+                         target_id: str) -> None:
+        """The third input kind. CONNECTIVITY reads this and nothing else.
+
+The session held a ``RelationshipGraph`` from the beginning and
+        no method put anything in it, so of the three kinds of input the engine
+        consumes, two had a feeder and one did not. The capability was never
+        missing — ``session.graph`` is public and ``RelationshipGraph`` is on the
+        supported surface — but a reader following the front door could satisfy
+        seven of the eight axioms and not the eighth.
+
+        The argument for keeping the session to three methods was that they are
+        a deliberate minimum. That argument does not survive contact with the
+        asymmetry: the minimum is one feeder per input kind, and this was two.
+
+        Deliberately narrower than ``RelationshipGraph.add_relationship``, which
+        also takes properties, strength, discovery time and cross-domain tags.
+        Those belong to callers building a topology directly; the session's job
+        is to make the common case reachable without reading the graph's
+        signature. Reach for ``session.graph`` when you need the rest.
+        """
+        self.graph.add_relationship(source_id, relation_type, target_id)
+
 
 # =====================================================================
 # The five tools
@@ -245,17 +268,22 @@ def traverse(session: EngineSession, start_nodes: Sequence[str],
     # an envelope that understates what it did is no more honest than one
     # that overstates it.
     #
-    # Counted from the nodes actually walked, not from the model, because the
-    # claim is about this traversal and not about what the domain declares.
-    evaluated = 0
-    for step in result.steps:
-        node = topology.nodes.get(getattr(step, "node_id", None))
-        if node is not None:
-            evaluated += len(getattr(node, "axiom_states", {}) or {})
-
+    # and the replacement for that premise was wrong too, in the
+    # other direction. This counted `axiom_states` on each walked node, which
+    # is what the BUILDER SEEDED: one state per declared axiom. The evaluator
+    # handles BOUNDEDNESS only and skips any state whose property is absent
+    # from the values, so a walk that evaluated one invariant reported four,
+    # and a walk with `collect_axiom_violations` off — evaluating nothing —
+    # reported four as well. Between them, the field has now been wrong as
+    # traversal steps, and as declarations, in the one place whose entire job
+    # is to be an honest denominator.
+    #
+    # The count now comes from the traverser, which is the only thing that
+    # knows what it attempted. Deriving it here was a second implementation of
+    # a predicate owned elsewhere, and it disagreed with the original.
     envelope = Envelope(
         checked=CheckedSummary(
-            invariants=evaluated,
+            invariants=result.axiom_evaluations_attempted,
             steps=len(result.steps),
             entities=result.total_nodes_visited,
         ),

@@ -189,8 +189,13 @@ class TopologyTraverser:
             # Evaluate axiom states
             step_violations: List[Problem] = []
             if request.collect_axiom_violations:
-                step_violations = self._evaluate_axioms(node, values)
+                step_violations, attempted = self._evaluate_axioms(node, values)
                 result.problems_detected.extend(step_violations)
+                # Accumulated inside the `collect_axiom_violations`
+                # guard on purpose: with collection off nothing is evaluated,
+                # and the denominator must say zero rather than report the
+                # states the builder seeded.
+                result.axiom_evaluations_attempted += attempted
 
             # Record step
             step = TraversalStep(
@@ -625,8 +630,17 @@ This is the producer PREDICT mode never had. ``_get_values``
 
     def _evaluate_axioms(
         self, node: TwinNode, values: Dict[str, Any],
-    ) -> List[Problem]:
+    ) -> Tuple[List[Problem], int]:
         """Evaluate axiom states against current/projected values.
+
+        Returns the problems found AND the number of evaluations attempted.
+        the count is returned rather than reconstructed by the caller,
+        because the conditions under which an evaluation happens live in this
+        body — a state is skipped when its property is absent from the values,
+        when the value is not numeric, and when the axiom is not BOUNDEDNESS.
+        Any caller counting `axiom_states` instead is counting declarations the
+        builder seeded, which is how a walk that evaluated one invariant came
+        to report four.
 
         **BOUNDEDNESS only.** The line this docstring used to carry — "other
         axioms delegate to registered checkers if available" — described an
@@ -642,6 +656,7 @@ This is the producer PREDICT mode never had. ``_get_values``
         declaration at all —.
         """
         problems: List[Problem] = []
+        attempted = 0
         for key, axiom_state in node.axiom_states.items():
             prop_name = axiom_state.indicator_name
             if not prop_name or prop_name not in values:
@@ -652,6 +667,12 @@ This is the producer PREDICT mode never had. ``_get_values``
 
             # Check BOUNDEDNESS thresholds from evidence
             if axiom_state.axiom == Axiom.BOUNDEDNESS:
+                # Counted HERE and not at the top of the loop: the two
+                # `continue`s above skip states that were never evaluated, and
+                # a non-BOUNDEDNESS state reaching this line is not evaluated
+                # either. The denominator has to mean attempted, so it is
+                # incremented at the point an attempt actually begins.
+                attempted += 1
                 warning = axiom_state.evidence.get('warning')
                 critical = axiom_state.evidence.get('critical')
                 if critical is not None and value > critical:
@@ -688,7 +709,7 @@ This is the producer PREDICT mode never had. ``_get_values``
                             'warning': warning,
                         },
                     ))
-        return problems
+        return problems, attempted
 
     def _compute_priority(
         self, gap: TopologyGap, hop: int, probability: float,
