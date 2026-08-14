@@ -1,6 +1,11 @@
 ## What this changes
 
-<!-- One paragraph. What the reader gets that they did not have. -->
+<!-- Pull requests are not being merged yet: the public API is pre-1.0 and still
+     moving, so a patch against it may not survive the month. See CONTRIBUTING.md.
+     This form is here because a pull request that arrives anyway should carry
+     what a reviewer would otherwise have to ask for, and it will be read.
+
+     One paragraph below: what the reader gets that they did not have. -->
 
 ## Why
 

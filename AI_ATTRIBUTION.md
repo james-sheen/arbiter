@@ -2,7 +2,7 @@
 
 Arbiter Project ("Arbiter") is developed using a workflow that combines human authorship with AI assistance. This file documents that workflow transparently, names the AI tools involved, and describes how the human-versus-AI contribution boundary is handled.
 
-This file is a disclosure mechanism, not a legal instrument. License terms are in [LICENSE](LICENSE); third-party attribution is in [NOTICE.md](NOTICE.md); name-use policy is in [TRADEMARK.md](TRADEMARK.md); security reporting is in [SECURITY.md](SECURITY.md).
+This file is a disclosure mechanism, not a legal instrument. License terms are in [LICENSE](LICENSE); the attribution notice the licence requires is in [NOTICE](NOTICE); name-use policy is in [TRADEMARK.md](TRADEMARK.md); security reporting is in [SECURITY.md](SECURITY.md).
 
 ## Tools used
 
@@ -19,7 +19,7 @@ AI tools are licensed by the human author at the consumer / individual subscript
 
 The author treats the following contribution categories as distinct:
 
-- **Human-authored** — design decisions, architectural choices, strategic decomposition, problem framing, decision documents (the internal notes), feedback patterns codified in memory, partner-materials narrative, and review of all generated output. The human author retains direct authorship of these surfaces.
+- **Human-authored** — design decisions, architectural choices, strategic decomposition, problem framing, the decision records those produce, methodology codified from review, narrative framing, and review of all generated output. The human author retains direct authorship of these surfaces.
 - **AI-assisted** — code and documentation where the human directs the AI tool with concrete instructions, then reviews, modifies, and integrates the output. The substantive selection, arrangement, and editorial control rest with the human; the AI tool generates candidate text/code that the human accepts, rejects, or modifies.
 - **AI-generated boilerplate** — purely mechanical scaffolding (e.g., test boilerplate, repetitive type stubs, format conversions) produced by AI on direct request without significant creative selection. This category is minimized in practice; most output is reviewed-and-modified before commit.
 
