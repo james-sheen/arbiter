@@ -103,24 +103,23 @@ Supplying only history means `BOUNDEDNESS` reads `None` and returns quietly. In 
 worked example below, a deliberate excursion to 8.6 C against a critical of 8 produced **zero
 findings** for exactly this reason. Supply both.
 
-### Step 4 — Relationships. **Trap #2: the ID convention is load-bearing.**
+### Step 4 — Relationships. **Trap #2: the argument order.**
 
 ```python
-s.graph.add_relationship("reefer/A", "cooled_by", "compressor/A")
-#                         source      RELATION      target      <- relation in the MIDDLE
+s.add_relationship("reefer/A", "cooled_by", "compressor/A")
+#                   source      RELATION      target      <- relation in the MIDDLE
 ```
 
 There is no `Relationship` class to construct, and the argument order is not
 `(source, target, relation)`.
 
-**`CONNECTIVITY` matches entities by ID prefix, not by declared type.** The checker computes
-`target_type.lower() + "/"` and looks for entity IDs starting with it. With IDs like `comp-A`, a
-`target_type: Compressor` indicator declines with `missing_entity_type` — *even for entities you
-correctly registered as Compressors*. Rename to `compressor/A` and it evaluates.
-
-In the worked example this was the difference between silence and
-`missing_relationship:cooled_by_compressor | reefer/B | high`. **Namespace every entity ID as
-`<type>/<id>` from the start.**
+**The ID convention is no longer load-bearing.** This step used to carry a second trap:
+`CONNECTIVITY` resolved `target_type` by computing `target_type.lower() + "/"` and scanning entity
+IDs for that prefix, so IDs like `comp-A` produced `missing_entity_type` *even for entities
+correctly registered as Compressors*. It resolved against the entity registry as of 2026-08-13, so
+`comp-A` and `compressor/A` behave identically and the type you declared is the type that is read.
+Namespacing IDs as `<type>/<id>` is still a reasonable habit; it is no longer a requirement, and
+nothing declines because you skipped it.
 
 ### Step 5 — Run the five verbs
 
@@ -144,18 +143,31 @@ not_evaluated: 8
     2  missing_entity_type
 ```
 
-Each carries a `detail`. Two `not_applicable` details from the worked run are worth quoting because
-they are **naming contracts nobody would guess**:
+Each carries a `detail`, and reading them on the first run is the habit worth building.
 
-- `CONSISTENCY` — *"no universal rule applies: the indicator name does not tokenise to count,
-  percent/pct or ratio"*
-- `RESPONSIVENESS` — *"check() only evaluates indicators whose name contains 'response' or
-  'latency'"*
+**Declare `role:` on any indicator using `RESPONSIVENESS` or `CONSISTENCY`.** These two axioms need
+to know what KIND of quantity they are looking at — a latency, a count, a percentage or a ratio —
+because their rules are about the quantity, not about the entity. Say so in the model:
 
-So `pulldown_error_c` was never checked for responsiveness, and `product_temp_c_redundant` was never
-checked for consistency — **declared in the model, silently inapplicable in the engine, and the
-decline is the only reason you find out.** Name the indicator `pulldown_response_c` and it
-evaluates. Read the declines on your first run and rename accordingly.
+```yaml
+- name: pulldown_error_c
+  role: latency            # <- RESPONSIVENESS now evaluates this
+  axioms: [RESPONSIVENESS]
+  warning: 2.0
+  critical: 4.0
+```
+
+If you leave `role:` out, the engine infers one from the indicator's name (`response`/`latency` for
+the first, `count`/`percent`/`pct`/`ratio` for the second), so models written before the field
+existed keep working. But the inference is a guess about English, and it was the third trap in this
+document until 2026-08-14: `pulldown_error_c` and `product_temp_c_redundant` declared their axioms,
+were accepted by the loader, were reported by `model_describe` — and could never evaluate. The
+remedy then was to rename your domain concept to suit the checker. It is now to say what the concept
+is.
+
+**You no longer have to run the model to find this out.** `model_describe(s)` reports
+`unreachable_declarations` — every declared (indicator, axiom) pair that cannot fire under any
+input, with the remedy — and the loader logs the same thing. An empty list is the state to aim for.
 
 ### Step 7 — Wire it into something
 

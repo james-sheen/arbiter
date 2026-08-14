@@ -53,6 +53,8 @@ from ...axiom_thresholds import (
     resolve_axiom_threshold,
 )
 
+from . import roles
+
 logger = logging.getLogger(__name__)
 
 
@@ -103,9 +105,12 @@ class ResponsivenessChecker:
         """
         problems = []
 
-        # Basic check for response/latency indicators
-        indicator_name = indicator.name.lower()
-        name_matches = 'response' in indicator_name or 'latency' in indicator_name
+        # applicability is now a DECLARED role, with the old
+        # name-substring rule kept as the fallback for models written before
+        # the field existed. `role: latency` makes this evaluate an indicator
+        # called `pulldown_error_c`; before, only English decided.
+        name_matches, _matched, role_source = roles.applies(
+            Axiom.RESPONSIVENESS, indicator)
         if name_matches:
             problems.extend(self._check_latency_threshold(
                 entity, indicator
@@ -127,12 +132,26 @@ class ResponsivenessChecker:
         # responsiveness measure and is skipped anyway. Reporting it is this
         # CD's scope; replacing name-matching with a declared property is not.
         if not name_matches:
+            # the decline now names the REMEDY rather than the rule.
+            # The sentence this replaces was true and unhelpful: it described
+            # the engine's name test, leaving the reader to conclude that
+            # renaming their domain concept was the fix. Renaming a concept to
+            # satisfy a checker is the wrong remedy; saying what the concept is
+            # is the right one.
             return CheckOutcome(result).declined(
                 Axiom.RESPONSIVENESS, entity, indicator.name,
                 NotEvaluatedReason.NOT_APPLICABLE,
-                detail=(
-                    "check() only evaluates indicators whose name contains "
-                    "'response' or 'latency'"),
+                detail=roles.explain_absence(Axiom.RESPONSIVENESS, indicator),
+            )
+        if role_source == "inferred":
+            # Announced, not silent. The check DID run, and it ran because the
+            # engine guessed from the name — a guess that happened to be right
+            # is still a guess, and the author should be able to see it and
+            # replace it with a declaration.
+            logger.debug(
+                "RESPONSIVENESS applied to %r via a role INFERRED from its "
+                "name; declare `role: latency` to make it explicit",
+                indicator.name,
             )
         return result
 

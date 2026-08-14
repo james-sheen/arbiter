@@ -66,23 +66,50 @@ Declared per-indicator in a domain model, not in code:
 An empty `axioms: []` is meaningful — the values flow into observation history without a per-cycle
 check. Silence is a declaration here, not an omission.
 
+### `role:` — two axioms need to know what kind of quantity they are reading
+
+`RESPONSIVENESS` and `CONSISTENCY` carry rules about a **quantity**, not about an entity: a deadline
+applies to a latency, and `0 <= x <= 100` applies to a percentage. Declare which:
+
+```yaml
+- name: setpoint_error_pct
+  role: latency            # latency | count | percentage | ratio
+  axioms: [RESPONSIVENESS]
+  warning: 5
+  critical: 12
+```
+
+Leave it out and the engine infers a role from the indicator's **name** — `response`/`latency` for
+the first, `count`/`percent`/`pct`/`ratio` for the second — so models written before this field
+existed behave exactly as they did. That inference is a guess about English, and when it misses, the
+axiom declines `not_applicable` and the cycle stays green: an indicator called `pulldown_error_c`
+could declare `RESPONSIVENESS`, be accepted, be listed by `model_describe`, and never once evaluate.
+
+**You do not have to run a cycle to find that out.** `model_describe` reports
+`unreachable_declarations` — every declared `(indicator, axiom)` pair that cannot fire under any
+input, each with the remedy — and the loader logs the same list. An empty list is the target.
+
 ## Quickstart
 
-**Not on PyPI yet.** The package builds — `arbiter_engine-0.1.0` as both sdist and wheel — but it
-has not been published, and a project whose subject is unverifiable claims should not open with an
-install line it cannot honour.
-
 ```bash
-git clone <this repo> && cd arbiter
-pip install -e .          # requires numpy and pyyaml, and nothing else
+pip install arbiter-engine          # requires numpy and pyyaml, and nothing else
 
 python3 -c "
+from importlib.resources import files
 from arbiter_engine.api import EngineSession, model_describe
 
 s = EngineSession()
-s.load_model('examples/water_tank.yaml')
+s.load_model(files('arbiter_engine').joinpath('examples/water_tank.yaml').read_text())
 print(model_describe(s).to_dict()['checked'])"
 ```
+
+The example is read out of the INSTALLED PACKAGE rather than off a relative path, and that detail is
+load-bearing rather than stylistic. A wheel ships only what lives under the package directory, so
+the copy at `examples/` in this repository reaches the source distribution and **not** the wheel.
+This block used to open `examples/water_tank.yaml` directly: correct from a clone, and
+`FileNotFoundError` for anyone who installed the package instead — a failure that could not appear
+until the install line above stopped saying `git clone`. Both copies are here, written from one
+source: `examples/` for reading, the packaged one for running.
 
 That prints `{'invariants': 0, 'entities': 3, 'declared_invariants': 10}` — three entities, ten
 declared invariants, and **zero evaluated**, because no observations have been supplied yet. The
@@ -179,14 +206,14 @@ The engine is open. The knowledge and the operations are not.
 
 ## Status
 
-**v0.1.** 56 Python files, 54 modules importing on the declared dependencies alone, 11 supported
+**v0.1.** 57 Python files, 55 modules importing on the declared dependencies alone, 11 supported
 names — **counted in this repository**, which is the package you are holding.
 
-That basis is stated because the obvious alternative is wrong here. The extraction is derived from a
-larger private tree, and the closure in that tree is 51 files: five fewer, because the build adds one
-`__init__.py` per package level. This line published the 51 until 2026-08-12, where any reader could
-falsify it with `find . -name '*.py' | wc -l` — a checkable false claim, in the Status section of a
-project whose subject is checkable claims. Count the artifact, never the thing it came from.
+That basis is stated because it is easy to get wrong in a way nobody notices. The build adds one
+`__init__.py` per package level, so a count taken before the build is smaller than the package you
+are holding — and this line published the smaller figure until 2026-08-12, where any reader could
+falsify it with `find . -name '*.py' | wc -l`. A checkable false claim, in the Status section of a
+project whose subject is checkable claims. Count the artifact, never an earlier stage of it.
 
 The import figure carries the same hazard one layer down, and read 55 until 2026-08-12. That count was taken in an environment where `scipy` happened to be installed. `scipy` is an OPTIONAL extra, so a reader who runs `pip install -e .` and sweeps the package gets 54: `propagation.lp_confidence` is the one module that needs it, and it is a deep path outside the supported surface. Count the artifact **in the state the reader will have it**, not in the state the person measuring happens to be standing in.
 

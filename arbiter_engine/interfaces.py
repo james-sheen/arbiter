@@ -813,6 +813,21 @@ class IndicatorSpec:
     conservation_config: Optional[Dict[str, Any]] = None
     monotonicity_config: Optional[Dict[str, Any]] = None
 
+    # what KIND of quantity this indicator measures — one of
+    # latency / count / percentage / ratio. RESPONSIVENESS and CONSISTENCY used
+    # to decide whether they applied by matching the indicator's NAME against
+    # English words, so `pulldown_error_c` could declare RESPONSIVENESS, be
+    # accepted by the loader, be reported by `model_describe`, and never once
+    # produce an evaluation. That is property-name normalisation deciding
+    # whether a check runs, inside checkers the project's own rule requires to
+    # be domain-agnostic.
+    #
+    # Optional, and unset means the old name-matching still applies — removing
+    # the inference outright would silently change coverage for every model
+    # relying on it. See `ontology/axioms/roles.py`, which is the one place the
+    # vocabulary and the axiom mapping live.
+    role: Optional[str] = None
+
     def __post_init__(self):
         if not self.property_name:
             self.property_name = self.name

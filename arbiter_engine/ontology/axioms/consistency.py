@@ -30,6 +30,8 @@ from ...types import (
     Axiom, Severity, AxiomParameters, DetectionLayer, NotEvaluatedReason,
 )
 
+from . import roles
+
 logger = logging.getLogger(__name__)
 
 
@@ -39,24 +41,16 @@ logger = logging.getLogger(__name__)
 # (gene-ratio-n), `account` / `discount` as counts, and `configuration` /
 # `duration` / `operation` / `migration` as ratios. Tokens come from
 # _name_word_tokens (snake_case / camelCase / kebab-case boundaries).
-_COUNT_TOKENS = frozenset({"count", "counts"})
-_PERCENT_TOKENS = frozenset({"percent", "percentage", "percentages", "pct"})
-_RATIO_TOKENS = frozenset({"ratio", "ratios"})
-
-_CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
-
-
-def _name_word_tokens(name: str) -> set:
-    """split a property / indicator name into lowercase word
-    tokens across snake_case, camelCase and kebab-case boundaries.
-
-    Used so the consistency axiom classifies a property by whole word
-    (`ready_ratio` -> {ready, ratio}) rather than substring — a substring
-    test mis-classifies `observed_generation`, `account`, `configuration`
-    and similar names that merely contain a classifier word.
-    """
-    spaced = _CAMEL_BOUNDARY.sub(" ", str(name))
-    return {t for t in re.split(r"[^a-zA-Z0-9]+", spaced.lower()) if t}
+# these now live in `roles.py`, which is the single authority for
+# what an indicator's role is and which axioms have a rule for it. Re-exported
+# under their original names because `check_entity` below still classifies RAW
+# PROPERTY KEYS by token — it has no IndicatorSpec and therefore no declared
+# role to read, so name tokens are the only signal available there and remain
+# the right one. Two test modules also import these names directly.
+_COUNT_TOKENS = roles._COUNT_TOKENS
+_PERCENT_TOKENS = roles._PERCENT_TOKENS
+_RATIO_TOKENS = roles._RATIO_TOKENS
+_name_word_tokens = roles.name_word_tokens
 
 
 class ConsistencyChecker:
@@ -89,19 +83,24 @@ class ConsistencyChecker:
         if value is None:
             return problems
 
-        # classify by whole word-token, not substring.
-        name_tokens = _name_word_tokens(indicator.name)
+        # which universal rules apply is a DECLARED role now, and the
+        # token rule is the fallback when no role is declared. A model
+        # saying `role: ratio` gets the ratio rule on an indicator called
+        # `product_temp_c_redundant`; before, only a name tokenising to the
+        # word `ratio` could reach it.
+        applicable, matched_roles, role_source = roles.applies(
+            Axiom.CONSISTENCY, indicator)
 
         # Rule 1: Count fields must be non-negative
-        if name_tokens & _COUNT_TOKENS:
+        if roles.COUNT in matched_roles:
             problems.extend(self._check_count(entity, indicator.name, value))
 
         # Rule 2: Percentage fields must be 0-100
-        if name_tokens & _PERCENT_TOKENS:
+        if roles.PERCENTAGE in matched_roles:
             problems.extend(self._check_percentage(entity, indicator.name, value))
 
         # Rule 3: Ratio fields must be 0-1
-        if name_tokens & _RATIO_TOKENS:
+        if roles.RATIO in matched_roles:
             problems.extend(self._check_ratio(entity, indicator.name, value))
 
         result = apply_property_confidence(
@@ -113,13 +112,20 @@ class ConsistencyChecker:
         # this return having evaluated nothing, returning an empty list that
         # read as a clean pass. This is the dominant case rather than the edge
         # one: most indicator names are not count/percent/ratio words.
-        if not (name_tokens & (_COUNT_TOKENS | _PERCENT_TOKENS | _RATIO_TOKENS)):
+        if not applicable:
+            # names the remedy (declare a role) rather than the rule
+            # (your name did not tokenise), which pointed the reader at
+            # renaming a domain concept to satisfy a checker.
             return CheckOutcome(result).declined(
                 Axiom.CONSISTENCY, entity, indicator.name,
                 NotEvaluatedReason.NOT_APPLICABLE,
-                detail=(
-                    "no universal rule applies: the indicator name does not "
-                    "tokenise to count, percent/pct or ratio"),
+                detail=roles.explain_absence(Axiom.CONSISTENCY, indicator),
+            )
+        if role_source == "inferred":
+            logger.debug(
+                "CONSISTENCY applied to %r via a role INFERRED from its name "
+                "(%s); declare `role:` to make it explicit",
+                indicator.name, ", ".join(sorted(matched_roles)),
             )
         return result
 

@@ -395,9 +395,8 @@ Retrieval: `GET /api/v1/audit?dispatch_id=<id>` (RBAC-gated; admin + auditor rol
 | D | N/A (operator dispatches via own toolchain) | Operator's existing toolchain auth |
 | E | Webhook bearer token + idempotency-key | Customer dispatcher's downstream auth (likely ITOps API tokens) |
 
-The per-Option auth surface above is the published statement of it. A longer threat model exists in the
-source repository and is **not published** (dropped the security brief from the publish set), so
-it is named here for provenance rather than offered — the table above is complete for the deployment
+The per-Option auth surface above is the published statement of it. A longer threat model exists and is **not published** (the security brief was withdrawn from
+publication on 2026-08-09), so it is named here for provenance rather than offered — the table above is complete for the deployment
 decision this runbook covers, and does not depend on it.
 
 ### 8.4 Rollback patterns (all Options)
@@ -451,10 +450,10 @@ Joint 30-day review with operator + partner SRE; sign-off on transition to broad
 - Security + auth surface: section 8.3 of this runbook
 
 **Held in the source repository, cited for provenance and NOT published** — named so the trail is
-auditable; these are not links, and following them requires the private repository:
+auditable; they are not links, and the records themselves are available on request:
 
 - Closed-loop demo evidence: held in the source repository; not published
-- Second-evaluation-round milestone plan (option-decision rationale): held in the source repository; not published Section 2 (classified internal by the allowlist despite its directory)
+- Second-evaluation-round milestone plan (option-decision rationale): not published; Section 2
 - Demo walkthrough: held in the source repository; not published
 
 Two entries were removed rather than relabelled — a first-hour onboarding guide and a sales-deck

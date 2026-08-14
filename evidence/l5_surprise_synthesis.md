@@ -203,7 +203,7 @@ The **next Alpha** would test partner-side validation (real partner exercising t
 
 **Held in the source repository, cited for provenance and NOT published** — these are named so the
 evidence trail is auditable and so the claims above can be checked against a specific record on
-request. They are not links, and following them requires the private repository:
+request. They are not links; the records themselves can be supplied directly:
 
 - the daily hypothesis log, Days 1-10 — daily session entries with per-day hypothesis tests and verdicts.
 - the recursive-examination survey — the methodology body (L0/L1/L2 sections).

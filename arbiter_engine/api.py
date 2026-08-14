@@ -30,6 +30,9 @@ from arbiter_engine.history.observation import InMemoryObservationHistory
 from arbiter_engine.interfaces import (
     Entity, RelationshipGraph,
 )
+from arbiter_engine.ontology.axioms.roles import (
+    unreachable_axioms as _unreachable_axioms,
+)
 from arbiter_engine.ontology.domain_loader import load_domain
 from arbiter_engine.ontology.reasoner import UnifiedAxiomReasoner
 
@@ -142,6 +145,14 @@ def model_describe(session: EngineSession) -> Envelope:
                 "name": s.name,
                 "declared_axioms": [
                     getattr(a, "value", str(a)) for a in s.relevant_axioms],
+                # DECLARED and REACHABLE are different sets, and the
+                # difference used to be discoverable only by running a cycle
+                # and reading a decline. `role` is what moves a pair between
+                # them for the two role-gated axioms.
+                "role": getattr(s, "role", None),
+                "unreachable_axioms": [
+                    getattr(a, "value", str(a))
+                    for a in _unreachable_axioms(s)],
             }
             for s in specs
         ]
@@ -170,10 +181,16 @@ def model_describe(session: EngineSession) -> Envelope:
         "indicators": per_type,
         "declared_axioms": [
             getattr(a, "value", str(a)) for a in model.declared_axioms()],
+        # the statically-decidable half of the gap the note below
+        # describes. Not every declared axiom that fails to fire is listed here
+        # (some depend on inputs), but every pair listed here CANNOT fire, and
+        # that was previously knowable only by running the engine.
+        "unreachable_declarations": model.unreachable_declarations(),
         "note": (
             "declared_axioms is what the model declares, not what the engine "
             "evaluates; some axioms have evaluation paths that consult no "
-            "declaration"
+            "declaration. unreachable_declarations lists pairs that "
+            "provably cannot evaluate under any input"
         ),
     }
     return _WithPayload(envelope, payload)

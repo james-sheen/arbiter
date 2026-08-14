@@ -165,7 +165,7 @@ where a path used to be is worse — it makes distinct records indistinguishable
 - the Day-2 through Day-5 fault-watch notes — Days 6 onward fold into the hypothesis log; no Day-7 file was ever written
 - the fault-schedule specification — the 6-fault-window schedule and its canonical cadence
 - the replay verdict behind the detector anchor above
-- the security brief, covering deployment hardening posture — **dropped from the publish set on
+- the security brief, covering deployment hardening posture — **withdrawn from publication on
   2026-08-09** rather than held from the start; it was listed above as published alongside this
   pack until then
 

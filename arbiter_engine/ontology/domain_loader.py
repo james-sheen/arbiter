@@ -24,7 +24,7 @@ defaults and its quirks (absent thresholds becoming `0.0` rather than `None`;
 `target_type` and `relation_type` defaulting to empty string rather than
 `None`; `max_cardinality` defaulting to `0` rather than `None`). Those are
 load-bearing for the checkers that read them, so "cleaner" values would be a
-behaviour change wearing a tidy-up costume. the source repository
+behaviour change wearing a tidy-up costume. The source repository
 asserts tuple-identical output against the existing loader over the two
 published appendix files.
 
@@ -45,6 +45,9 @@ import yaml
 
 from ..interfaces import IndicatorSpec
 from ..types import Axiom, IndicatorType, Severity
+from .axioms.roles import (
+    ROLES, explain_absence, normalise_role, unreachable_axioms,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -210,6 +213,35 @@ do not use this to answer "what does this domain check?".
                 for axiom in spec.relevant_axioms}
         return sorted(seen, key=lambda a: a.value)
 
+    def unreachable_declarations(self) -> List[Dict[str, Any]]:
+        """Declared (indicator, axiom) pairs that can never produce an
+        evaluation, decidable from the model alone.
+
+        The gap this closes: a model declares `axioms: [RESPONSIVENESS]` on
+        `pulldown_error_c`, the loader accepts it, `declared_axioms` reports it,
+        and the pair cannot fire under ANY input. Before this the author found
+        out at run time, per entity, per cycle, by reading a decline — and only
+        if they read declines at all, which is the habit the envelope exists to
+        build and cannot assume.
+
+        REPORTED, NOT RAISED. The pair may be aspirational: an author can
+        legitimately declare an axiom they intend to make reachable, and
+        refusing to load their model over it would be the tool deciding their
+        roadmap. What it must not do is stay quiet.
+        """
+        out: List[Dict[str, Any]] = []
+        for entity_type, specs in self.indicators.items():
+            for spec in specs:
+                for axiom in unreachable_axioms(spec):
+                    out.append({
+                        "entity_type": entity_type,
+                        "indicator": spec.name,
+                        "axiom": getattr(axiom, "value", str(axiom)),
+                        "declared_role": getattr(spec, "role", None),
+                        "remedy": explain_absence(axiom, spec),
+                    })
+        return out
+
 
 def parse_duration(raw: Optional[str]) -> Optional[timedelta]:
     """ISO-8601 (`PT1H30M`) or short-form (`90m`) duration. None if neither."""
@@ -304,6 +336,25 @@ def _resolve_threshold(raw: Any) -> Optional[float]:
     return float(raw) if raw is not None else None
 
 
+def _resolve_role(raw: Any, indicator_name: str = "") -> Optional[str]:
+    """The declared `role:` for an indicator, or None.
+
+    None means *fall back to inferring the role from the name*, which is what
+    every model written before this field existed relies on. An unrecognised
+    word is warned about and treated as absent, because the alternative is a
+    role the engine ignores while the author believes it is declared.
+    """
+    if raw is None or str(raw).strip() == "":
+        return None
+    resolved = normalise_role(raw)
+    if resolved is None:
+        logger.warning(
+            "unknown role %r on indicator %r — ignored; known roles are %s",
+            raw, indicator_name, ", ".join(sorted(ROLES)),
+        )
+    return resolved
+
+
 def _resolve_severity(raw: Any) -> Severity:
     if not raw:
         return Severity.HIGH
@@ -353,6 +404,13 @@ def parse_indicator(
             # package shipping the defect this CD exists to remove.
             conservation_config=data.get("conservation") or None,
             monotonicity_config=data.get("monotonicity") or None,
+            # the declared role. Normalised here rather than at every
+            # read site, and an unrecognised word is reported and dropped —
+            # the same convention `_resolve_axioms` and `_resolve_severity`
+            # already use, so one mistyped field costs that field and not the
+            # file. Dropping it silently would be worse than the defect this
+            # closes: the author would believe they had declared a role.
+            role=_resolve_role(data.get("role"), name),
         )
     except Exception as exc:  # one bad indicator must not cost the file
         logger.warning("failed to parse indicator %r: %s", name, exc)
@@ -399,7 +457,7 @@ def load_domain(source: Union[str, Path, Dict[str, Any]]) -> DomainModel:
         if specs:
             indicators[entity_type] = specs
 
-    return DomainModel(
+    model = DomainModel(
         domain_id=domain.get("id") or domain.get("domain_id") or "",
         name=domain.get("name", ""),
         description=domain.get("description", ""),
@@ -408,3 +466,20 @@ def load_domain(source: Union[str, Path, Dict[str, Any]]) -> DomainModel:
         aliases=[str(a) for a in (domain.get("aliases") or [])],
         indicators=indicators,
     )
+
+    # say it at LOAD, not at cycle 1. Every fact needed to answer
+    # "can this declared pair ever fire?" is present here, and it was previously
+    # answered per entity per cycle by a decline the author had to be reading.
+    # Warn rather than raise: the declaration may be aspirational, and refusing
+    # the model over it would be the tool overruling its author.
+    unreachable = model.unreachable_declarations()
+    if unreachable:
+        logger.warning(
+            "domain %r declares %d (indicator, axiom) pair(s) that cannot "
+            "evaluate under any input: %s — declare a `role:` on the indicator "
+            "to make them reachable",
+            model.domain_id or "<unnamed>", len(unreachable),
+            "; ".join(f"{u['indicator']}/{u['axiom']}" for u in unreachable),
+        )
+
+    return model
