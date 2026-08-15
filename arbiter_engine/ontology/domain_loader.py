@@ -24,9 +24,10 @@ defaults and its quirks (absent thresholds becoming `0.0` rather than `None`;
 `target_type` and `relation_type` defaulting to empty string rather than
 `None`; `max_cardinality` defaulting to `0` rather than `None`). Those are
 load-bearing for the checkers that read them, so "cleaner" values would be a
-behaviour change wearing a tidy-up costume. The source repository
-asserts tuple-identical output against the existing loader over the two
-published appendix files.
+behaviour change wearing a tidy-up costume. The parity claim is checkable where
+you are: loading a domain model through this module and through the ontology
+loader yields tuple-identical output, and `examples/water_tank.yaml` declares all
+eight axiom families, so it exercises every conversion above.
 
 No Kubernetes literals, no fallback seed, no discovery, no `rdflib`. A domain
 that is not described in its own YAML is not described.
