@@ -1,4 +1,4 @@
-# Extended Fault Scenarios — the second evaluation round+ Expansion Beyond Current 6
+# Extended Fault Scenarios — the second evaluation round and beyond, past the current 6
 
 **Status**: design doc. Scenario priority and implementation order are undecided; nothing here has been implemented.
 **Created**: 2026-06-19 (the second evaluation round Day 6 of 21)
@@ -92,7 +92,7 @@ Each scenario: **PRE** (what to set up) / **STIMULUS** (the injected fault) / **
 ### Scenario 14 — `load_generator_dies_mid_fault`
 
 - **PRE**: the load generator in fault window (e.g. rate_limit_burst at peak)
-- **STIMULUS**: SSH the reference VPS → `docker stop the load generator` mid-fault
+- **STIMULUS**: SSH the reference VPS → stop the load generator container mid-fault
 - **EXPECTED**: the reference deployment observation stream stops; freshness axiom fires; cascade rate calculations drop to zero; Action proposed = `restart_traffic_source` (or escalate-alert if no auto-restart capability)
 - **OBS**: load-generator-down detected within 60s; the reference deployment sustained-state preserved; recovery on the load generator restart verified
 - **VALUE**: traffic generators dying is a real failure shape; demonstrates DT's resilience to gen-side outages
