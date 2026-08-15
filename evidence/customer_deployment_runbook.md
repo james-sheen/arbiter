@@ -1,12 +1,12 @@
 # Customer-Deployment Runbook — Per-Executor-Option Recipes
 
-**Audience**: infrastructure / platform / SRE engineers responsible for deploying the closed-loop substrate into the partner environment.
+**Audience**: infrastructure / platform / SRE engineers responsible for deploying the closed-loop substrate into a target environment.
 
-**Scope**: 5 executor placement options (A: Server-1-embedded / B: Core-orchestrates-via-API / C: Sidecar / D: Operator-curated / E: Webhook) with per-option deployment recipe, verification, rollback, and migration paths. Sourced from the second evaluation round milestone plan Section 2 and the second evaluation round closed-loop evidence pack, both held in the source repository and not published — named in the provenance list at the end of this document.
+**Scope**: 5 executor placement options (A: Server-1-embedded / B: Core-orchestrates-via-API / C: Sidecar / D: Operator-curated / E: Webhook) with per-option deployment recipe, verification, rollback, and migration paths. Sourced from the second evaluation round milestone plan Section 2 and the second evaluation round closed-loop evidence pack, both unpublished — named in the provenance list at the end of this document.
 
 **Note (operationalization status)**: Only Topology A/B (Server-1-embedded HTTP path + Core-orchestrates-via-API) are operationalized today; the second evaluation round exercised the Phase-0 agentless HTTP path only (HTTP-record, not real infrastructure mutation). The control-plane wiring beyond Topology A/B — including Option C Sidecar (`kubectl_scale`/`helm_upgrade`/`terraform_apply`), Option E webhook dispatch, and the ACTIVE-mode auto-dispatch paths — is roadmap/aspirational, not yet operationalized. Treat the per-Option recipes below as target-state deployment shapes pending the control-plane build-out.
 
-**Pre-requisites**: reader has read `observability_handoff_guide.md` (monitoring integration), which is published alongside this runbook. Operator has confirmed which Option fits the partner's trust posture + operational shape. The RBAC and auth surface is summarised in section 8.3 below rather than deferred — the separate security brief that previously carried it is held in the source repository and not published, so nothing in this runbook depends on a document the reader cannot obtain.
+**Pre-requisites**: reader has read `observability_handoff_guide.md` (monitoring integration), which is published alongside this runbook. Operator has confirmed which Option fits the partner's trust posture + operational shape. The RBAC and auth surface is summarised in section 8.3 below rather than deferred — the separate security brief that previously carried it is not published, so nothing in this runbook depends on a document the reader cannot obtain.
 
 **Note on paths**: relative paths in the recipes below — `deploy/manifests/...`,
 `deploy/docker-compose.yml` and similar — refer to the **deployment bundle** supplied for
@@ -410,7 +410,7 @@ Core's ACTION_INVERSE_MAP at `deploy/ai_ml_serving/proxy/main.py:456` (Phase 0 P
 | `blocklist_add` | `blocklist_remove` |
 | `scale_up_replicas(N)` | `scale_down_replicas(N)` |
 
-Triggered via `POST /api/v1/actions/rollback-last` OR per-dispatch-id rollback. Verified end-to-end during the second evaluation round's closed-loop demo: 1 rollback in a 5-action run. The evidence pack for that round is held in the source repository and is not published.
+Triggered via `POST /api/v1/actions/rollback-last` OR per-dispatch-id rollback. Verified end-to-end during the second evaluation round's closed-loop demo: 1 rollback in a 5-action run. The evidence pack for that round is not published.
 
 ---
 
@@ -449,12 +449,12 @@ Joint 30-day review with operator + partner SRE; sign-off on transition to broad
 - Observability + monitoring: `observability_handoff_guide.md`
 - Security + auth surface: section 8.3 of this runbook
 
-**Held in the source repository, cited for provenance and NOT published** — named so the trail is
+**Cited for provenance, not published** — named so the trail is
 auditable; they are not links, and the records themselves are available on request:
 
-- Closed-loop demo evidence: held in the source repository; not published
+- Closed-loop demo evidence: not published
 - Second-evaluation-round milestone plan (option-decision rationale): not published; Section 2
-- Demo walkthrough: held in the source repository; not published
+- Demo walkthrough: not published
 
 Two entries were removed rather than relabelled — a first-hour onboarding guide and a sales-deck
 narrative, both written for a commercial track retired in 2026-07. Neither is a prerequisite

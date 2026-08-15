@@ -1,9 +1,9 @@
 # Observability Handoff Guide — Partner SRE / Monitoring Team
 
-**Audience**: partner SRE / observability engineers wiring substrate signals into existing dashboards + alerting.
-**Status**: rewritten to code-cited truth 2026-07-19 per an internal documentation review (the architecture review channel, Parts 69-71 — archived 2026-07-31 to the internal notes; source repository only, not published). The prior version documented a `source: "production"` value the code never emits, treated the `/dt-*` endpoints as rich live signals (they are warming / placeholder under baseline —), cited a scraper script that does not exist, and used several wrong metric names. **Cleared to ship 2026-08-06** (operator-directed) — technical integration content; no commercial framing.
+**Audience**: SRE / observability engineers wiring substrate signals into existing dashboards + alerting.
+**Status**: rewritten to code-cited truth 2026-07-19 per an internal documentation review (the architecture review channel, Parts 69-71 — archived 2026-07-31, not published). The prior version documented a `source: "production"` value the code never emits, treated the `/dt-*` endpoints as rich live signals (they are warming / placeholder under baseline —), cited a scraper script that does not exist, and used several wrong metric names. **Cleared to ship 2026-08-06** (operator-directed) — technical integration content; no commercial framing.
 
-> Observability entry point: the **Prometheus `/metrics` surface** (real, populated) + the operator-run **the source repository** (emits the live/evidence/warming map). NOT the `/dt-*` semantic endpoints — those return HTTP 200 envelopes but carry no data under baseline traffic today.
+> Observability entry point: the **Prometheus `/metrics` surface** (real, populated) + the operator-run **readiness probe** (emits the live/evidence/warming map). NOT the `/dt-*` semantic endpoints — those return HTTP 200 envelopes but carry no data under baseline traffic today.
 
 ---
 
@@ -39,7 +39,7 @@ Each `/dt-<axis>` endpoint returns a bootstrap-aware JSON envelope that never 5x
 ```
 (the full system:27-29`). **There is no `"production"` value — do not key alerting on it.**
 
-**Important:** under baseline traffic today these endpoints return `source: live` (reachable) but `count: 0` / `ready_for_action: false` — the cross-pillar composition layer is unwired, so the semantic axes carry no data yet (only `/dt-axiom-verdicts` accrues real volume). **Do not build dashboards or alerts on the `/dt-*` counts** until wires the composition callsite; you would be alerting on zeros. Treat these as a stable-URL surface for future roll-out, not a live signal. To see the current per-endpoint live/warming/placeholder state, run the source repository (GREEN/AMBER/GREY map).
+**Important:** under baseline traffic today these endpoints return `source: live` (reachable) but `count: 0` / `ready_for_action: false` — the cross-pillar composition layer is unwired, so the semantic axes carry no data yet (only `/dt-axiom-verdicts` accrues real volume). **Do not build dashboards or alerts on the `/dt-*` counts** until wires the composition callsite; you would be alerting on zeros. Treat these as a stable-URL surface for future roll-out, not a live signal. To see the current per-endpoint live/warming/placeholder state, ask the operator to run the readiness probe (GREEN/AMBER/GREY map).
 
 ---
 

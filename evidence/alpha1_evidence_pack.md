@@ -2,7 +2,7 @@
 
 **Date**: 2026-06-12 (Alpha Day-11 of 11; closure 2026-06-13)
 **Scope**: Detection-cascade observations from the Alpha — an 11-day (2026-06-03 → 06-13 inclusive) compressed observation window against a public LLM-serving deployment under sustained adversarial load + scheduled fault windows.
-**Audience**: Strategic partners assessing the Operational Reasoning System (Arbiter) for potential pilot engagement.
+**Audience**: readers assessing the detection substrate on the evidence rather than on a claim.
 **What this pack is NOT**: Alpha-1 evidence covers detection-cascade observations only. Closed-loop action-outcome evidence (the second product criterion — the system not only detects but acts) accrues during the second evaluation round (target close 2026-07-04) and lands as a separate the second evaluation round evidence pack.
 
 ---
@@ -51,7 +51,7 @@ No closed-loop actions were exercised against the deployment during Alpha-1; the
 
 Day-11 (2026-06-13) reserves Alpha-1 evidence pack final review + partner-materials consistency sweep + status transition; checkpoints at `~/w/run/g603-alpha/dayN_checkpoint_*.md` Days 5-10.
 
-Full per-day detail lives in the Day-2 through Day-5 fault-watch notes, with Days 6-10 in the daily hypothesis log. Held in the source repository, cited for provenance and NOT published.
+Full per-day detail lives in the Day-2 through Day-5 fault-watch notes, with Days 6-10 in the daily hypothesis log. Cited for provenance, not published.
 
 ---
 
@@ -90,9 +90,9 @@ Methodological precedent: META Pattern N is the reference architecture for disti
 
 ## L5 surprises — 16 cumulative across 4 clusters
 
-L5 surprises are observations that the planned probes had not anticipated. Each entry was logged at the day's session-end codification audit in the daily hypothesis log, which is held in the source repository and NOT published. Clustered into 4 thematic families (closure verdict; canonical numbering matches `l5_surprise_synthesis.md`):
+L5 surprises are observations that the planned probes had not anticipated. Each entry was logged at the day's session-end codification audit in the daily hypothesis log, which is not published. Clustered into 4 thematic families (closure verdict; canonical numbering matches `l5_surprise_synthesis.md`):
 
-**Detector anchor — read this with the count above.** *Not anticipated by the probe design* is a statement about what the designers foresaw. It is not a statement about what the detector caught, and that result is unfavourable: **0 of the 16 were machine-surfaced at the time** — a human found all sixteen (the replay verdict, held in the source repository, source repository only, not published). The 2026-07 replay qualifies it without overturning it: on day-1 partner-plausible flow instrumentation, **3 of the 16** (#11, #12, #14) plus both post-Alpha Cluster-E world-model surprises would have been machine-flagged before the operator noticed — 5 of the 22 cumulative. The stronger licensed wording does not unlock on this evidence.
+**Detector anchor — read this with the count above.** *Not anticipated by the probe design* is a statement about what the designers foresaw. It is not a statement about what the detector caught, and that result is unfavourable: **0 of the 16 were machine-surfaced at the time** — a human found all sixteen (the replay verdict, not published). The 2026-07 replay qualifies it without overturning it: on day-1 partner-plausible flow instrumentation, **3 of the 16** (#11, #12, #14) plus both post-Alpha Cluster-E world-model surprises would have been machine-flagged before the operator noticed — 5 of the 22 cumulative. The stronger licensed wording does not unlock on this evidence.
 
 | Cluster | Count | Representative | Day |
 |---|---|---|---|
@@ -117,7 +117,7 @@ Cluster #1 (cascade-equilibrium) is the most demo-worthy externally because it s
 
 **Why this matters for partners**: cascades like this in production systems are typically detected only after customer-impact symptoms compound (queue backup → SLO miss → page). The Alpha-1 substrate detected, distinguished, and time-tracked both cascades simultaneously from observation data alone, with no manual analyst involvement. This is the substrate's central claim: a topology-aware ontology engine plus per-axiom ring-buffer evidence makes cascade-distinguishing diagnoses available at observation-time, not post-mortem.
 
-Detail is in the hypothesis log's Day-7/8/9 entries. A per-day Day-7 fault-watch note was planned and never written, so the Days 2-5 series does not extend to Day 7; the hypothesis log is the only record. Held in the source repository, cited for provenance and NOT published.
+Detail is in the hypothesis log's Day-7/8/9 entries. A per-day Day-7 fault-watch note was planned and never written, so the Days 2-5 series does not extend to Day 7; the hypothesis log is the only record. Cited for provenance, not published.
 
 ---
 
@@ -142,9 +142,9 @@ the recursive-examination framework codified in the alpha-recursive-examination 
 
 Per scope discipline (round-3 review guidance 2026-06-12):
 
-- **NOT closed-loop action evidence.** No actions were taken against the deployment during Alpha-1. The substrate observed; it did not act. Closed-loop action-outcome evidence belongs to the second evaluation round (target close 2026-07-04); its evidence pack is held in the source repository and is not published.
+- **NOT closed-loop action evidence.** No actions were taken against the deployment during Alpha-1. The substrate observed; it did not act. Closed-loop action-outcome evidence belongs to the second evaluation round (target close 2026-07-04); its evidence pack is not published.
 - **NOT platform-wide accuracy claim.** Numeric claims of 95.8% technical accuracy elsewhere in Arbiter materials refer specifically to the Stage I OpenBMC reference vertical's technical-support QA pipeline — a different substrate from this Alpha's AI/ML-serving observation. Cross-vertical generalization of any per-vertical stat is not warranted from Alpha-1 evidence alone.
-- **NOT a recommendation.** This pack does not propose deployment for a specific partner's environment. Discovery call is the next step; pilot proposal follows discovery call.
+- **NOT a recommendation.** This pack does not propose deployment for any specific environment, and names no next step: the commercial track it was written into is closed.
 
 ---
 
@@ -155,7 +155,7 @@ Per scope discipline (round-3 review guidance 2026-06-12):
 - `l5_surprise_synthesis.md` (16 Alpha-1 L5 closure verdict; current cumulative 22 with +6 post-Alpha Cluster E)
 - `tech_brief.md` (substrate architecture + axiom families)
 
-**Held in the source repository, cited for provenance and NOT published** — named by ROLE, so the
+**Cited for provenance, not published** — named by ROLE, so the
 evidence trail stays auditable and each record can be requested unambiguously. There is deliberately
 no path here: a path into a repository you cannot read is not provenance, and a placeholder standing
 where a path used to be is worse — it makes distinct records indistinguishable.

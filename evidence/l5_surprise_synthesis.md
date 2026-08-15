@@ -1,7 +1,7 @@
 # L5 Surprise Synthesis — Cumulative Findings from Alpha (Days 1-10) + Post-Alpha Replay Arc
 
 **Date**: 2026-06-12 original Alpha-1 closure; **extended 2026-06-20 with Cluster E** post-Alpha replay arc findings.
-**Audience**: Strategic partners reading the Alpha-1 evidence pack who want narrative depth on the substrate's most unexpected observations.
+**Audience**: readers of the Alpha-1 evidence pack wanting narrative depth on the substrate's most unexpected observations.
 **Companion**: `alpha1_evidence_pack.md` (scannable executive summary) plus the Compression-C, -D and -E replay grades (2026-06-19 and 2026-06-20); this synthesis is the prose drill-down on the **22 cumulative L5 surprises** — 16 from the 10-day Alpha-1 observation window (closure verdict all 16 classified) + 6 from the post-Alpha reference-VPS-replay arc (Compression-B/C/D/E over 2026-06-16 → 2026-06-20).
 
 ---
@@ -84,7 +84,7 @@ Across the 10-day Alpha, the substrate produced **16 cumulative L5 surprises** i
 
 ## Cumulative synthesis — what Days 1-10 mean
 
-Across the 16 Alpha-1 L5 surprises in 4 clusters (closure verdict; +6 post-Alpha Cluster E = 22 cumulative), the Alpha's central claim is the same one made in the partner-facing positioning materials: **detection-cascade observation is a substrate capability, not a model-quality claim**. The 95.8% technical-accuracy number that appears in the project README, and in an internal business-plan document held in the source repository and not published, refers specifically to the Stage I OpenBMC technical-support QA pipeline — a different substrate vertical, and one that has not run since April 2026. Alpha-1's evidence pertains to AI/ML-serving cascade dynamics; cross-vertical generalization is not warranted from this data alone.
+Across the 16 Alpha-1 L5 surprises in 4 clusters (closure verdict; +6 post-Alpha Cluster E = 22 cumulative), the Alpha's central claim is the same one made in the partner-facing positioning materials: **detection-cascade observation is a substrate capability, not a model-quality claim**. The 95.8% technical-accuracy number that appears in the project README, and in an internal business-plan document, unpublished, refers specifically to the Stage I OpenBMC technical-support QA pipeline — a different substrate vertical, and one that has not run since April 2026. Alpha-1's evidence pertains to AI/ML-serving cascade dynamics; cross-vertical generalization is not warranted from this data alone.
 
 What the 16 Alpha-1 surprises (+6 post-Alpha Cluster E) *do* warrant is the partner-pitching observation that follows: a deployment running Arbiter as observer produces:
 
@@ -93,7 +93,7 @@ What the 16 Alpha-1 surprises (+6 post-Alpha Cluster E) *do* warrant is the part
 3. **Axiom-evaluation as a tunable surface, not a binary** (Cluster C) — partners do not adopt Arbiter axioms wholesale; they tune thresholds against their own observation history, and Arbiter's job is to make tuning explicit and auditable.
 4. **Instrumentation-discipline as a prerequisite** (Cluster D) — partners deploying their own chaos / load substrate alongside Arbiter inherit the same instrumentation discipline; aspirational scenario names without per-name execution branching are a known anti-pattern.
 
-The 10-day window closes 2026-06-13 (Day-11). the second evaluation round (target close 2026-07-04) extends the observation into closed-loop action-outcome evidence: not "what does the substrate detect" but "what does the substrate *do* with what it detects, and what outcomes follow." That evidence is held in the source repository and is not published.
+The 10-day window closes 2026-06-13 (Day-11). the second evaluation round (target close 2026-07-04) extends the observation into closed-loop action-outcome evidence: not "what does the substrate detect" but "what does the substrate *do* with what it detects, and what outcomes follow." That evidence is not published.
 
 ---
 
@@ -136,7 +136,7 @@ For each L5 surprise (Days 1-11 = 16; Day-12 the second evaluation round RUN add
 
 So the vast majority were genuinely open-world: the substrate produced findings that the planned probes (the recursive-examination framework T0-T5 + Spikes 1-5) did NOT anticipate.
 
-**Detector anchor (replay) — the result that runs the other way.** Every figure above measures what the *designers* foresaw. None of them says anything about what the *detector* caught, and that number is unfavourable: **0 of the 16 Alpha-1 surprises were machine-surfaced at the time.** A human found all sixteen (the replay verdict, held in the source repository, source repository only, not published — see the provenance list at the end of this document).
+**Detector anchor (replay) — the result that runs the other way.** Every figure above measures what the *designers* foresaw. None of them says anything about what the *detector* caught, and that number is unfavourable: **0 of the 16 Alpha-1 surprises were machine-surfaced at the time.** A human found all sixteen (the replay verdict, not published — see the provenance list at the end of this document).
 
 The 2026-07 replay qualifies this without overturning it. Given only day-1 partner-plausible flow instrumentation, **3 of the 16** (#11, #12, #14) plus both Cluster-E world-model surprises (#18, #19) would have been machine-flagged on the right entity, in the right window, before the operator noticed — **5 of the 22 cumulative**, falling exactly along the pre-registered reachability boundary. The consequence recorded with that verdict still holds: the stronger licensed wording does **not** unlock, and the A-2 discrepancy-aggregator remains a prerequisite to any claim resting on this evidence.
 
@@ -158,7 +158,7 @@ The 4/4 admin endpoint probe returning 404 (Day-6) misdiagnosed the executor as 
 
 ### Open-world DT viability
 
-The substrate produced 16 L5 surprises in 12 days plus 0 fresh surprises during the second evaluation round RUN (the 5-action sequence behaved exactly as the unit-tested Path B would predict — no L5 emerged because the second evaluation round was functional verification, not exploration). This validates the traversal-kernel-as-atom design center (the traversal-kernel design centre, held in the source repository) at both layers:
+The substrate produced 16 L5 surprises in 12 days plus 0 fresh surprises during the second evaluation round RUN (the 5-action sequence behaved exactly as the unit-tested Path B would predict — no L5 emerged because the second evaluation round was functional verification, not exploration). This validates the traversal-kernel-as-atom design center (the traversal-kernel design centre, unpublished) at both layers:
 
 - **Detection-cascade observation layer** (Alpha-1): kernel cascaded correctly through axes at traversal-time + per-axis ring buffers captured cascade evidence simultaneously. All 16 L5 surprises surprised the operator when first observed, and 0 of 16 were anticipated by the probe design. Both figures describe **designer foresight, not detector performance** — 0 of 16 were machine-surfaced at the time, per the detector anchor above.
 - **Closed-loop action layer** (the second evaluation round): kernel dispatched correctly through transport adapter + record_result mutated correctly + rollback traversed ACTION_INVERSE_MAP correctly. 5/5 dispatches success=True.
@@ -187,7 +187,7 @@ The **next Alpha** would test partner-side validation (real partner exercising t
 
 **Surprise #20 (Compression-D 2026-06-19, meta-observation)** — *Layered-bottleneck-discovery shape: each compression generation peels one onion layer*. Compression-C exposed blocklist persistence; Compression-D (post-blocklist-fix) exposed LLM throughput budget; Compression-E (post-throughput-fix) is currently running + likely to expose the NEXT-deepest bottleneck. The meta-pattern: **a high-load substrate has many latent bottlenecks stacked in series; debugging shifts from "is there a problem?" to "which layer is currently dominant?". Compressed replay accelerates the discovery cadence**. Each generation N fixes the layer-N bottleneck + exposes layer N+1. Partner-takeaway: substrate maturity is measured by how many onion layers have been peeled — the deeper the visible-and-resolved layer-N, the more production-ready the system is. Our substrate has visible-and-resolved through layer-2 (edge-moderation + LLM-throughput) with layer-3+ discovery in flight.
 
-**Surprise #21 (methodology 2026-06-20)** — *Claim-scope-qualifier discipline: refining (not retracting) SLA claims when sustained-load reveals their boundary conditions*. When Compression-D invalidated the "cascade-rate zero" claim, the right response was NOT to retract the claim entirely (it's still true under documented conditions) NOR to silently update the claim with no audit-trail. amended 3 partner-facing docs in-place with scope qualifiers naming the test conditions under which the claim holds + cross-linking the empirical evidence (Compression-D grade doc) that refined it. Refined claim: "cascade-rate zero under documented tuning recipe (MAX_TOKENS_DEFAULT=64 + 90s timeouts + cpuset pin); raising max_tokens requires proportional timeout increase". The L5 finding: **SLA claim-refinement-with-audit-trail is itself a partner-trust signal** — partners interrogating the docs can see precisely when each claim was scope-qualified + against what evidence. This methodology is now load-bearing across the substrate, security and evidence-pack documents (of which `tech_brief.md` and the second evaluation round evidence pack are published; the security brief is held in the source repository). Partner-takeaway: a vendor that openly documents the boundary conditions of its SLA claims is more trustworthy than one whose claims appear universal but quietly fail under partner workload.
+**Surprise #21 (methodology 2026-06-20)** — *Claim-scope-qualifier discipline: refining (not retracting) SLA claims when sustained-load reveals their boundary conditions*. When Compression-D invalidated the "cascade-rate zero" claim, the right response was NOT to retract the claim entirely (it's still true under documented conditions) NOR to silently update the claim with no audit-trail. amended 3 partner-facing docs in-place with scope qualifiers naming the test conditions under which the claim holds + cross-linking the empirical evidence (Compression-D grade doc) that refined it. Refined claim: "cascade-rate zero under documented tuning recipe (MAX_TOKENS_DEFAULT=64 + 90s timeouts + cpuset pin); raising max_tokens requires proportional timeout increase". The L5 finding: **SLA claim-refinement-with-audit-trail is itself a partner-trust signal** — partners interrogating the docs can see precisely when each claim was scope-qualified + against what evidence. This methodology is now load-bearing across the substrate, security and evidence-pack documents (of which `tech_brief.md` and the second evaluation round evidence pack are published; the security brief is not published). Partner-takeaway: a vendor that openly documents the boundary conditions of its SLA claims is more trustworthy than one whose claims appear universal but quietly fail under partner workload.
 
 **Surprise #22 (Compression-E 2026-06-20, negative-result)** — *Substrate-stability validated at 96× compression through 3h window; no new layer-3 bottleneck surfaced — the absence IS the finding*. Compression-E (96× / 3h subsequently+) ran clean: **30 chat-completion attempts → 28 × HTTP 200 + 2 × HTTP 400 (input-rejection) + 0 × 502 + 0 × ReadTimeout + 0 × 403 = 93.3% success rate** (vs Compression-D's 2.3% previously; vs Compression-C's 0% previously). The onion-peel pattern (Cluster E #20) PREDICTED a layer-3 bottleneck would surface; the actual outcome was "no further bottleneck visible within the 30-attempt sample". This is a **negative-result L5** — the substrate is genuinely stable through the empirically-tested layer (layer-2: edge-moderation + LLM-throughput). Future probing (longer window / tighter compression / adversarial-mix shift) may surface layer-3; or layer-2 may be the deepest observable layer with current tooling. **Partner-takeaway**: substrate maturation is empirically demonstrable; the absence of NEW bottlenecks at a tested compression is itself a maturity signal. Combined with surprise #20 (onion-peel pattern), the substrate carries BOTH "next layer might appear" + "current layer is stable" claims with audit-trail. Sub-pattern of #20; complementary not contradictory.
 
@@ -201,7 +201,7 @@ The **next Alpha** would test partner-side validation (real partner exercising t
 
 - `alpha1_evidence_pack.md` — scannable executive summary (the artifact this synthesis is the prose drill-down for).
 
-**Held in the source repository, cited for provenance and NOT published** — these are named so the
+**Cited for provenance, not published** — these are named so the
 evidence trail is auditable and so the claims above can be checked against a specific record on
 request. They are not links; the records themselves can be supplied directly:
 
@@ -231,4 +231,4 @@ invitations outlasted it.
 
 The cluster narratives above are the deep-dive. The evidence behind them is listed under Drill-down
 references, with each entry marked according to whether it is published alongside this document or
-held in the source repository. Technical questions belong in the repository's issue tracker.
+not published. Technical questions belong in the repository's issue tracker.

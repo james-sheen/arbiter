@@ -22,6 +22,8 @@ classifiers = [
     "Typing :: Typed",
 ]
 readme = "README.md"
+authors = [{name = "James Sheen"}, {name = "Arbiter Project"}]
+keywords = ["anomaly-detection", "invariants", "ontology", "digital-twin", "observability", "detection-engine"]
 dependencies = [
     "numpy>=1.21",
     "pyyaml>=6.0",
@@ -38,3 +40,8 @@ all = ["rdflib>=6.0", "scipy>=1.7", "mcp>=1.0"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["arbiter_engine"]
+
+[project.urls]
+Homepage = "https://github.com/james-sheen/arbiter"
+Source = "https://github.com/james-sheen/arbiter"
+Issues = "https://github.com/james-sheen/arbiter/issues"

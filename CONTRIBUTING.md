@@ -11,15 +11,26 @@ modelling a domain are all welcome. The bug form asks for the things that
 actually reproduce a defect here — the smallest domain model that shows it, how
 the session was fed, and all four legs of the envelope.
 
-**Pull requests: not being merged yet.** The public API surface is pre-1.0 and
-still moving, and a patch merged against a surface that changes next month
-helps nobody. This is a decision about timing rather than about the value of
-outside work, and it is recorded the same way in `ROADMAP.md`.
+**Documentation pull requests: open.** The README, the worked example and the
+domain-modelling docs all take patches. If something in them is wrong, unclear,
+or describes behaviour the package does not have, a PR is the fastest route and
+it will be merged.
 
-A pull request template ships anyway, and that is deliberate: if you open one
-regardless, the form collects what a reviewer would otherwise have to ask for,
-and it will be read even while the merge queue is closed. An issue describing
-the change is the faster route to a decision.
+**Code pull requests: not being merged yet, and the reason is capacity.** This is
+a one-maintainer project with no second reviewer, and a review queue is the first
+thing that would fall behind. Saying so is more useful than the softer version:
+the public API is also pre-1.0 and still moving, which is true and is not what is
+stopping this — a frozen API would not add a reviewer.
+
+**What ends it**: a second reviewer, or the maintainer's other commitments
+closing. Not a version number and not a date, because neither of those is the
+thing in the way, and a gate that expires on a milestone nobody controls is a
+refusal with a schedule attached.
+
+A pull request template ships anyway, and that is deliberate: if you open a code
+PR regardless, the form collects what a reviewer would otherwise have to ask for,
+and it will be read even while the merge queue is closed. An issue describing the
+change is the faster route to a decision.
 
 ## Reporting well
 

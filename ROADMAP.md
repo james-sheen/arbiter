@@ -1,6 +1,6 @@
 # Arbiter Roadmap
 
-Arbiter is an Operational Reasoning System. This roadmap names what has happened and what is next. Milestones that have passed are marked as such rather than left reading as forthcoming.
+Arbiter is a detection engine that reports what it did not check. This roadmap names what has happened and what is next. Milestones that have passed are marked as such rather than left reading as forthcoming.
 
 ## Alpha — closed June 2026
 
@@ -31,4 +31,5 @@ Historical benchmark figures (95.8% technical accuracy, under-15s P95) belong to
 ## Public participation
 
 - Issue intake: open (see CONTRIBUTING.md)
-- Pull requests: not yet — see CONTRIBUTING.md for what is welcome in the meantime
+- Documentation pull requests: open
+- Code pull requests: not yet — one maintainer, no second reviewer; see CONTRIBUTING.md

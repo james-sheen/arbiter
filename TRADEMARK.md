@@ -28,11 +28,9 @@ You can refer to the project, fork the code under Apache 2.0, and discuss the pr
 
 ## Code license is Apache 2.0
 
-The Apache License 2.0 (see [LICENSE](LICENSE)) covers the source code and documentation in this repository. You may freely fork, modify, distribute, and sell software built from Arbiter source code under Apache 2.0 terms — retaining the `LICENSE` and `NOTICE` and stating your changes, as that licence requires — you simply cannot call the resulting product "Arbiter" or imply official endorsement.
+The Apache License 2.0 (see [LICENSE](LICENSE)) covers the Arbiter source code and documentation. You may freely fork, modify, distribute, and sell software built from Arbiter source code under Apache 2.0 terms — retaining the `LICENSE` and `NOTICE` and stating your changes, as that licence requires — you simply cannot call the resulting product "Arbiter" or imply official endorsement.
 
-This policy named a different permissive licence until 2026-08-11 — the one the authoring repository uses, which was correct there and wrong for the repository these documents ship into. The public repository was ruled Apache 2.0, the `LICENSE` file moved, and the documents around it did not. The correction matters most **here**, because Apache 2.0 reserves trademark rights in the licence text itself, which is the premise this policy rests on; the previous licence is silent on the point.
-
-*(The superseded licence is deliberately not named in this paragraph. A staging check compares every licence named in this repository against the shipped `LICENSE` and fails on disagreement, and a historical mention would read to it exactly like a live claim.)*
+The choice of Apache 2.0 is load-bearing for this policy rather than incidental: it reserves trademark rights in the licence text itself, which is the premise this policy rests on. A permissive licence silent on trademarks — MIT, for instance — would not support it.
 
 ## Requesting permission
 

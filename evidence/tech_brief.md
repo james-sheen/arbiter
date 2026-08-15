@@ -2,8 +2,27 @@
 
 **Document type**: Engineering reference — architecture overview + integration topologies + extensibility evidence + onboarding path + observability + API surface.
 **Date**: 2026-05-31.
-**Status**: Current. Landed 2026-05-31; framing corrected and content re-checked 2026-08-06 — axiom-checker count matches the pinned manifest, no stale domain counts, and the claims cited resolve in the registry. The draft-status marker it carried until then was stale rather than a live review item.
-**Audience**: partner-side engineering / SRE / platform / ML-infra teams evaluating substrate fit.
+**Status**: a dated record, not current documentation — see `README.md` in this directory. Landed 2026-05-31; framing corrected and content re-checked 2026-08-06 — axiom-checker count matches the pinned manifest, no stale domain counts, and the claims cited resolve in the registry. The draft-status marker it carried until then was stale rather than a live review item.
+**Audience**: engineering / SRE / platform / ML-infra readers, at the time of writing, evaluating substrate fit.
+
+---
+
+## What of this ships, and what does not
+
+**This brief describes the whole substrate. The published package is one
+component of it.** Of the components named below, `TopologyTraverser` and the
+eight axiom checkers are in `arbiter_engine`; the rest — the decision engine,
+the action planner and dispatcher, the posterior estimator, the goal-alignment
+monitor, the field-agent collectors and the RBAC surface — are **not published**.
+
+That split is the same one the repository README states: the engine is open, the
+knowledge and the operations are not. It is stated concretely here because a
+reader holding only the engine would otherwise have to discover it by looking for
+a class that is not there.
+
+Nothing below is an instruction. Where the text describes extending the system —
+adding a collector subclass, wiring a new vertical — it is describing how the
+full substrate was extended, not a path available in this package.
 
 ---
 
@@ -131,12 +150,12 @@ The 8 cognitive-depth pillars (Explains / Plans / Reasons / Negotiates / Wonders
 The Alpha-1 substrate-exercise window (Days 1-11 / 10-day compressed at 6× intensity) produced empirical cascade-dynamics evidence partners can reference for failure-mode SLA negotiation:
 
 - **Pattern N family** stabilized at 3-branch META reference architecture: N.a throughput-clamp via sleep-loop + N.b 403-cascade via rate-limit short-circuit + N.c 502-cascade via upstream-timeout. Each branch identifies a distinct cascade mechanism; per-axiom ring-buffer evidence distinguishes which is active.
-- **Pattern N.c 96h-stable upgrade (Alpha-1 baseline-traffic regime)**: 502 upstream-timeout cascade self-recovers within ~48h via upstream stabilization; Day-11 evidence confirms recovery stability holds at 96h+ horizon (Day-7 fault end → Day-11 sustained-observation; zero 502 responses across the full window). **Scope qualifier (2026-06-20)**: claim is verified under baseline-traffic regime (~1 req/min/tenant, mixed cache hits). Compression-D 6h 48× sustained-rate replay 2026-06-19 surfaced a residual gap: 128-token completions at empirically-measured 1.19 sec/token exceeded 90s timeouts within the run, producing in-window 502s that did not auto-resolve. An internal ruling closed the gap via `MAX_TOKENS_DEFAULT=64`; the production claim now applies when operator provisions per the documented tuning recipe (`MAX_TOKENS_DEFAULT=64` + 90s timeouts + cpuset pin). The 96h-stable cascade-recovery claim holds (under the Alpha-1 baseline-traffic regime with the documented tuning recipe: MAX_TOKENS_DEFAULT=64 + 90s timeouts + cpuset pin,. [CLM-016]). See the Compression-D replay grade of 2026-06-19, held in the source repository for evidence + the Pattern N.c claim-scope memo body in the methodology notes memory.
+- **Pattern N.c 96h-stable upgrade (Alpha-1 baseline-traffic regime)**: 502 upstream-timeout cascade self-recovers within ~48h via upstream stabilization; Day-11 evidence confirms recovery stability holds at 96h+ horizon (Day-7 fault end → Day-11 sustained-observation; zero 502 responses across the full window). **Scope qualifier (2026-06-20)**: claim is verified under baseline-traffic regime (~1 req/min/tenant, mixed cache hits). Compression-D 6h 48× sustained-rate replay 2026-06-19 surfaced a residual gap: 128-token completions at empirically-measured 1.19 sec/token exceeded 90s timeouts within the run, producing in-window 502s that did not auto-resolve. An internal ruling closed the gap via `MAX_TOKENS_DEFAULT=64`; the production claim now applies when operator provisions per the documented tuning recipe (`MAX_TOKENS_DEFAULT=64` + 90s timeouts + cpuset pin). The 96h-stable cascade-recovery claim holds (under the Alpha-1 baseline-traffic regime with the documented tuning recipe: MAX_TOKENS_DEFAULT=64 + 90s timeouts + cpuset pin,. [CLM-016]). See the Compression-D replay grade of 2026-06-19, unpublished, for evidence + the Pattern N.c claim-scope memo body in the methodology notes memory.
 - **Asymmetric-recovery sub-pattern (most demo-worthy single observation)**: N.c self-clears 48h-bound while N.b persists at homeostatic equilibrium until intervention. When N.c resolves, retry-suppression unclamps → N.b rate rebounds. The two cascades interact via retry-suppression mechanism, not just additively.
 - **16 cumulative L5 surprises during Alpha-1** across 4 thematic clusters (cascade-equilibrium-dynamics / methodology-substrate-gaps / axiom-family-dynamics / phantom-instrumentation) **+ 6 post-Alpha replay-arc surprises in Cluster E (Compression-B/C/D/E) = 22 cumulative** — partner-pitching narrative at `l5_surprise_synthesis.md`.
 
 **Drill-down.** Published alongside this brief: `alpha1_evidence_pack.md`, `l5_surprise_synthesis.md`.
-Held in the source repository and cited for provenance only, not published: the daily hypothesis log, Days 1-11, and the Compression-D replay grade of 2026-06-19.
+Cited for provenance only, not published: the daily hypothesis log, Days 1-11, and the Compression-D replay grade of 2026-06-19.
 
 ## Scaling characteristics (run observation)
 
@@ -144,6 +163,3 @@ The Phase B the hosting provider deployment is intentionally small (the serving 
 
 Production-scale partner deployments would scale horizontally (collector subclasses are stateless; Core is single-tenant per partner today, multi-tenant via UserStore RBAC; observation history is TimescaleDB-backed for cardinality). The substrate has not been load-tested above 1000 req/sec sustained; that's the next observation gate as Tier-C partner engagements land.
 
-## Next step
-
-The pre-flight drill is operable today. Operator can run `python -m agent.partner_dry_run --target <partner-metrics-endpoint>` against partner-staging; the 6-stage report is the standard scoping artifact for the technical evaluation phase.
