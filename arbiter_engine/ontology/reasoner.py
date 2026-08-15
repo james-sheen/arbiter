@@ -823,8 +823,8 @@ class UnifiedAxiomReasoner(OntologyReasonerInterface):
 # +
 #).
 #
-# 5-field frozen dataclass + 5 public functions + an established pattern-
-# instance env-gate DT_PRODUCTION_PREDICTION_ENABLED +
+# 5-field frozen dataclass + 5 public functions + an established pattern
+# env-gate DT_PRODUCTION_PREDICTION_ENABLED +
 # (CENTENARY MILESTONE) DT_PRODUCTION_PREDICTION_SEVERITY_FLOOR + ring-cap
 # eviction. Foundation UnifiedAxiomReasoner class above preserved
 # unchanged in-place extension discipline.

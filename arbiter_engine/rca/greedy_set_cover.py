@@ -88,9 +88,9 @@ def greedy_set_cover(
 # — RootCauseIdentifier production-readiness substrate
 # ============================================================
 # Re-activates RCA axis-25 substrate (RootCauseIdentifier
-# foundation; greedy_set_cover above + a module held from this package{analyzer +
-# causal_graph + evidence_collector + report_generator}.py foundation
-# modules) at production-readiness shape hybrid
+# foundation; greedy_set_cover above + the analyzer, causal_graph,
+# evidence_collector and report_generator foundation modules) at
+# production-readiness shape hybrid
 # emit-policy decision. Adds per-candidate production recording + 5
 # production-readiness public methods + an established pattern
 # env-gate. Composes attestation severity floor +
