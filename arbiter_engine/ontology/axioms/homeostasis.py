@@ -97,19 +97,39 @@ class HomeostasisChecker:
         """
         problems = []
 
-        # Only check numeric indicators
+        # three bare early returns replaced by declines. The
+        # INSUFFICIENT_SAMPLES decline further down was already correct and was
+        # unreachable whenever the property was absent, because this exit fired
+        # first and returned an empty list that reads as a clean pass.
         if indicator.indicator_type.value != 'numeric':
-            return problems
+            return CheckOutcome(problems).declined(
+                Axiom.HOMEOSTASIS, entity, indicator.name,
+                NotEvaluatedReason.WRONG_INDICATOR_TYPE,
+                detail=(
+                    f"HOMEOSTASIS evaluates numeric indicators; this one is "
+                    f"{indicator.indicator_type.value}"),
+            )
 
-        # Get current value
         current = entity.get_property(indicator.property_name)
         if current is None:
-            return problems
+            return CheckOutcome(problems).declined(
+                Axiom.HOMEOSTASIS, entity, indicator.name,
+                NotEvaluatedReason.MISSING_PROPERTY,
+                detail=(
+                    f"no value for property {indicator.property_name}; "
+                    f"HOMEOSTASIS compares a current value against a baseline"),
+            )
 
         try:
             current = float(current)
         except (TypeError, ValueError):
-            return problems
+            return CheckOutcome(problems).declined(
+                Axiom.HOMEOSTASIS, entity, indicator.name,
+                NotEvaluatedReason.WRONG_INDICATOR_TYPE,
+                detail=(
+                    f"property {indicator.property_name} is declared numeric "
+                    f"but its value is not: {current!r}"),
+            )
 
         # Get historical values for baseline
         baseline_window = timedelta(days=self.params.homeostasis_baseline_days)

@@ -78,10 +78,20 @@ class ConsistencyChecker:
         """
         problems = []
 
-        # Check the indicator's value
+        # was a bare `return problems`, reported from outside as
+        # issue #1. CONSISTENCY's universal rules all compare a VALUE against
+        # what its role permits, so with no value there is nothing to judge —
+        # and saying so is the entire point of the not_checked leg.
         value = entity.get_property(indicator.property_name)
         if value is None:
-            return problems
+            return CheckOutcome(problems).declined(
+                Axiom.CONSISTENCY, entity, indicator.name,
+                NotEvaluatedReason.MISSING_PROPERTY,
+                detail=(
+                    f"no value for property {indicator.property_name}; "
+                    f"CONSISTENCY judges a value against the range its role "
+                    f"permits"),
+            )
 
         # which universal rules apply is a DECLARED role now, and the
         # token rule is the fallback when no role is declared. A model

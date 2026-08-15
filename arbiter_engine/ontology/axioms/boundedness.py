@@ -114,19 +114,46 @@ class BoundednessChecker:
         """
         problems = []
 
-        # Only check numeric indicators
+        # these three exits used to `return problems`, an empty list
+        # that the envelope reports as a clean pass. Reported from outside as
+        # issue #1: with no property, BOUNDEDNESS counted toward
+        # `checked.invariants` and emitted neither a finding nor a decline, so
+        # a vacuous pass was byte-identical to a healthy one. That is the exact
+        # failure the three-part envelope exists to prevent.
+        #
+        # Note the ordering: the missing-property decline must come BEFORE the
+        # NO_THRESHOLD decline at the foot of this method, which was
+        # unreachable for a missing property precisely because of the bare
+        # return here.
         if indicator.indicator_type.value != 'numeric':
-            return problems
+            return CheckOutcome(problems).declined(
+                Axiom.BOUNDEDNESS, entity, indicator.name,
+                NotEvaluatedReason.WRONG_INDICATOR_TYPE,
+                detail=(
+                    f"BOUNDEDNESS evaluates numeric indicators; this one is "
+                    f"{indicator.indicator_type.value}"),
+            )
 
-        # Get current value
         current = entity.get_property(indicator.property_name)
         if current is None:
-            return problems
+            return CheckOutcome(problems).declined(
+                Axiom.BOUNDEDNESS, entity, indicator.name,
+                NotEvaluatedReason.MISSING_PROPERTY,
+                detail=(
+                    f"no value for property {indicator.property_name}; "
+                    f"BOUNDEDNESS compares a current value against a threshold"),
+            )
 
         try:
             current = float(current)
         except (TypeError, ValueError):
-            return problems
+            return CheckOutcome(problems).declined(
+                Axiom.BOUNDEDNESS, entity, indicator.name,
+                NotEvaluatedReason.WRONG_INDICATOR_TYPE,
+                detail=(
+                    f"property {indicator.property_name} is declared numeric "
+                    f"but its value is not: {current!r}"),
+            )
 
         #: resolve effective thresholds through the optional
         # RuntimeYAMLOverlay. When no overlay is wired or no override

@@ -109,8 +109,21 @@ class ConservationChecker:
             bound="warn",
         )
 
+        # reported from outside as issue #1. The SHIPPED example's
+        # `conservation:` block declares `output_properties` and no
+        # `input_property`, so this exit is the one it actually takes: a
+        # configured-looking indicator returning an empty list that the
+        # envelope reports as a clean pass. The INSUFFICIENT_SAMPLES decline
+        # below never gets the chance to fire.
         if not input_prop or not output_props:
-            return problems
+            missing = "input_property" if not input_prop else "output_properties"
+            return CheckOutcome(problems).declined(
+                Axiom.CONSERVATION, entity, indicator.name,
+                NotEvaluatedReason.MISSING_CONFIG,
+                detail=(
+                    f"conservation config declares no {missing}; a balance "
+                    f"needs both an input and at least one output to compare"),
+            )
 
         window = timedelta(seconds=self.params.conservation_window_seconds)
 

@@ -112,6 +112,27 @@ class ResponsivenessChecker:
         name_matches, _matched, role_source = roles.applies(
             Axiom.RESPONSIVENESS, indicator)
         if name_matches:
+            # the decline has to be raised HERE, not inside the
+            # helper. `_check_latency_threshold` returns a plain list and this
+            # is an `extend`, which keeps the problems and drops any
+            # `not_evaluated` records (the helper-seam limitation). A
+            # decline written in the helper would vanish at exactly this line.
+            #
+            # Reported from outside as issue #1: with `role: latency` declared
+            # and no property fed, the NOT_APPLICABLE decline below is skipped
+            # (the role DOES apply), the helper finds nothing, and `check()`
+            # returns a clean pass. RESPONSIVENESS is the fifth silent axiom
+            # and the one the report did not name — `Controller` is the only
+            # entity type in the shipped example that declares it.
+            if entity.get_property(indicator.property_name) is None:
+                return CheckOutcome(problems).declined(
+                    Axiom.RESPONSIVENESS, entity, indicator.name,
+                    NotEvaluatedReason.MISSING_PROPERTY,
+                    detail=(
+                        f"no value for property {indicator.property_name}; "
+                        f"RESPONSIVENESS compares a latency against its "
+                        f"threshold"),
+                )
             problems.extend(self._check_latency_threshold(
                 entity, indicator
             ))
