@@ -895,6 +895,64 @@ class MultiDomainDetectionResult:
 # Abstract Interfaces
 # =============================================================================
 
+def absent_current_value(
+    entity: "Entity",
+    indicator: "IndicatorSpec",
+    history: Optional["ObservationHistory"] = None,
+) -> Tuple[NotEvaluatedReason, str, int]:
+    """Which KIND of absence this is, for a checker that found no current value.
+
+Returns ``(reason, detail clause, in-window observation count)``.
+    Four checkers decline when ``Entity.properties`` lacks the indicator's
+    property, and until now all four said `missing_property` whether the value
+    had never been supplied or had been supplied to the observation history
+    instead. Those are different answers and only one of them is actionable as
+    written.
+
+    ONE helper rather than four call sites doing the same lookup, because the
+    wording is the product here -- a decline nobody can act on is a defect in
+    the thing this engine claims to be good at, so four copies drifting apart
+    is four different answers to the same question.
+
+    It returns a TRIPLE and not a `CheckOutcome`. A helper that builds the
+    outcome reads better and loses the records at any caller that passes it
+    through anything list-shaped, which is the seam documents and
+     then hit again in RESPONSIVENESS. Handing back the pieces leaves
+    the `declined(...)` call visible at the site that owns it.
+
+    Never raises. A history that cannot answer yields the old reason, so the
+    worst case is the behaviour that shipped for a year.
+    """
+    prop = indicator.property_name
+    count = total = 0
+    if history is not None and prop:
+        try:
+            window = getattr(indicator, "time_window", None) or timedelta(hours=1)
+            count = len(history.get_values(entity.id, prop, window))
+            total = history.get_observation_count(entity.id, prop)
+        except Exception:  # noqa: BLE001 - a decline must not become a crash
+            count = total = 0
+
+    if count or total:
+        # BOTH counts when they differ. The in-window figure is the one that
+        # governs, and on its own it invites the question the comment
+        # on `observations_count` already answers for the sample floors: a
+        # reader who supplied sixty and is told fifty-nine has been handed a
+        # discrepancy with no explanation. Sixty samples at one-minute spacing
+        # span exactly the one-hour window, so the oldest sits on the boundary.
+        seen = (f"{count} of {total} observations" if total != count
+                else f"{count} observation(s)")
+        return (
+            NotEvaluatedReason.NO_CURRENT_VALUE,
+            f"{seen} of {prop} in window, but no current value; threshold "
+            f"axioms read the entity's properties and temporal axioms read "
+            f"observation history",
+            count,
+        )
+    return (NotEvaluatedReason.MISSING_PROPERTY,
+            f"no value for property {prop}", 0)
+
+
 class CheckOutcome(List["Problem"]):
     """What a checker found, plus what it declined to evaluate.
 

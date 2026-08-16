@@ -21,15 +21,24 @@ not_evaluated         what was NOT evaluated, and why
 evaluations_attempted how many (axiom, entity, indicator) evaluations were tried
 ```
 
-`not_evaluated` entries carry a reason from a closed vocabulary of eight — `not_applicable`,
-`insufficient_samples`, `missing_property`, `missing_config`, `missing_entity_type`,
-`no_threshold`, `wrong_indicator_type`, `checker_error` — so a decline is data, not a log line.
+`not_evaluated` entries carry a reason from a closed vocabulary of nine — `not_applicable`,
+`insufficient_samples`, `missing_property`, `no_current_value`, `missing_config`,
+`missing_entity_type`, `no_threshold`, `wrong_indicator_type`, `checker_error` — so a decline is
+data, not a log line.
 
-Two of the eight will account for most of what you see. `insufficient_samples` reports both the
+Three of the nine will account for most of what you see. `insufficient_samples` reports both the
 count it had and the count it needed, so it tells you how much longer to collect.
 `not_applicable` means the checker decided the axiom does not apply to that indicator at all —
-worth reading closely, because some checkers make that decision from the indicator's NAME, which
-is a rough edge rather than a rule to infer.
+worth reading closely, because it can be decided from a declared `role:`, and inferred from the
+indicator's NAME when no role is declared.
+
+`no_current_value` is the newest and the reason it exists is worth stating. A threshold axiom reads
+`Entity.properties`; a temporal axiom reads observation history. Feed only the second and the value
+is genuinely present and genuinely unreadable by the checker that wants it — and until 2026-08-16
+that said `missing_property`, which told a caller holding sixty observations of a property that
+there was no value for it. It now names the count and which store it is in. **That was reported
+from outside**, and the vocabulary was the thing at fault: a closed set missing a member does not
+raise, it reclassifies the case as the nearest member and reports it with confidence.
 
 **Why the denominator matters.** Findings and declines do not sum to the total: an evaluation that
 ran and found nothing appears in neither. Without `evaluations_attempted`, the statement *checked N

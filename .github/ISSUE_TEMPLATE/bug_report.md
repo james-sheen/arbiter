@@ -13,12 +13,17 @@ in `findings`. An axiom that declined did not fail — it reports a
 machine-readable reason for why it could not run, and that reason is usually the
 whole story.
 
-Two that account for most surprises:
+Three that account for most surprises:
 
-- **`not_applicable`** — some axioms decide whether they apply by reading the
-  indicator's name. `CONSISTENCY` wants `count`, `percent`/`pct` or `ratio` in
-  it; `RESPONSIVENESS` wants `response` or `latency`. This is a known rough
-  edge, not a rule you were supposed to infer.
+- **`not_applicable`** — `CONSISTENCY` and `RESPONSIVENESS` apply to a KIND of
+  quantity, and the model says which by declaring `role:` on the indicator. With
+  no `role:`, the engine falls back to reading the name — `count`,
+  `percent`/`pct`, `ratio` for one; `response` or `latency` for the other. If an
+  indicator you expected to be checked was not, declare its role rather than
+  renaming it. The fallback is for models written before the field existed.
+- **`no_current_value`** — the value is present, in the store this checker does
+  not read. Threshold axioms read the entity's `properties`; temporal axioms read
+  observation history. The decline names the observation count it can see.
 - **`insufficient_samples`** — the floor is per-axiom, and the decline states
   both the count it had and the count it needed.
 

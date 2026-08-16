@@ -37,6 +37,7 @@ from ...interfaces import (
     apply_property_confidence,
     CheckOutcome,
     sampling_context,
+    absent_current_value,
 )
 from ...types import (
     Axiom, Severity, AxiomParameters, DetectionLayer, NotEvaluatedReason,
@@ -112,12 +113,14 @@ class HomeostasisChecker:
 
         current = entity.get_property(indicator.property_name)
         if current is None:
+            # which absence, not just that there is one.
+            reason, clause, seen = absent_current_value(entity, indicator, history)
             return CheckOutcome(problems).declined(
-                Axiom.HOMEOSTASIS, entity, indicator.name,
-                NotEvaluatedReason.MISSING_PROPERTY,
+                Axiom.HOMEOSTASIS, entity, indicator.name, reason,
                 detail=(
-                    f"no value for property {indicator.property_name}; "
+                    f"{clause}; "
                     f"HOMEOSTASIS compares a current value against a baseline"),
+                observations_count=seen or None,
             )
 
         try:

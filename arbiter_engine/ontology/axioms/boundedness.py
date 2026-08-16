@@ -31,6 +31,7 @@ from ...interfaces import (
     calculate_trend,
     apply_property_confidence,
     CheckOutcome,
+    absent_current_value,
 )
 from ...types import (
     Axiom, Severity, AxiomParameters, DetectionLayer, NotEvaluatedReason,
@@ -136,12 +137,14 @@ class BoundednessChecker:
 
         current = entity.get_property(indicator.property_name)
         if current is None:
+            # which absence, not just that there is one.
+            reason, clause, seen = absent_current_value(entity, indicator, history)
             return CheckOutcome(problems).declined(
-                Axiom.BOUNDEDNESS, entity, indicator.name,
-                NotEvaluatedReason.MISSING_PROPERTY,
+                Axiom.BOUNDEDNESS, entity, indicator.name, reason,
                 detail=(
-                    f"no value for property {indicator.property_name}; "
+                    f"{clause}; "
                     f"BOUNDEDNESS compares a current value against a threshold"),
+                observations_count=seen or None,
             )
 
         try:

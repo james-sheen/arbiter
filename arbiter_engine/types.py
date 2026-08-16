@@ -350,6 +350,24 @@ Deliberately a small, closed, domain-agnostic set: these are
 
     INSUFFICIENT_SAMPLES = "insufficient_samples"
     MISSING_PROPERTY = "missing_property"
+    # reported from outside as issue #2. `MISSING_PROPERTY` was doing
+    # duty for two states that are not the same answer: the value was never
+    # supplied, and the value was supplied to the OTHER store. The engine holds
+    # two, and threshold axioms read `Entity.properties` while temporal axioms
+    # read observation history.
+    #
+    # Told apart, the second is worse than unactionable. It told a caller
+    # holding sixty in-window observations of `level_pct` that there was `no
+    # value for property level_pct` -- directing them to supply what they had
+    # already supplied. And in the SAME session `unconsumed_observations`
+    # returned empty, which is this engine positively certifying that every
+    # series it holds is read by a declared indicator. Two features of one
+    # release, contradicting each other about one property.
+    #
+    # A closed enum missing a member does not raise. It reclassifies the case
+    # as the nearest member and reports it with confidence -- so the fix is the
+    # vocabulary, not the wording. Third instance of that shape here.
+    NO_CURRENT_VALUE = "no_current_value"
     # the referenced entity TYPE has never been observed, which is a
     # different statement from "this entity lacks a property". It says the
     # model refers to a concept the telemetry does not supply at all, and it

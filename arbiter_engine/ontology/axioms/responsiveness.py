@@ -31,6 +31,7 @@ from ...interfaces import (
     IndicatorSpec,
     apply_property_confidence,
     CheckOutcome,
+    absent_current_value,
 )
 from ...types import (
     Axiom,
@@ -125,13 +126,16 @@ class ResponsivenessChecker:
             # and the one the report did not name — `Controller` is the only
             # entity type in the shipped example that declares it.
             if entity.get_property(indicator.property_name) is None:
+                # which absence, not just that there is one.
+                reason, clause, seen = absent_current_value(
+                    entity, indicator, history)
                 return CheckOutcome(problems).declined(
-                    Axiom.RESPONSIVENESS, entity, indicator.name,
-                    NotEvaluatedReason.MISSING_PROPERTY,
+                    Axiom.RESPONSIVENESS, entity, indicator.name, reason,
                     detail=(
-                        f"no value for property {indicator.property_name}; "
+                        f"{clause}; "
                         f"RESPONSIVENESS compares a latency against its "
                         f"threshold"),
+                    observations_count=seen or None,
                 )
             problems.extend(self._check_latency_threshold(
                 entity, indicator
