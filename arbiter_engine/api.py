@@ -40,7 +40,7 @@ from arbiter_engine.ontology.reasoner import UnifiedAxiomReasoner
 #: 2026-08-04 (`TopologyTraverser.project_values`), so the mode is now
 #: offered — and `traverse` below projects before traversing, because
 #: offering the mode without running the producer would reinstate the
-#: exact inertness removed.
+#: exact inertness that an internal ruling removed.
 SUPPORTED_VALUE_MODES = ("current", "hypothetical", "projected")
 
 
@@ -342,7 +342,7 @@ def traverse(session: EngineSession, start_nodes: Sequence[str],
     # invariants. That was true when written and stopped being true at
     # an internal ruling, which carried the declared thresholds onto the nodes so
     # `_evaluate_axioms` can fire. Reporting 0 beside a non-empty `findings`
-    # list would be the same defect fixed, pointing the other way:
+    # list would be the same defect that an internal ruling fixed, pointing the other way:
     # an envelope that understates what it did is no more honest than one
     # that overstates it.
     #

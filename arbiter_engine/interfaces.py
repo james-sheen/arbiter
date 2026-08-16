@@ -841,7 +841,7 @@ class IndicatorSpec:
     # moves is broken, and a desired-replica count, a nominal setpoint, a
     # config value or a switched-off pump are all correctly constant. A checker
     # that decided this for itself would be carrying domain behaviour, which is
-    # the one thing the axiom layer must not do. Same move made when it
+    # the one thing the axiom layer must not do. Same move that an internal ruling made when it
     # took CONSISTENCY and RESPONSIVENESS off guessing from the indicator name.
     #
     # `None` means undeclared, and undeclared means no check — so every model

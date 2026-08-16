@@ -54,14 +54,26 @@ Declared per-indicator in a domain model, not in code:
 
 | Axiom | Asks |
 |---|---|
-| `BOUNDEDNESS` | does this stay within its bounds? |
+| `BOUNDEDNESS` | does this stay under its ceiling? |
 | `STABILITY` | does it settle, or oscillate? |
 | `HOMEOSTASIS` | does it return to baseline after disturbance? |
 | `MONOTONICITY` | does it move only in the permitted direction? |
 | `CONSERVATION` | does what goes in come out? |
 | `CONNECTIVITY` | is the topology intact? |
-| `CONSISTENCY` | do related values agree? |
+| `CONSISTENCY` | is this one value possible on its own terms? |
 | `RESPONSIVENESS` | does it react within its deadline? |
+
+**`BOUNDEDNESS` is an upper bound only.** `warning:` and `critical:` are ceilings; there is no
+lower-bound key. A pair written as a floor — `warning: 2000, critical: 1750` for a fan that must not
+stop — loads without complaint and inverts the alarm, reporting a healthy reading as critical and a
+stopped one as clean. For a quantity where *lower* is worse, declare `HOMEOSTASIS` and let the
+baseline decide what too low means, or compute the shortfall in your adapter and give the engine a
+quantity that does have a ceiling. [`MODELING.md`](MODELING.md) gives the reasoning and both shapes.
+
+**`CONSISTENCY` reads one indicator, never two.** It range-checks a value against what its `role:`
+permits — a count is not negative, a percentage is within 0-100 — and it does **not** compare one
+indicator against another. To compare two readings, compute the difference in your adapter and give
+the engine that.
 
 ```yaml
 - name: cpuUsageNanoCores

@@ -9,7 +9,7 @@ round-trip.
 
 The SDK import is **lazy**, inside :func:`build_server`. Importing this module
 must not require ``mcp`` to be installed — the engine is the dependency, the
-transport is not (the scope ruling holds the platform; the server
+transport is not (the scope ruling holds the platform,; the server
 holds neither).
 
 Run with:
@@ -19,8 +19,8 @@ Run with:
 (Inside the orchestrator repo the same module runs at its in-repo path, from
 the repo parent on the path. That path is deliberately not spelled out here.)
 
-This module now SHIPS -- the public-API ruling decided the
-surface is a permanent public contract -- so its own docstring is public text. It previously gave only
+This module now SHIPS -- the public-API ruling decided the surface is a
+permanent public contract -- so its own docstring is public text. It previously gave only
 the in-repo invocation, with an absolute operator path in front of it: a private
 package name and a private filesystem path, both in a docstring, where the
 build's stray scan cannot see them because that scan matches import STATEMENTS
@@ -36,7 +36,7 @@ from arbiter_engine.api import (
     EngineSession, attest, check, gaps, model_describe, traverse,
 )
 
-#: The five primitives, in the order an internal ruling lists them. Each entry is the
+#: The five primitives, in the order that an internal ruling lists them. Each entry is the
 #: name, a one-line description for the client, and the JSON-Schema input.
 TOOL_SPECS: List[Dict[str, Any]] = [
     {

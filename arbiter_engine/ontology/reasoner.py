@@ -79,7 +79,7 @@ def _record_fires(
     - **Uniform by construction.** Every checker reached through the
       dispatcher is counted. The mixin required an explicit call per problem
       site, so a checker could mix it in then not call it — a failure mode
-      nothing could detect, and one named while proposing a decorator.
+      nothing could detect, and one that an internal ruling named while proposing a decorator.
       There are 34 problem-creation sites across the five previously-uncounted
       checkers; instrumenting each would have reproduced the hazard 34 times.
     - **One place to change.** Three call sites in this module rather than

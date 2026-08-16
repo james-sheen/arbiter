@@ -1,0 +1,174 @@
+# The domain model format
+
+*Eight axioms over a typed graph, declared in YAML, kept first-order on purpose.*
+
+---
+
+## Why this document exists
+
+`arbiter-engine` checks a domain model that you write. This specifies what that
+model means -- what an indicator is, what it means for one to declare an axiom,
+and why an axiom might be absent.
+
+The format is deliberately small: three concepts -- entities, relationships,
+indicators -- one vocabulary of eight invariants, and one structural rule.
+Everything an implementation might add around it (storage, collection, alerting,
+remediation) is out of scope here.
+
+`examples/water_tank.yaml` in this repository is a worked model declaring every
+one of the eight axioms at least once, so it doubles as a schema reference.
+
+## The model
+
+A domain declares three things.
+
+**Entity types** — the kinds of thing that exist.
+
+```yaml
+entity_types: [ModelEndpoint, ModelVersion, InferenceRequest]
+```
+
+**Relationship types** — how they connect. Edges are typed, and the vocabulary is per-domain.
+
+```yaml
+relationship_types: [serves, routes_to, derived_from]
+```
+
+**Indicators** — what is measurable about each entity type, and which invariants each measurement
+must satisfy. This is where the work is.
+
+```yaml
+indicators:
+  ModelEndpoint:
+    - name: p99_latency_ms
+      type: NUMERIC
+      axioms: [RESPONSIVENESS, BOUNDEDNESS]
+      warning: 500
+      critical: 2000
+      plausible_range: [0, 60000]
+```
+
+An indicator carries a `name`, a `type`, a list of `axioms` it is expected to satisfy, an optional
+`direction`, optional `warning` / `critical` thresholds, and a `plausible_range` — the interval
+outside which a reading is treated as a measurement fault rather than a system fault. That last
+field earns its place: without it, a broken sensor is indistinguishable from a catastrophe.
+
+## The eight axioms
+
+An axiom is a structure-quantified invariant. It is stated once, in general terms, and evaluated
+against every indicator that declares it. A violation becomes a problem.
+
+| Axiom | The invariant it asserts |
+|---|---|
+| **STABILITY** | The system tends toward equilibrium. Flags oscillation and state-bouncing |
+| **BOUNDEDNESS** | Quantities stay within limits. Threshold breach, and trend toward exhaustion |
+| **CONNECTIVITY** | Required relationships hold. Orphaned entities, missing edges |
+| **CONSISTENCY** | State is internally coherent. Logical impossibilities — a negative count, a percentage above 100 |
+| **RESPONSIVENESS** | Things respond to input. Unresponsive entities, degrading latency |
+| **HOMEOSTASIS** | A property stays in its normal range, measured as deviation from a rolling baseline rather than against a fixed line |
+| **CONSERVATION** | Quantities are preserved across transformations. Inflow and outflow should balance; a persistent deficit means something is being lost or double-counted |
+| **MONOTONICITY** | Properties that should only move one way keep doing so. Unexpected reversals |
+
+Eight is not a magic number. It is the set that turned out to be sufficient for every domain
+modelled so far, and the claim being made is modest: **these eight cover a useful fraction of what
+goes wrong in systems that can be described as a typed graph with numeric measurements.** If you
+find a ninth you need, the format does not stop you.
+
+## The rule that is easy to get wrong
+
+**BOUNDEDNESS is for upper bounds only.**
+
+For a metric where lower is worse — accuracy, satisfaction, margin, compliance rate, headroom —
+do **not** set a warning/critical floor and call it BOUNDEDNESS. Use HOMEOSTASIS instead, and let
+the baseline decide what "too low" means.
+
+The reason is that a floor on a lower-is-worse metric encodes an assumption you almost never have:
+that you know the correct value in advance. Baseline deviation makes no such assumption. It asks
+whether *this* system has changed, which is the question you actually wanted answered.
+
+In practice this shows up as an absence. A lower-is-worse indicator carries `direction: LOWER`,
+declares HOMEOSTASIS, and simply has no thresholds:
+
+```yaml
+- name: accuracy_score
+  type: NUMERIC
+  axioms: [HOMEOSTASIS, MONOTONICITY]
+  direction: LOWER
+  plausible_range: [0.0, 1.0]
+```
+
+Contrast an upper-is-worse indicator, where a fixed line is meaningful and BOUNDEDNESS applies
+alongside baseline deviation:
+
+```yaml
+- name: hallucination_rate
+  type: NUMERIC
+  axioms: [HOMEOSTASIS, BOUNDEDNESS]
+  direction: UPPER
+  warning: 0.05
+  critical: 0.15
+  plausible_range: [0.0, 1.0]
+```
+
+Encoding a floor as a bound is a category error, and it is the single most common mistake when
+writing a domain for the first time.
+
+## The structural constraint: stay first-order
+
+A domain model may not contain:
+
+1. **Cycles in derived properties.** If A is computed from B and B from A, there is no evaluation
+   order and no fixed point to check.
+2. **Condition trees deeper than three levels.** Beyond that, a human can no longer say what the
+   rule means, and neither can a reviewer.
+3. **Nested references** of the form `derived.derived.X` — references resolve one level, flat.
+
+And, more generally: no quantifiers nested inside quantifiers, and no constraints *about* the
+constraints.
+
+**Why this matters more than it looks.** These restrictions are what keep checking polynomial. A
+model that permits nested quantification is expressive enough to encode problems you cannot check
+in reasonable time, and the failure mode is not an error message — it is a checker that quietly
+becomes too slow on the one domain that grows. The restriction buys a guarantee: **evaluation cost
+stays predictable as the graph grows**, which is the property that lets a domain expert add
+indicators without consulting anyone about performance.
+
+The constraint should be enforced at load time, not by convention. A model that violates it should
+be rejected outright, with an override for people who know why they want one.
+
+## Coverage is a declaration, and absences are choices
+
+The set of axioms a domain declares is a statement about **what that domain chose to model**, not
+about what is true of it. A domain that declares six of the eight has not failed a test — it has
+recorded that two invariants were not modelled.
+
+This matters when comparing domains. It is tempting to read coverage counts as a capability score,
+and that reading is wrong in both directions: a domain with all eight may be shallow in each, and a
+domain with five may carry far more indicators on the ones it declares. **The informative signal is
+shape, not count** — which axioms carry weight, and how many indicators sit behind each.
+
+Where an axiom is absent, say so as an absence. "This domain does not model CONNECTIVITY" is honest
+and useful. Presenting it as though the invariant were inapplicable is a claim about the world that
+the model does not support.
+
+## What this format deliberately does not specify
+
+- **How measurements arrive.** Collection, scraping, agents, push versus pull — all out of scope.
+- **What to do about a violation.** Alerting, remediation, escalation are separate concerns.
+- **How baselines are computed.** HOMEOSTASIS needs a rolling baseline; the window length, the
+  statistic, and the minimum sample count are implementation choices.
+- **Severity semantics.** Whether warning means page-someone is yours to decide.
+
+## Honest limits
+
+**This finds violations of invariants you declared.** It does not discover invariants you did not
+think of. A domain model is a statement of what you believe about a system, and the checker's job
+is to tell you where reality disagrees with that statement — which is valuable precisely because it
+is bounded, and worth being explicit about because the adjacent claim is very tempting to make.
+
+The corollary is uncomfortable and worth stating plainly: **the things this misses are the things
+you did not model.** Findings about the measurement apparatus itself are the sharpest example —
+a broken collector produces a *plausible* data stream, not an anomalous one, so no amount of axiom
+coverage reaches it.
+
+Treat the model as a hypothesis about the system, not as an oracle over it.

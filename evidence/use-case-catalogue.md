@@ -257,6 +257,17 @@ indicator carrying `abs(temp_c - temp_c_redundant)` is a plausible quantity with
 BOUNDEDNESS reads it. Whether the engine should do the comparison itself is open, not settled — see
 the same note under Honest limits.
 
+**Fan RPM is listed under STABILITY for a reason this entry did not give, and a third outside report
+found the gap that silence left (2026-08-16).** The obvious model for a fan is a threshold, because
+that is how the platform publishes it: `entity-manager` gives every sensor four values, of which
+`lower critical` and `lower non critical` are the ones that matter for a fan. **BOUNDEDNESS cannot
+express a floor.** Its two keys are ceilings, nothing validates their order, and a faithful
+transcription — `warning: 2000, critical: 1750` — loads without complaint and inverts the alarm: a
+fan at 6000 rpm reports critical, a stopped one reports nothing. Voltage rails are the two-sided
+case and fail the same way, undervoltage being as destructive as over. Route a lower-bounded
+quantity to HOMEOSTASIS and let the baseline decide, or give the adapter's computed shortfall to
+BOUNDEDNESS — the same move as the sensor-difference above, and the second axiom to need it.
+
 **A7. SIEM detection coverage [P] — fit: good, unusual**
 Entities: LogSource, Rule, Asset. Indicators: events per source per hour (HOMEOSTASIS), rule
 fire-rate (HOMEOSTASIS), Asset-to-LogSource (CONNECTIVITY).

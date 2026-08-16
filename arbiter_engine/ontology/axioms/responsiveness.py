@@ -376,7 +376,7 @@ Every one of these paths used to return ``0.0``, and the
         threshold outright. Verified: ``np.corrcoef(range(12), [5.0]*12)`` is
         ``nan``.
 
-        Returning ``None`` rather than ``0.0`` is the same correction
+        Returning ``None`` rather than ``0.0`` is the same correction that an internal ruling
         made to ``_robust_slope`` in the MONOTONICITY checker, for the same
         reason: **zero is a real answer** — it means uncorrelated — and a
         sentinel that collides with a legitimate value cannot be distinguished

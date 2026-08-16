@@ -303,7 +303,7 @@ class AxiomParameters:
     # MUST default to its AXIOM_MINIMUMS entry: readiness is reported from that
     # table but enforced here, so a stricter default silently advertises an
     # axiom as live while the checker returns before evaluating anything. That
-    # is what removed from the reasoner and what survived, unnoticed,
+    # is what an internal ruling removed from the reasoner and what survived, unnoticed,
     # one layer down. `test_axiom_gate_correspondence_cd1544` pins the equality.
     conservation_min_samples: int = 1
     # traverser cycle-flow-balance residual sensitivity (distinct

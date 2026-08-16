@@ -144,7 +144,7 @@ class MonotonicityChecker:
         # `monotonicity_window_size` was serving two roles at once:
         # how far back to look, and how much history must exist before looking
         # at all. Only the first is what a window means. Conflating them
-        # re-imposed the exact over-gate removed from the reasoner:
+        # re-imposed the exact over-gate that an internal ruling removed from the reasoner:
         # readiness reported this axiom evaluable at the derived floor (3,
         # being the fewest points that can exhibit a reversal — up, up, down)
         # while the checker silently returned until 20, so the axiom was

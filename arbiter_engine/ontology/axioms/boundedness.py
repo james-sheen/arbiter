@@ -270,23 +270,37 @@ class BoundednessChecker:
             entity, indicator.property_name, problems)
 
         # BOUNDEDNESS has two arms — threshold comparison and trend
-        # projection — and both can be skipped. With neither threshold
-        # configured and fewer than 5 observations, this return is reached
+        # projection — and both can be skipped, so this return can be reached
         # having evaluated nothing.
+        #
+        # An internal ruling removed an `and len(values) < 5` clause from this condition.
+        # It read as though history were the missing ingredient, but the trend
+        # arm projects toward `critical_threshold` and is guarded on it, so an
+        # indicator with neither threshold is dead at EVERY history length.
+        # The clause therefore silenced the decline from the fifth observation
+        # onward — which is the normal operating state — and eighteen
+        # declarations across the shipped domains sat in exactly that state.
+        # Reported from outside as issue #6, against a fan whose real bound is
+        # a floor the vocabulary cannot express.
+        #
+        # `required_count` is deliberately NOT passed. It would assert that
+        # five observations make this evaluable, which is false, and telling a
+        # caller to supply what cannot help is the defect that an internal ruling closed.
         #
         # The threshold tests are `is not None` rather than truthiness, so a
         # legitimate threshold of 0.0 is honoured; that is why this condition
         # mirrors them exactly instead of using `not critical_threshold`.
-        if (critical_threshold is None and warning_threshold is None
-                and len(values) < 5):
+        if critical_threshold is None and warning_threshold is None:
             return CheckOutcome(result).declined(
                 Axiom.BOUNDEDNESS, entity, indicator.name,
                 NotEvaluatedReason.NO_THRESHOLD,
                 detail=(
-                    "no warning or critical threshold configured, and too "
-                    "few observations to project a trend"),
+                    "no warning or critical threshold configured; the trend "
+                    "arm projects toward the critical threshold, so more "
+                    "observations cannot make this indicator evaluable — "
+                    "declare a threshold, or drop BOUNDEDNESS from its "
+                    "`axioms:` list"),
                 observations_count=len(values),
-                required_count=5,
             )
         return result
 

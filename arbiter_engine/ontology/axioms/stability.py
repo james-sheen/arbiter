@@ -264,7 +264,7 @@ class StabilityChecker:
         if len(set(values)) > 1:
             return CheckOutcome(problems)
 
-        # BOTH counts when they differ, following the convention set
+        # BOTH counts when they differ, following the convention that an internal ruling set
         # for the same reason: sixty samples at one-minute spacing span exactly
         # a one-hour window, so the oldest sits on the boundary and a reader who
         # supplied sixty is otherwise told fifty-nine with no explanation.

@@ -793,7 +793,7 @@ class HomeostasisChecker:
         # `not _domain_id` clause treated an unstamped entity as Kubernetes,
         # so a `Deployment` or `Node` in any other domain silently received
         # replica-mismatch and config-drift checks. It compensated for the
-        # stamping gap fixed; absent now means absent.
+        # stamping gap that an internal ruling fixed; absent now means absent.
         _is_k8s_domain = _domain_id == 'kubernetes'
         if not domain_problems and _is_k8s_domain and entity_type_str in _K8S_HOMEOSTASIS_TYPES:
             problems.extend(self.check_replica_mismatch(entity))

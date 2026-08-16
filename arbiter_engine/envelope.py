@@ -28,7 +28,7 @@ which had to be added — findings and declines were countable,
 three values the established pattern established across ~50 endpoint modules —
 ``live`` / ``warming_up`` / ``unavailable`` — with ``reason`` populated
 whenever it is not ``live``. Diverging here would be the vocabulary-drift
-An internal ruling decided against, in the newest public surface.
+that an internal ruling decided against, in the newest public surface.
 
 **What this module does NOT do**: it does not decide whether a finding is
 important, rank findings, or summarise them in prose. It reports what the
@@ -180,7 +180,7 @@ def _question_to_dict(question: Any) -> Dict[str, Any]:
     carries ``question_text`` and a nested ``gap`` whose ``gap_type`` is the
     enum. Both lookups fell through to ``getattr`` defaults, so a real
     question serialised as its dataclass repr — a bug that could only surface
-    on wiring the thing to an actual traversal, which is what did.
+    on wiring the thing to an actual traversal, which is what an internal ruling did.
     """
     if isinstance(question, dict):
         return dict(question)

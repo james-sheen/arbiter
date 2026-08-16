@@ -460,7 +460,7 @@ class TopologyBuilder:
             type_indicators = indicators_by_type.get(node.entity.type, [])
             for ind in type_indicators:
                 # accept `IndicatorSpec` alongside raw dicts, the
-                # same seam removed from the ontology loader. The
+                # same seam that an internal ruling removed from the ontology loader. The
                 # engine's own API holds a typed `DomainModel`, so requiring
                 # dicts here is what kept gap discovery on the YAML path only.
                 prop_name = _indicator_field(ind, 'name')

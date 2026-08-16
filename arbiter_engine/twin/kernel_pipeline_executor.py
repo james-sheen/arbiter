@@ -443,7 +443,7 @@ class KernelPipelineExecutor:
 
 # ---------------------------------------------------------------------------
 # NLPipelineTranslator — the established pattern LOAD-BEARING promotion
-# named follow-up. Mirrors NLHypothesisTranslator
+# per the follow-up. Mirrors NLHypothesisTranslator
 # discipline applied to pipeline-mode NL parsing.
 # ---------------------------------------------------------------------------
 
