@@ -114,6 +114,14 @@ and a live one produced **byte-identical envelopes**. Declare that a quantity sh
 Then a series that never changes across the window is a finding, `frozen_series:<indicator>`, naming
 the value and the count.
 
+**`STABILITY` in that `axioms:` list is load-bearing, and the field is inert without it.** STABILITY
+is the axiom that reads the series, so an indicator declaring `expect_variation: true` alongside
+only threshold axioms gets no finding and no decline — which is indistinguishable from a healthy
+sensor, and is the thing this field exists to end. Copying the block above works; editing an
+indicator you already have is where it bites. **`model_describe` names it**: `unread_fields` lists
+every declared field whose consuming axiom is absent, with the remedy. That check exists because
+this was reported from outside the day after the field shipped.
+
 **Leave it out and nothing is reported, and that silence is the design rather than a gap.** Whether a
 constant series is a fault is a question about your domain and not about the number: a CPU
 temperature that never moves is broken, and a replica count, a nominal setpoint and a switched-off

@@ -107,7 +107,17 @@ domain:
         violation_severity: HIGH
 
     Controller:
-      # RESPONSIVENESS -- the deadline is part of the claim.
+      # RESPONSIVENESS -- a latency judged against its thresholds.
+      #
+      # This block declared `timeout: 10m` until 2026-08-16, above a comment
+      # calling the deadline part of the claim. Nothing read it: `timeout:`
+      # loads into `transient_timeout`, which only STABILITY reads, and only
+      # for a STATE indicator declaring `transient:` states. On a numeric
+      # latency it was inert. RESPONSIVENESS judges the value against
+      # `warning:` and `critical:` below, and those ARE the deadline.
+      #
+      # Found by `model_describe(s)` on the run of its own new check, not by
+      # anyone reading the file -- which is the whole argument for the check.
       #
       # `role:` IS WHAT MAKES THIS EVALUATE. RESPONSIVENESS and CONSISTENCY are
       # about a KIND of quantity -- a latency, a count, a percentage, a ratio --
@@ -130,4 +140,3 @@ domain:
         warning: 5
         critical: 12
         window: 30m
-        timeout: 10m

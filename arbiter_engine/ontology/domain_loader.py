@@ -35,6 +35,7 @@ that is not described in its own YAML is not described.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import re
 from dataclasses import dataclass, field
@@ -214,6 +215,58 @@ do not use this to answer "what does this domain check?".
                 for axiom in spec.relevant_axioms}
         return sorted(seen, key=lambda a: a.value)
 
+    def unread_fields(self) -> List[Dict[str, Any]]:
+        """Declared FIELDS whose consuming axiom is not declared.
+
+        Reported from outside as issue #5, against the field had added
+        the day before. `expect_variation: true` on an indicator whose `axioms:`
+        omits STABILITY is accepted, never read, and reported nowhere -- so a
+        frozen sensor produced an envelope byte-identical to a live one, which
+        is the defect that field was added to end, reachable again through a
+        model the new documentation would lead an author to write.
+
+        **The report named one field; this covers the class.** Measured on a
+        single indicator declaring `role`, `expect_variation`, `direction`,
+        `conservation:` and `monotonicity:` with only BOUNDEDNESS in its axiom
+        list: five dead declarations, no findings, no declines, and
+        `unreachable_declarations` empty. `expect_variation` was simply the
+        newest.
+
+        THE MIRROR of :meth:`unreachable_declarations`. That one answers *this
+        axiom is declared and can never fire*; this answers *this field is
+        declared and nothing will ever read it*. Same surface, because it is
+        the one an author already has to consult, and the CONSISTENCY problem
+        in issue #4 was caught by exactly that habit.
+
+        REPORTED, NOT RAISED, for the reason the sibling gives: an
+        over-declared model is not a broken one, and refusing to load it would
+        be the tool deciding an author's roadmap. What it must not do is stay
+        quiet, which is what it did.
+        """
+        out: List[Dict[str, Any]] = []
+        for entity_type, specs in self.indicators.items():
+            for spec in specs:
+                axioms = set(spec.relevant_axioms or ())
+                typed = spec.declared_keys or frozenset()
+                for field_name, consumers in sorted(_FIELD_CONSUMERS.items()):
+                    key = _YAML_NAME.get(field_name, field_name)
+                    if key not in typed:
+                        continue          # the author did not write it
+                    if axioms & set(consumers):
+                        continue          # a consumer is declared; it is read
+                    names = " or ".join(sorted(a.value for a in consumers))
+                    out.append({
+                        "entity_type": entity_type,
+                        "indicator": spec.name,
+                        "field": _YAML_NAME.get(field_name, field_name),
+                        "read_by": sorted(a.value for a in consumers),
+                        "remedy": (
+                            f"`{_YAML_NAME.get(field_name, field_name)}` is read "
+                            f"only by {names}; add it to this indicator's "
+                            f"`axioms:` list, or remove the field"),
+                    })
+        return out
+
     def unreachable_declarations(self) -> List[Dict[str, Any]]:
         """Declared (indicator, axiom) pairs that can never produce an
         evaluation, decidable from the model alone.
@@ -242,6 +295,57 @@ do not use this to answer "what does this domain check?".
                         "remedy": explain_absence(axiom, spec),
                     })
         return out
+
+
+#:. Which axiom READS each optional indicator field.
+#:
+#: A hand-written map, because the fact it records lives in checker code and
+#: cannot be derived from a field name -- `expect_variation` is read by
+#: STABILITY and nothing about the string says so. That makes it a closed enum,
+#: which is the shape that has produced three defects here already. The guard is
+#: NOT more care: `test_unread_fields_cd1694` derives the field set from
+#: `IndicatorSpec` and fails when one is neither mapped here nor named in
+#: `_SHARED_FIELDS` below. A field added without a decision breaks the build.
+_FIELD_CONSUMERS: Dict[str, tuple] = {
+    "expect_variation": (Axiom.STABILITY,),
+    "normal_states": (Axiom.STABILITY,),
+    "transient_states": (Axiom.STABILITY,),
+    "problematic_states": (Axiom.STABILITY,),
+    "transient_timeout": (Axiom.STABILITY,),
+    "conservation_config": (Axiom.CONSERVATION,),
+    "monotonicity_config": (Axiom.MONOTONICITY,),
+    "role": (Axiom.CONSISTENCY, Axiom.RESPONSIVENESS),
+    "direction": (Axiom.HOMEOSTASIS,),
+    "target_type": (Axiom.CONNECTIVITY,),
+    "relation_type": (Axiom.CONNECTIVITY,),
+    "min_cardinality": (Axiom.CONNECTIVITY,),
+    "max_cardinality": (Axiom.CONNECTIVITY,),
+    "required_property": (Axiom.CONNECTIVITY,),
+}
+
+#: Fields read by more than one axiom family, or by the loader itself, so
+#: declaring one says nothing about which axioms should be present. Listed
+#: explicitly rather than defaulted-past, so the classification of every field
+#: is a decision somebody made.
+_SHARED_FIELDS = frozenset({
+    "uri", "name", "property_name", "indicator_type", "relevant_axioms",
+    "time_window", "warning_threshold", "critical_threshold",
+    "violation_severity",
+})
+
+#: Where the YAML key differs from the dataclass attribute, so a remedy names
+#: what the author actually typed.
+_YAML_NAME = {
+    "conservation_config": "conservation",
+    "monotonicity_config": "monotonicity",
+    "normal_states": "normal",
+    "transient_states": "transient",
+    "problematic_states": "bad",
+    "transient_timeout": "timeout",
+    "warning_threshold": "warning",
+    "critical_threshold": "critical",
+    "time_window": "window",
+}
 
 
 def parse_duration(raw: Optional[str]) -> Optional[timedelta]:
@@ -454,6 +558,9 @@ def parse_indicator(
             # `bool("yes")` logic somewhere downstream.
             expect_variation=_resolve_expect_variation(
                 data.get("expect_variation"), name),
+            # what the AUTHOR typed, which the values cannot say.
+            declared_keys=frozenset(data.keys()) if isinstance(data, dict)
+            else frozenset(),
         )
     except Exception as exc:  # one bad indicator must not cost the file
         logger.warning("failed to parse indicator %r: %s", name, exc)

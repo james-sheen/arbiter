@@ -848,6 +848,22 @@ class IndicatorSpec:
     # written before this field behaves exactly as it did.
     expect_variation: Optional[bool] = None
 
+    # the YAML keys the author actually typed for this indicator.
+    #
+    # Needed because "was this field declared?" is NOT recoverable from the
+    # values. The loader applies its OWN defaults, which differ from the
+    # dataclass defaults by design and by documented parity: `target_type` and
+    # `relation_type` become `""`, `max_cardinality` becomes `0`, and
+    # `transient_timeout` is always set to five minutes. Comparing a loaded
+    # spec against its dataclass defaults therefore reports four fields as
+    # declared on EVERY indicator -- measured at 28 false positives on the
+    # shipped example, which is how this was caught.
+    #
+    # Recording the keys is the only honest source: the second copy of the
+    # loader's default table would be a number written twice, and this file has
+    # a long record of what happens to those.
+    declared_keys: frozenset = field(default_factory=frozenset)
+
     def __post_init__(self):
         if not self.property_name:
             self.property_name = self.name

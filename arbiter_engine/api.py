@@ -230,13 +230,22 @@ def model_describe(session: EngineSession) -> Envelope:
         # (some depend on inputs), but every pair listed here CANNOT fire, and
         # that was previously knowable only by running the engine.
         "unreachable_declarations": model.unreachable_declarations(),
+        # the FIELD-side twin, reported from outside as issue #5
+        # against the field added the previous day. `expect_variation: true`
+        # without STABILITY in the same indicator's axiom list is accepted,
+        # read by nothing, and was reported nowhere -- so a frozen sensor
+        # produced an envelope byte-identical to a live one, which is the exact
+        # defect that field exists to end. Five fields share the shape; the
+        # report named the newest.
+        "unread_fields": model.unread_fields(),
         "note": (
             "declared_axioms is what the model declares, not what the engine "
             "evaluates; some axioms have evaluation paths that consult no "
             "declaration. unreachable_declarations lists pairs that "
-            "provably cannot evaluate under any input; "
-            "unconsumed_observations lists series no declared indicator reads "
-            ""
+            "provably cannot evaluate under any input; unread_fields "
+            "lists fields whose consuming axiom is absent, so nothing will read "
+            "them; unconsumed_observations lists series no declared "
+            "indicator reads"
         ),
     }
     # the mirror of `model.unreachable_declarations`, and deliberately
