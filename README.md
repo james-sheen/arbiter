@@ -208,14 +208,21 @@ from arbiter_engine import (
 `arbiter_engine.api` is the tool surface: five verbs over a session, each returning the envelope above.
 
 ```python
+from importlib.resources import files
 from arbiter_engine.api import EngineSession, model_describe, check, traverse, gaps, attest
 
 session = EngineSession()
-session.load_model("examples/water_tank.yaml")
+session.load_model(files("arbiter_engine").joinpath("examples/water_tank.yaml").read_text())
 model_describe(session)   # what is declared: entity types, indicators, axioms
 check(session)            # evaluate the declared invariants over supplied observations
 gaps(session)             # what the model says should exist and nothing has been observed
 ```
+
+Read out of the installed package again, for the reason given above. **This block opened the
+relative path until 0.1.6, which is the failure that paragraph describes, forty lines further down
+the same document** — so 0.1.5 ships a project page whose second code block raises
+`FileNotFoundError` for anyone who installed it. Found by running the README that shipped inside the
+wheel, from a directory with no repository in it, rather than a rewritten version of it.
 
 **Three kinds of input, one feeder each.** A session takes the current value of a property, the
 series behind it, and the edges between entities — and every axiom reads one or both of the first
@@ -280,7 +287,6 @@ Honest boundaries, stated because you would otherwise find them yourself:
 
 - **PREDICT is plumbed but unfed.** The traversal mode exists and nothing produces projected values
   outside a test. It is not a working forecast.
-- **Not published to any index yet**, so installation is from a clone.
 - **One worked example ships, not a library of them.** Modelling a real system is your work.
 - Stage I and Stage II of this project are **archived, not running**. Anything describing them as
   production is out of date.
