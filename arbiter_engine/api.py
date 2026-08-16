@@ -115,6 +115,50 @@ The session held a ``RelationshipGraph`` from the beginning and
         """
         self.graph.add_relationship(source_id, relation_type, target_id)
 
+    def unconsumed_observations(self) -> List[Dict[str, Any]]:
+        """Series this session holds that no declared indicator will ever read.
+
+ruling the second half of issue #1. ``add_observations``
+        accepts any property name — deliberately, and it keeps doing so: it is
+        a released function that cannot raise, and an engine whose thesis is
+        *report what you could not use* should not answer an unrecognised input
+        by refusing it. What was wrong is that the data then vanished: nothing
+        in ``check``, ``gaps`` or ``model_describe`` mentioned it, so a typo'd
+        property name cost thirty observations and produced no signal anywhere.
+
+        This is the MIRROR of ``unreachable_declarations``. That answers *this
+        declaration can never fire*; this answers *this data is never read*.
+        Shipping only the first half was the asymmetry the report exposed.
+
+        **Deliberately does not guess the intended name.** A nearest-match
+        suggestion would be a domain-specific heuristic wearing a helpful face,
+        in an engine whose foundation rule forbids exactly that. It reports what
+        was fed and how much; deciding what was meant is the reader's.
+        """
+        if self.model is None:
+            return []
+        declared: Dict[str, set] = {
+            etype: {spec.property_name for spec in specs}
+            for etype, specs in self.model.indicators.items()
+        }
+        records: List[Dict[str, Any]] = []
+        for entity_id, prop in self.history.series_keys():
+            entity = self.entities.get(entity_id)
+            if entity is None:
+                reason = "unknown_entity"
+            elif prop in declared.get(entity.type, set()):
+                continue                      # read by a declared indicator
+            else:
+                reason = "undeclared_property"
+            records.append({
+                "entity_id": entity_id,
+                "entity_type": entity.type if entity else None,
+                "property": prop,
+                "observations": self.history.get_observation_count(entity_id, prop),
+                "reason": reason,
+            })
+        return records
+
 
 # =====================================================================
 # The five tools
@@ -190,9 +234,17 @@ def model_describe(session: EngineSession) -> Envelope:
             "declared_axioms is what the model declares, not what the engine "
             "evaluates; some axioms have evaluation paths that consult no "
             "declaration. unreachable_declarations lists pairs that "
-            "provably cannot evaluate under any input"
+            "provably cannot evaluate under any input; "
+            "unconsumed_observations lists series no declared indicator reads "
+            ""
         ),
     }
+    # the mirror of `model.unreachable_declarations`, and deliberately
+    # NOT inside it. That one is a property of the MODEL: these pairs can never
+    # fire whatever you feed. This is a property of the SESSION: this data was
+    # fed and nothing reads it. Nesting a session fact under `model` would be
+    # the same category error the envelope's own legs exist to avoid.
+    payload["unconsumed_observations"] = session.unconsumed_observations()
     return _WithPayload(envelope, payload)
 
 
@@ -366,10 +418,20 @@ def gaps(session: EngineSession,
     ordered = sorted(seen.values(),
                      key=lambda q: getattr(q, "priority", 0.0) or 0.0,
                      reverse=True)
-    return Envelope(
+    envelope = Envelope(
         checked=CheckedSummary(invariants=0, entities=len(starts)),
         questions=[_q(q) for q in ordered],
     )
+    # `gaps` is where a caller looks for what is MISSING, and data
+    # fed into a void is missing from the evaluation even though it is present
+    # in the session. Carried as a payload key rather than folded into
+    # `questions`, because a question is something the engine wants answered
+    # and this is something the CALLER already did; and rather than into
+    # `not_checked`, which is the per-axiom decline channel and would blur two
+    # record kinds into one leg.
+    payload = envelope.to_dict()
+    payload["unconsumed_observations"] = session.unconsumed_observations()
+    return _WithPayload(envelope, payload)
 
 
 def attest(session: EngineSession, problem_type: str,

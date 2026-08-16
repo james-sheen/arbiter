@@ -425,6 +425,18 @@ class InMemoryObservationHistory(ObservationHistory):
 
         return result
 
+    def series_keys(self) -> List[Tuple[str, str]]:
+        """Every ``(entity_id, property_name)`` this history holds a series for.
+
+``get_all_numeric_series`` joins the pair into
+        ``f"{entity_id}.{prop}"``, which is ambiguous the moment either half
+        contains a dot — and property names routinely do. Callers that need to
+        decide something about a series, rather than display it, need the pair
+        intact.
+        """
+        with self._lock:
+            return sorted(self._history.keys())
+
     def get_entity_metadata(self) -> Dict[str, Dict]:
         """Get metadata for all entities."""
         with self._lock:
