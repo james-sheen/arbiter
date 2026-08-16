@@ -36,6 +36,7 @@ that is not described in its own YAML is not described.
 from __future__ import annotations
 
 import dataclasses
+import difflib
 import logging
 import re
 from dataclasses import dataclass, field
@@ -292,6 +293,22 @@ class DomainModel:
         over-declared model is not a broken one, and refusing to load it would
         be the tool deciding an author's roadmap. What it must not do is stay
         quiet, which is what it did.
+
+         INVERTED THE CHECK, and that is the reporter's design. Matching
+        declared fields against a list of known-inert ones can only ever catch
+        keys somebody thought of. Comparing every key the author typed against
+        the set the loader READS catches the rest: a field the documentation
+        invented, a field a later version removes, and — the common case — a
+        typo. `plausable_range` and `directon` both loaded clean, and so would
+        `expect_variaton`, which would have re-opened issue #5 with no signal
+        at all. Fifth independent sighting before it was closed; the fourth was
+        our own guide teaching a key nothing reads.
+
+        Two reasons, one list. `axiom_not_declared` is the case and its
+        remedy is to declare the axiom; `unknown_key` is this one and its remedy
+        is to correct or drop the key. A caller that only asks *is this empty?*
+        gets one answer, and a caller that must act gets the distinction —
+        reading the two as one backlog is how the wrong fix gets applied.
         """
         out: List[Dict[str, Any]] = []
         for entity_type, specs in self.indicators.items():
@@ -309,11 +326,28 @@ class DomainModel:
                         "entity_type": entity_type,
                         "indicator": spec.name,
                         "field": _YAML_NAME.get(field_name, field_name),
+                        "reason": "axiom_not_declared",
                         "read_by": sorted(a.value for a in consumers),
                         "remedy": (
                             f"`{_YAML_NAME.get(field_name, field_name)}` is read "
                             f"only by {names}; add it to this indicator's "
                             f"`axioms:` list, or remove the field"),
+                    })
+                for key in sorted(typed - _KNOWN_INDICATOR_KEYS):
+                    near = difflib.get_close_matches(
+                        key, sorted(_KNOWN_INDICATOR_KEYS), n=1, cutoff=0.8)
+                    remedy = (f"`{key}` is not a key this engine reads, so "
+                              f"nothing will ever consume it")
+                    if near:
+                        remedy += f" — did you mean `{near[0]}`?"
+                    out.append({
+                        "entity_type": entity_type,
+                        "indicator": spec.name,
+                        "field": key,
+                        "reason": "unknown_key",
+                        "read_by": [],
+                        "did_you_mean": near[0] if near else None,
+                        "remedy": remedy,
                     })
         return out
 
@@ -382,6 +416,48 @@ _SHARED_FIELDS = frozenset({
     "time_window", "warning_threshold", "critical_threshold",
     "violation_severity",
 })
+
+#: Every key an indicator block may legitimately carry.
+#:
+#: THE SCHEMA IS THE LIST. This is not a denylist of keys known to be bad; it is
+#: the set `parse_indicator` actually reads, so a key outside it is one nothing
+#: will ever consume. That inversion is the reporter's, and it is what makes the
+#: check cover cases nobody has seen: a field the docs invented, a field a later
+#: version removes, and — the common one — a typo.
+#:
+#: Held as a literal rather than derived by `ast` at import time, because a
+#: library that reads its own source fails wherever the source is not on disk.
+#: `test_unknown_indicator_keys_cd1689` does the derivation instead and asserts
+#: equality, so drift breaks the build rather than the check going quiet. Same
+#: guard shape as `_FIELD_CONSUMERS` above, for the same reason.
+#:
+#: `name` is here and absent from that derivation's `.get()` scan because
+#: `parse_indicator` reads it by subscript — the one key it requires.
+#: Keys the model FORMAT carries that NO AXIOM reads, consumed instead by a
+#: component outside the engine. Named explicitly so the exemption is a
+#: decision somebody made and can be grepped, rather than an absence.
+#:
+#: `plausible_range` is read by the document-ingest pipeline, which uses it to
+#: drop extracted properties outside the interval. Ten shipped domain files
+#: declare it, 169 times between them — so reporting it as unknown would put
+#: 169 rows in front of every author here, and a check that is red for a
+#: legitimate reason every run teaches people to skip it. It is also simply
+#: untrue: something does read it, just not an axiom.
+#:
+#: The cost is stated rather than hidden. An engine-only caller who writes this
+#: key still gets silence from the engine about it. That was acceptable only
+#: once the modelling guide stopped teaching it — the reporter wrote
+#: it because our own documentation offered it, and that cause is closed. The
+#: typo case, which was their stronger argument, is caught regardless.
+_NON_AXIOM_KEYS = frozenset({"plausible_range"})
+
+_KNOWN_INDICATOR_KEYS = frozenset({
+    "name", "type", "axioms", "window", "warning", "critical", "role",
+    "direction", "expect_variation", "conservation", "monotonicity",
+    "normal", "transient", "bad", "timeout", "target_type", "relation_type",
+    "min_cardinality", "max_cardinality", "required_property",
+    "violation_severity",
+}) | _NON_AXIOM_KEYS
 
 #: Where the YAML key differs from the dataclass attribute, so a remedy names
 #: what the author actually typed.

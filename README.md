@@ -134,6 +134,11 @@ indicator you already have is where it bites. **`model_describe` names it**: `un
 every declared field whose consuming axiom is absent, with the remedy. That check exists because
 this was reported from outside the day after the field shipped.
 
+**It also names a key the engine does not read at all**, which is the case that catches a typo. Each
+row carries a `reason`: `axiom_not_declared` for the above, and `unknown_key` for a key that is not
+in the schema — with a `did_you_mean` where one is close. `expect_variaton: true` is accepted by
+YAML, read by nothing, and would otherwise leave exactly the silence the field was added to end.
+
 **Leave it out and nothing is reported, and that silence is the design rather than a gap.** Whether a
 constant series is a fault is a question about your domain and not about the number: a CPU
 temperature that never moves is broken, and a replica count, a nominal setpoint and a switched-off
