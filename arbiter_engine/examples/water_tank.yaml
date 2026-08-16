@@ -39,8 +39,9 @@ domain:
         axioms: [CONSERVATION]
         window: 15m
         conservation:
+          input_property: inflow_lps
           output_properties: [outflow_lps]
-          tolerance: 0.05
+          loss_margin: 0.05
 
       - name: outflow_lps
         type: NUMERIC
@@ -72,7 +73,7 @@ domain:
         axioms: [MONOTONICITY]
         window: 24h
         monotonicity:
-          direction: increasing
+          expected_direction: increasing
           allow_reset: true
 
       # CONNECTIVITY -- a pump with nothing to feed is a modelling error.

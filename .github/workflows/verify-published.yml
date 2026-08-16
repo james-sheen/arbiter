@@ -56,6 +56,56 @@ jobs:
           }
           echo "VERSION=$V" >> "$GITHUB_ENV"
 
+      # Asked for by a reader who counted the decline sites by hand, found the
+      # README's number stale, and pointed out that deriving it would make the
+      # drift impossible rather than repeatedly corrected. They were right, and
+      # the reason is sharper than it looked: a check that derives this number
+      # already existed and had been SKIPPING, because it measured a build
+      # directory that is not always there. A gate that did not run is not a
+      # gate that passed. Here there is nothing to skip -- the checkers ship
+      # inside the wheel, so the package being installed is the measurement.
+      #
+      # Two claims, deliberately graded differently. The branch's README must
+      # MATCH the installed package, and a mismatch fails. The README already
+      # published alongside a release cannot be corrected in place, so a
+      # mismatch there is a notice naming the next release as the remedy.
+      # Failing on it would leave this red for a true thing nobody can fix
+      # today, and a check that stays red teaches people to stop reading it.
+      - name: The decline count, derived from the package rather than restated
+        run: |
+          python - <<'EOF'
+          import importlib.util, os, pathlib, re, subprocess, sys
+          ax = pathlib.Path(importlib.util.find_spec("arbiter_engine").origin).parent
+          ax = ax / "ontology" / "axioms"
+          eight = ["boundedness", "stability", "homeostasis", "monotonicity",
+                   "conservation", "connectivity", "consistency", "responsiveness"]
+          per = {n: len(re.findall(r"\.declined\(", (ax / f"{n}.py").read_text()))
+                 for n in eight}
+          total = sum(per.values())
+          print(f"package: {per} -> {total}")
+
+          def claimed(text):
+              m = re.search(r"\((\d+) call sites\)", text)
+              return int(m.group(1)) if m else None
+
+          here = claimed(pathlib.Path("README.md").read_text())
+          if here is None:
+              print("::error::README no longer states a decline call-site count")
+              sys.exit(1)
+          if here != total:
+              print(f"::error::README claims {here} decline sites; the package has {total}")
+              sys.exit(1)
+          print(f"the README on this branch matches the package at {total}")
+
+          tag = os.environ["VERSION"]
+          shipped = claimed(subprocess.run(["git", "show", f"v{tag}:README.md"],
+                                           capture_output=True, text=True).stdout)
+          if shipped != total:
+              print(f"::notice::the README published with {tag} claims {shipped}, "
+                    f"not {total}. An index page cannot be corrected in place; "
+                    f"the next release carries the fix.")
+          EOF
+
       - name: Check out the README that shipped with this version
         run: git checkout "v$VERSION" -- README.md
 
