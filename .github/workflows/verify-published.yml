@@ -72,12 +72,23 @@ jobs:
           EOF
           echo "--- running ---" && cat quickstart.sh
           bash quickstart.sh > actual.txt
-          echo "expected: $(cat expected.txt)"
-          echo "actual  : $(cat actual.txt)"
-          diff <(tr -d ' ' < expected.txt) <(tr -d ' ' < actual.txt) || {
-            echo "::error::the quickstart does not print what the README says it prints"
-            exit 1
-          }
+          # Compared in python, not with `diff`. The first cut wrote the
+          # expected value with no trailing newline and compared it against
+          # command output that has one, so `diff` exited 1 on a CORRECT
+          # artifact -- a check red for no reason at all, which is worse than
+          # the release-day redness the schedule above exists to avoid. Caught
+          # by running this against the index, not by reading it.
+          python - <<'EOF'
+          import pathlib, sys
+          e = pathlib.Path("expected.txt").read_text().strip()
+          a = pathlib.Path("actual.txt").read_text().strip()
+          print(f"expected: {e}")
+          print(f"actual  : {a}")
+          if e.replace(" ", "") != a.replace(" ", ""):
+              print("::error::the quickstart does not print what the README says")
+              sys.exit(1)
+          print("the quickstart prints what the README documents")
+          EOF
 
       - name: Two dependencies, and nothing else
         run: |
