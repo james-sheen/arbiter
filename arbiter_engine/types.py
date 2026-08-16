@@ -342,7 +342,7 @@ class AxiomReadiness:
 class NotEvaluatedReason(str, Enum):
     """Why an axiom check declined to evaluate.
 
-Deliberately a small, closed, domain-agnostic set: these are
+    Deliberately a small, closed, domain-agnostic set: these are
     properties of the *engine's* evaluation contract, not of any domain. A
     reason that can only arise in one domain does not belong here — it belongs
     in ``detail``.
@@ -384,7 +384,7 @@ Deliberately a small, closed, domain-agnostic set: these are
 class NotEvaluated:
     """One axiom-on-indicator evaluation that did not happen, and why.
 
-Before this, a checker had exactly two things it could say —
+    Before this, a checker had exactly two things it could say —
     a list of problems, or an empty list — and the empty list meant both
     *checked, nothing wrong* and *could not judge*. Those are different
     answers, and conflating them is the failure the engine's own claims

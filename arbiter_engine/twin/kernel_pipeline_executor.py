@@ -176,7 +176,7 @@ class KernelPipelineExecutor:
     ) -> Dict[str, Any]:
         """Route step to corresponding kernel substrate by mode.
 
-         (Track-A A-5, de-stubbing the marker): each mode
+        each mode
         calls the same substrate its single-mode sibling endpoint calls
         (dt_traverse / dt_gaps / dt_hypotheses / dt_optimization under
         the full system). The stub-era output keys are preserved, now

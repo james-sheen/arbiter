@@ -361,7 +361,7 @@ class ResponsivenessChecker:
     ) -> Optional[float]:
         """Pearson correlation between two series, or None if indeterminate.
 
-Every one of these paths used to return ``0.0``, and the
+        Every one of these paths used to return ``0.0``, and the
         caller computes ``correlation_drop = baseline - current``. So an
         indeterminate correlation was read as *total correlation loss* and
         produced ``Severity.CRITICAL`` for a breakdown that did not happen.

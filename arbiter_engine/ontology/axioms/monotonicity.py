@@ -62,7 +62,7 @@ logger = logging.getLogger(__name__)
 def _robust_slope(samples) -> Optional[float]:
     """Theil-Sen slope in units per second: the median of pairwise slopes.
 
-Returns ``None`` when no slope can be determined — never ``0.0``,
+    Returns ``None`` when no slope can be determined — never ``0.0``,
     because zero is a real answer meaning "flat" and would be read as one.
 
     WHY NOT LEAST SQUARES, which was the first attempt. A least-squares fit

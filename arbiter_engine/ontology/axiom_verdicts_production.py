@@ -83,7 +83,6 @@ class ProductionAxiomVerdict:
     5 opaque fields domain-agnostic invariant. Frozen for
     audit-trail provenance emit-policy decision.
 
-     (Bucket A; 2nd worked example after RCA):
     added optional ``cluster_id`` for per-axis cluster-scope filtering.
     Default None preserves previously behavior; emission callsites that
     pass cluster_id stamp the record so
@@ -216,7 +215,7 @@ def record_axiom_verdict(
     Hybrid mode gate: admits if (a) prior verdict for (entity_id,
     axiom_name) differs from current, OR (b) confidence >= threshold.
 
-     (Bucket A): optional ``cluster_id`` stamps the record
+    optional ``cluster_id`` stamps the record
     so per-cluster retrieval queries can filter. Default None preserves
     previously emission behavior (callsites that don't pass cluster_id
     still record verdicts — they're then queryable via the global path

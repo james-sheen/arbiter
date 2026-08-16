@@ -59,7 +59,7 @@ _FLOW_OUT_TOKENS: FrozenSet[str] = frozenset({'out', 'output', 'sent'})
 def classify_flow_direction(prop_name: str) -> Optional[str]:
     """Classify a property name as 'in', 'out', or None (neither).
 
-Matching is on underscore-delimited tokens. The previous form
+    Matching is on underscore-delimited tokens. The previous form
     tested raw substring containment, which swept every property whose name
     merely contained the marker letters anywhere into the inflow total —
     in the shipped domain files that is ``material_integrity``,
@@ -350,7 +350,7 @@ class TopologyTraverser:
     ) -> RootCauseResult:
         """Reverse walk + greedy set cover.
 
-: candidate collection + set-cover assembly delegate to
+        candidate collection + set-cover assembly delegate to
         module-level helpers in ``arbiter_engine/propagation/root_cause.py`` so
         ``RootCauseIdentifier.identify`` and this method share the same
         canonical implementation. The per-candidate forward ``traverse()``
@@ -529,7 +529,7 @@ class TopologyTraverser:
                        window: Optional[timedelta] = None) -> int:
         """Populate ``TwinNode.projected_values`` from observed history.
 
-This is the producer PREDICT mode never had. ``_get_values``
+        This is the producer PREDICT mode never had. ``_get_values``
         has always overlaid ``node.projected_values`` under
         ``ValueMode.PROJECTED``, but **nothing constructed a
         ``ProjectedValue``** anywhere outside a test — the source said so

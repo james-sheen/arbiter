@@ -136,7 +136,7 @@ class ProductionRCACandidate:
     5 opaque fields domain-agnostic invariant. Frozen for
     audit-trail provenance emit-policy decision.
 
-: added optional ``cluster_id`` for per-axis
+    added optional ``cluster_id`` for per-axis
     cluster-scope filtering. Default None preserves previously behavior;
     emission callsites that pass cluster_id stamp the record so
     ``get_rca_candidates(cluster_id=X)`` can filter. Field added with
@@ -177,7 +177,7 @@ def record_rca_candidate(
     emit_policy suppressed OR hybrid mode rejects per confidence-threshold
     gate (top-N enforced at get_top_n_candidates retrieval time).
 
-: optional ``cluster_id`` stamps the candidate
+    optional ``cluster_id`` stamps the candidate
     so per-cluster retrieval queries can filter. Default None preserves
     previously emission behavior (callsites that don't pass cluster_id
     still record candidates — they're then queryable via the global path

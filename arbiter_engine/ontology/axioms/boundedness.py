@@ -57,7 +57,7 @@ class BoundednessChecker:
     but requires history for trend detection.
     Minimum observations for trend: 5
 
-: optional ``overlay: RuntimeYAMLOverlay`` lets the
+    optional ``overlay: RuntimeYAMLOverlay`` lets the
     checker consult approved threshold mutations (sub-
     decision (B) per-domain overlay file). When provided, the checker
     resolves the effective warning/critical thresholds via

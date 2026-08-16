@@ -374,7 +374,6 @@ class RelationshipGraph:
 
     Stores directed edges with relationship types.
 
-     (G4b drain from the snapshot-fidelity manifest):
     edges retain their ``(relation_type, target_id)`` tuple shape for
     backward compat with every consumer that destructures them, but a
     parallel ``_edge_metadata`` dict now carries the upstream
@@ -434,7 +433,7 @@ class RelationshipGraph:
         Dedup before appending to prevent unbounded edge list growth
         when the same entity pair is observed on consecutive cycles.
 
-         (G4b drain): accepts optional ``properties / strength /
+        accepts optional ``properties / strength /
         discovered_at`` matching ``models.Relationship``. Defaults
         match the live dataclass: empty dict, 1.0, None. Stored in
         ``_edge_metadata`` keyed by ``(source_id, relation_type,
@@ -442,7 +441,7 @@ class RelationshipGraph:
         positional args see no behavior change — the metadata entry
         is created with defaults.
 
-: accepts optional ``source_domain`` /
+        accepts optional ``source_domain`` /
         ``target_domain`` for cross-domain edges /
         schema-extension. When both are set + differ, the edge is
         a cross-domain reference. Stored in ``_edge_metadata`` for
@@ -589,8 +588,7 @@ class RelationshipGraph:
         ownership edges (CONTROLLED_BY, OWNS, SELECTS, etc.).
         Within each priority tier, evicts oldest (first in list).
 
-         (sibling of within the Detection-layer eviction
-        surface): previously the popped edge was removed from
+        previously the popped edge was removed from
         ``edges`` / ``reverse_edges`` but the corresponding
         ``_edge_metadata[(source_id, rel_type, target_id)]`` entry was
         left behind — orphaned metadata leaked AND
@@ -685,7 +683,6 @@ class RelationshipGraph:
     def remove_entity(self, entity_id: str) -> None:
         """Remove all edges to/from an entity (for cache eviction cleanup).
 
-         (sibling fix to ``_evict_lowest_priority_edge`` cleanup):
         also purges the parallel ``_edge_metadata`` dict for any key
         involving ``entity_id`` (either as source or as target). previously
         every ``remove_entity`` call orphaned metadata indefinitely AND
@@ -938,7 +935,7 @@ def absent_current_value(
 ) -> Tuple[NotEvaluatedReason, str, int]:
     """Which KIND of absence this is, for a checker that found no current value.
 
-Returns ``(reason, detail clause, in-window observation count)``.
+    Returns ``(reason, detail clause, in-window observation count)``.
     Four checkers decline when ``Entity.properties`` lacks the indicator's
     property, and until now all four said `missing_property` whether the value
     had never been supplied or had been supplied to the observation history
@@ -992,7 +989,7 @@ Returns ``(reason, detail clause, in-window observation count)``.
 class CheckOutcome(List["Problem"]):
     """What a checker found, plus what it declined to evaluate.
 
-This **is** a ``list`` of :class:`Problem`, so every existing
+    This **is** a ``list`` of :class:`Problem`, so every existing
     caller — ``problems.extend(checker.check(...))``, ``if problems:``,
     ``len(...)``, ``== []`` — keeps working untouched. That was the
     requirement: eight checkers and the running detection pass consume this
@@ -1070,7 +1067,7 @@ This **is** a ``list`` of :class:`Problem`, so every existing
 class AxiomChecker(Protocol):
     """The contract every axiom checker satisfies.
 
-All eight checkers already expose exactly this method with
+    All eight checkers already expose exactly this method with
     exactly this signature, but nothing declared it — the contract was
     structural duck-typing held together by a dispatch dict, and a checker
     that got the signature wrong would fail at dispatch time, deep inside a

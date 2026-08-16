@@ -963,7 +963,7 @@ def record_production_prediction(
 ):
     """Record a prediction event at production-readiness shape.
 
-     (Bucket A): optional ``cluster_id`` stamps the record
+    optional ``cluster_id`` stamps the record
     for per-axis cluster-scope filtering. Additive, None default; the
     emission callsites have no cluster in scope and pass None (the param
     exists for any cluster-aware caller).

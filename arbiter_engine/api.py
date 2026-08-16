@@ -96,7 +96,7 @@ class EngineSession:
                          target_id: str) -> None:
         """The third input kind. CONNECTIVITY reads this and nothing else.
 
-The session held a ``RelationshipGraph`` from the beginning and
+        The session held a ``RelationshipGraph`` from the beginning and
         no method put anything in it, so of the three kinds of input the engine
         consumes, two had a feeder and one did not. The capability was never
         missing — ``session.graph`` is public and ``RelationshipGraph`` is on the
@@ -118,7 +118,7 @@ The session held a ``RelationshipGraph`` from the beginning and
     def unconsumed_observations(self) -> List[Dict[str, Any]]:
         """Series this session holds that no declared indicator will ever read.
 
-ruling the second half of issue #1. ``add_observations``
+        This rules the second half of issue #1. ``add_observations``
         accepts any property name — deliberately, and it keeps doing so: it is
         a released function that cannot raise, and an engine whose thesis is
         *report what you could not use* should not answer an unrecognised input

@@ -78,6 +78,56 @@ class NotADomainModelError(ValueError):
     """
 
 
+class MalformedDomainModelError(ValueError):
+    """A key that must hold a sequence holds something else.
+
+    Distinct from :class:`NotADomainModelError`, which says *this is
+    not a domain model*. This says *this is a domain model and it is wrong*,
+    which is the author's defect rather than the caller's mistake.
+
+    A ``ValueError``, so ``is_domain_model`` keeps classifying a malformed file
+    as *not loadable* rather than letting it escape a directory scan.
+    """
+
+
+def _require_sequence(value: Any, key: str, context: str = "") -> List[Any]:
+    """Return `value` as a list, or raise naming what was found instead.
+
+    Four keys were coerced with ``list(value or [])`` or iterated with
+    ``for x in (value or [])``, and neither guards the shape. YAML then splits
+    the two failure modes by TYPE, and **the quiet one is the dangerous one**:
+
+    - a number or a bool raises ``TypeError: 'float' object is not iterable``
+      from inside the loader — a traceback naming a line of ours, for a defect
+      in the caller's file;
+    - a **bare string** iterates its CHARACTERS. ``entity_types: Chassis`` —
+      forgetting the brackets, which is the likeliest mistake here — loaded as
+      seven entity types named C, h, a, s, s, i, s, and every subsequent check
+      ran against that without a word.
+
+    Found while verifying a published fix, from a probe whose own YAML was
+    mis-indented. Reported by nobody: the mis-indentation was mine, and the
+    engine's answer to it was a traceback.
+
+    Raising rather than warning-and-skipping is deliberate, and it is the same
+    reasoning as issue #1. A skipped entity type means its indicators silently
+    do not exist, so the envelope reports a clean pass over checks that were
+    never attempted — the exact failure the three-legged envelope exists to
+    prevent. A load error is recoverable; a vacuous pass is not detectable.
+    """
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    where = f" for {context}" if context else ""
+    found = f"{type(value).__name__} {value!r}"
+    hint = (" — a bare string is read character by character, so this would "
+            "have loaded silently as one entry per letter; wrap it in `[ ]`"
+            if isinstance(value, str) else "")
+    raise MalformedDomainModelError(
+        f"`{key}`{where} is {found}, not a list{hint}")
+
+
 def is_domain_model(source: Union[str, Path, Dict[str, Any]]) -> bool:
     """True if `load_domain` would accept this source.
 
@@ -167,7 +217,7 @@ def canonical_domain_id(value: Any,
                         domains_dir: Optional[Union[str, Path]] = None) -> Any:
     """Resolve an alias to the declared domain id; pass anything else through.
 
-`domains/k8s.yaml` declares `id: kubernetes`, so a caller
+    `domains/k8s.yaml` declares `id: kubernetes`, so a caller
     saying `k8s` and a cluster reporting `kubernetes` were treated as different
     domains and the scoped query came back silently empty. Comparing canonical
     forms on both sides is what makes those the same namespace.
@@ -208,8 +258,8 @@ class DomainModel:
         """Axioms an indicator lists in its `axioms:` field.
 
         This is the *declared* set. It is not the set the engine evaluates —
-        several axioms have evaluation paths that consult no declaration. See
-do not use this to answer "what does this domain check?".
+        several axioms have evaluation paths that consult no
+        declaration. Do not use this to answer "what does this domain check?".
         """
         seen = {axiom for spec in self.all_indicators()
                 for axiom in spec.relevant_axioms}
@@ -597,11 +647,15 @@ def load_domain(source: Union[str, Path, Dict[str, Any]]) -> DomainModel:
     property_mapping = domain.get("property_mapping") or {}
     indicators: Dict[str, List[IndicatorSpec]] = {}
     for entity_type, entries in (domain.get("indicators") or {}).items():
+        # shape-checked before iterating. A scalar here used to raise
+        # a TypeError from this line, and a string used to yield one bogus
+        # `indicator without a name` warning per CHARACTER.
         specs = [
             spec for spec in (
                 parse_indicator(entry, entity_type,
                                 property_mapping.get(entity_type, {}))
-                for entry in (entries or [])
+                for entry in _require_sequence(
+                    entries, "indicators", f"entity type {entity_type!r}")
             ) if spec is not None
         ]
         if specs:
@@ -611,9 +665,12 @@ def load_domain(source: Union[str, Path, Dict[str, Any]]) -> DomainModel:
         domain_id=domain.get("id") or domain.get("domain_id") or "",
         name=domain.get("name", ""),
         description=domain.get("description", ""),
-        entity_types=list(domain.get("entity_types") or []),
-        relationship_types=list(domain.get("relationship_types") or []),
-        aliases=[str(a) for a in (domain.get("aliases") or [])],
+        entity_types=_require_sequence(
+            domain.get("entity_types"), "entity_types"),
+        relationship_types=_require_sequence(
+            domain.get("relationship_types"), "relationship_types"),
+        aliases=[str(a) for a in
+                 _require_sequence(domain.get("aliases"), "aliases")],
         indicators=indicators,
     )
 
