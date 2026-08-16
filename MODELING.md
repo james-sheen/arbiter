@@ -45,13 +45,19 @@ indicators:
       axioms: [RESPONSIVENESS, BOUNDEDNESS]
       warning: 500
       critical: 2000
-      plausible_range: [0, 60000]
 ```
 
 An indicator carries a `name`, a `type`, a list of `axioms` it is expected to satisfy, an optional
-`direction`, optional `warning` / `critical` thresholds, and a `plausible_range` — the interval
-outside which a reading is treated as a measurement fault rather than a system fault. That last
-field earns its place: without it, a broken sensor is indistinguishable from a catastrophe.
+`direction`, and optional `warning` / `critical` thresholds. Some axioms take a configuration block
+of their own — `conservation:` and `monotonicity:` appear below — and two of them read a declared
+`role:` rather than guessing the kind of quantity from the name.
+
+**Telling a broken sensor from a real fault is a separate question, and this format answers it
+without a range.** A reading that never moves is a dead probe rather than a very steady system, and
+saying so is opt-in: declare `expect_variation: true` on the indicator and STABILITY in its
+`axioms:`. Anything the checker could not evaluate — no value, too few samples, no threshold
+configured — is reported in the envelope's `not_checked` leg rather than passing silently, which is
+the distinction a range would otherwise have to carry.
 
 ## The eight axioms
 
@@ -94,7 +100,6 @@ declares HOMEOSTASIS, and simply has no thresholds:
   type: NUMERIC
   axioms: [HOMEOSTASIS, MONOTONICITY]
   direction: LOWER
-  plausible_range: [0.0, 1.0]
 ```
 
 Contrast an upper-is-worse indicator, where a fixed line is meaningful and BOUNDEDNESS applies
@@ -107,7 +112,6 @@ alongside baseline deviation:
   direction: UPPER
   warning: 0.05
   critical: 0.15
-  plausible_range: [0.0, 1.0]
 ```
 
 Encoding a floor as a bound is a category error, and it is the single most common mistake when
