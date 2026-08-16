@@ -39,7 +39,7 @@ Each `/dt-<axis>` endpoint returns a bootstrap-aware JSON envelope that never 5x
 ```
 (the full system:27-29`). **There is no `"production"` value — do not key alerting on it.**
 
-**Important:** under baseline traffic today these endpoints return `source: live` (reachable) but `count: 0` / `ready_for_action: false` — the cross-pillar composition layer is unwired, so the semantic axes carry no data yet (only `/dt-axiom-verdicts` accrues real volume). **Do not build dashboards or alerts on the `/dt-*` counts** until wires the composition callsite; you would be alerting on zeros. Treat these as a stable-URL surface for future roll-out, not a live signal. To see the current per-endpoint live/warming/placeholder state, ask the operator to run the readiness probe (GREEN/AMBER/GREY map).
+**Important:** under baseline traffic today these endpoints return `source: live` (reachable) but `count: 0` / `ready_for_action: false` — the cross-pillar composition layer is unwired, so the semantic axes carry no data yet (only `/dt-axiom-verdicts` accrues real volume). **Do not build dashboards or alerts on the `/dt-*` counts** until an internal ruling wires the composition callsite; you would be alerting on zeros. Treat these as a stable-URL surface for future roll-out, not a live signal. To see the current per-endpoint live/warming/placeholder state, ask the operator to run the readiness probe (GREEN/AMBER/GREY map).
 
 ---
 
@@ -81,7 +81,7 @@ Each `/dt-<axis>` endpoint returns a bootstrap-aware JSON envelope that never 5x
 ## 4. Dashboard layout (build on /metrics)
 - **Substrate health**: `serving_replica_request_rate_per_sec`, `inference_endpoint_upstream_error_ratio` (threshold 0.20), `inference_endpoint_p99_latency_ms`, outcome decomposition from `inference_request_outcomes_total` (allowed / input_rejected / rate_limited / upstream_error / blocklisted).
 - **Cascade trail**: cumulative `content_moderation_blocked_total` by reason + `content_moderation_blocklist_size`.
-- A closed-loop / DT-introspection pane is **deferred** until populates the `/dt-*` surface.
+- A closed-loop / DT-introspection pane is **deferred** until an internal ruling populates the `/dt-*` surface.
 
 ---
 

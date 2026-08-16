@@ -175,14 +175,14 @@ class TwinNode:
     # neither does), nothing read `node.degradation`, and `TwinNode` is not
     # serialised anywhere. Its only effect was to import
     # `entity_tracker.degradation` into the kernel's closure for a type
-    # annotation — which asserted would drop when the traverser's
+    # annotation — which an internal ruling asserted would drop when the traverser's
     # unread `degradation_fitter` parameter went, and measurement showed it
     # did not, because THIS was the carrier.
     #
     # Third instance of the shape (`axiom_checkers`) and
     # (`degradation_fitter`), and the first that is a field rather
     # than a parameter. `DegradationCurve` itself is live and unaffected —
-    # wired it into the full system, which is where
+    # An internal ruling wired it into the full system, which is where
     # degradation belongs.
     projected_values: Dict[str, ProjectedValue] = field(default_factory=dict)
     confidence: NodeConfidence = field(default_factory=NodeConfidence)

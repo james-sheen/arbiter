@@ -1,0 +1,91 @@
+# Runs the published package, on a machine that is not the maintainer's.
+#
+# Every other verification claim in this repository is a report: the dependency
+# count, the import count, what a tag names. A reader can only take those on
+# trust, which is an odd thing to ask from a project whose whole argument is
+# that a clean pass should be checkable rather than believed. This workflow is
+# the part a reader can check without believing anything, because it installs
+# from the index like anyone else and runs what the README tells them to run.
+#
+# It restates nothing. The command it executes and the output it expects are
+# both READ OUT OF THE README, so there is no second copy to drift from the
+# first. If the README is wrong, this goes red; that is the point.
+#
+# NOT on push, deliberately. The index needs minutes to propagate a new release
+# and a push-triggered run would be red on every release day for a reason that
+# is not a defect. A check that is red for a good reason on a predictable
+# schedule teaches people to ignore it, and an ignored check is worse than none.
+
+name: verify published
+
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  published:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # tags, so the released version can be located
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install from the index
+        run: pip install arbiter-engine
+
+      - name: The tag must name the tree the release was built from
+        run: |
+          V=$(python -c "import importlib.metadata as m; print(m.version('arbiter-engine'))")
+          echo "index has $V"
+          git rev-parse "v$V" >/dev/null 2>&1 || {
+            echo "::error::no tag v$V; the released version names no tree"
+            exit 1
+          }
+          DECLARED=$(git show "v$V:pyproject.toml" | grep -m1 '^version' | cut -d'"' -f2)
+          [ "$DECLARED" = "$V" ] || {
+            echo "::error::tag v$V holds a tree declaring $DECLARED"
+            exit 1
+          }
+          echo "VERSION=$V" >> "$GITHUB_ENV"
+
+      - name: Check out the README that shipped with this version
+        run: git checkout "v$VERSION" -- README.md
+
+      - name: The documented quickstart, run verbatim
+        run: |
+          python - <<'EOF' > quickstart.sh
+          import re, pathlib
+          readme = pathlib.Path("README.md").read_text()
+          after = readme.split("## Quickstart", 1)[1]
+          block = re.search(r"```bash\n(.*?)```", after, re.S).group(1)
+          pathlib.Path("expected.txt").write_text(
+              re.search(r"`(\{[^`]*\})`", after[after.index("```", 8):]).group(1))
+          print(block)
+          EOF
+          echo "--- running ---" && cat quickstart.sh
+          bash quickstart.sh > actual.txt
+          echo "expected: $(cat expected.txt)"
+          echo "actual  : $(cat actual.txt)"
+          diff <(tr -d ' ' < expected.txt) <(tr -d ' ' < actual.txt) || {
+            echo "::error::the quickstart does not print what the README says it prints"
+            exit 1
+          }
+
+      - name: Two dependencies, and nothing else
+        run: |
+          python -c "import numpy, yaml" || exit 1
+          for extra in scipy rdflib; do
+            if python -c "import $extra" 2>/dev/null; then
+              echo "::error::$extra is present on a plain install; the README says two"
+              exit 1
+            fi
+          done
+          echo "numpy and pyyaml present; scipy and rdflib absent, as documented"

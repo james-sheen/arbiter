@@ -120,7 +120,7 @@ class TopologyTraverser:
         # `ProjectedValue` carries value / confidence / horizon_s / model,
         # a *value at a horizon*. There is no field for a RUL and adding
         # one is a schema decision, not a wiring.
-        # - The capability is already live elsewhere: wired it into
+        # - The capability is already live elsewhere: an internal ruling wired it into
         # the full system, which does have thresholds.
         #
         # So this is a parameter for a capability that belongs to another

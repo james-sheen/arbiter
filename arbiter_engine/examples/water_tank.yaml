@@ -44,7 +44,7 @@ domain:
 
       - name: outflow_lps
         type: NUMERIC
-        axioms: [] # observation-only: recorded, never checked per cycle
+        axioms: []          # observation-only: recorded, never checked per cycle
 
       # CONSISTENCY -- two independent readings that should agree.
       # `role: percentage` selects the 0-100 rule. Without it the engine would

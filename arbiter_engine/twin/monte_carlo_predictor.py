@@ -673,7 +673,7 @@ def make_real_perturbation_simulation_step_v2(
 # — Reference detection_callable factory for v2 substrate.
 #
 # ships the deep-copy + threshold-extraction substrate (sync,
-# caller-supplied detection_callable). wires a reference
+# caller-supplied detection_callable). An internal ruling wires a reference
 # `detection_callable` builder that operators can use to plug a real
 # `LayeredDetector` into the v2 perturbation factory. Substrate-only
 # scope — the helper builds an `entities/graph/history`

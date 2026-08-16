@@ -269,7 +269,7 @@ def traverse(session: EngineSession, start_nodes: Sequence[str],
     connectivity as points in one parameter space.
 
     ``value_mode='projected'`` is refused rather than silently downgraded —
-     records that PREDICT is plumbed but unfed, and a tool that accepts
+    An internal ruling records that PREDICT is plumbed but unfed, and a tool that accepts
     a mode it cannot honour is worse than one that declines it.
     """
     if value_mode not in SUPPORTED_VALUE_MODES:
@@ -441,7 +441,7 @@ def attest(session: EngineSession, problem_type: str,
     **Thin by decision, not by omission**: it reports what the engine
     itself knows — the axiom, the threshold, the observations used, the floor
     applied. The richer production-record trail needs
-    the full system, which placed in v0.2; the tool deepens
+    the full system, which an internal ruling placed in v0.2; the tool deepens
     there rather than changing shape.
     """
     result = session._last_result

@@ -334,7 +334,7 @@ class MonotonicityChecker:
         the difference between its endpoints. The endpoint form discarded every
         interior point, so one bad reading at either end set the verdict
         outright and a longer window bought nothing but a longer lever for that
-        outlier. It became load-bearing when lowered the gate from 20
+        outlier. It became load-bearing when an internal ruling lowered the gate from 20
         observations to 3: fewer points, same total reliance on two of them.
 
         For a clean ramp the two agree exactly — the fit through evenly spaced

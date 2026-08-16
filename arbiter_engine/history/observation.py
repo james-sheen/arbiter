@@ -388,7 +388,7 @@ class InMemoryObservationHistory(ObservationHistory):
         had no such parameter — Python raised ``TypeError`` per call,
         caught upstream as ``Hybrid discovery error:.
         unexpected keyword argument 'entity_filter'``. Correlation
-        mining was silently broken for ~6 weeks; wires the
+        mining was silently broken for ~6 weeks; an internal ruling wires the
         parameter through so the per-entity-series filter actually works.
 
         Args:
