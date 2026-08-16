@@ -98,6 +98,31 @@ could declare `RESPONSIVENESS`, be accepted, be listed by `model_describe`, and 
 `unreachable_declarations` — every declared `(indicator, axiom)` pair that cannot fire under any
 input, each with the remedy — and the loader logs the same list. An empty list is the target.
 
+### `expect_variation:` — a reading that stopped moving is not a reading
+
+A sensor frozen at its last value passes every threshold it is under, and `STABILITY` measures
+oscillation, so a flat line scores as the most stable input there is. Until 2026-08-16 a dead sensor
+and a live one produced **byte-identical envelopes**. Declare that a quantity should move:
+
+```yaml
+- name: speed_rpm
+  axioms: [STABILITY, BOUNDEDNESS]
+  expect_variation: true
+  window: 30m
+```
+
+Then a series that never changes across the window is a finding, `frozen_series:<indicator>`, naming
+the value and the count.
+
+**Leave it out and nothing is reported, and that silence is the design rather than a gap.** Whether a
+constant series is a fault is a question about your domain and not about the number: a CPU
+temperature that never moves is broken, and a replica count, a nominal setpoint and a switched-off
+pump are all correctly flat. The engine cannot tell those apart and does not try. You can.
+
+The axioms reading the value are **not** suppressed when this fires. A sensor frozen above its
+critical threshold still raises that alarm; you get both, and can judge the threshold verdict
+knowing the input behind it is dead.
+
 ## Quickstart
 
 ```bash

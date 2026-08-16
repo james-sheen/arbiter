@@ -47,7 +47,17 @@ domain:
         type: NUMERIC
         axioms: []          # observation-only: recorded, never checked per cycle
 
-      # CONSISTENCY -- two independent readings that should agree.
+      # CONSISTENCY -- is this value possible on its own terms?
+      #
+      # NOT a comparison against `level_pct`, despite the name. CONSISTENCY
+      # reads ONE indicator and range-checks it against what its role permits,
+      # and this block would behave identically if `level_pct` were deleted
+      # from the model. This comment said `two independent readings that should
+      # agree` until 2026-08-16, which is the reading the use-case catalogue
+      # carried in eleven places and the reason both were reported from
+      # outside on the same day. To compare two readings, compute the
+      # difference in your adapter and give the engine that.
+      #
       # `role: percentage` selects the 0-100 rule. Without it the engine would
       # infer the same thing from the `pct` token in the name, which is how
       # this line worked before the field existed -- correctly, and by accident.
@@ -59,12 +69,22 @@ domain:
 
     Pump:
       # STABILITY -- does it settle, or hunt?
+      #
+      # `expect_variation: true` asserts that a running pump's speed is a LIVE
+      # measurement, so a reading that never moves across the window is a dead
+      # sensor rather than a very steady pump. Without it the engine says
+      # nothing, and that silence is deliberate: whether a flat series is a
+      # fault is a question about the domain, not about the number. A setpoint,
+      # a replica count and a switched-off pump are all correctly constant, and
+      # the checker has no way to tell those from a frozen probe. The model
+      # does. Leave the field out and nothing changes.
       - name: speed_rpm
         type: NUMERIC
         axioms: [STABILITY, BOUNDEDNESS]
         warning: 2800
         critical: 3200
         window: 30m
+        expect_variation: true
 
       # MONOTONICITY -- a lifetime counter may only rise. allow_reset covers
       # the genuine restart case rather than treating it as a violation.

@@ -828,6 +828,26 @@ class IndicatorSpec:
     # vocabulary and the axiom mapping live.
     role: Optional[str] = None
 
+    # reported from outside as issue #3. A sensor frozen at one value
+    # for its whole window produced an envelope byte-identical to a live one:
+    # two attempted, nothing found, nothing declined. STABILITY tests
+    # OSCILLATION, so a series that never moves scores zero and reads as
+    # maximally stable, and BOUNDEDNESS compares the dead number against its
+    # threshold and correctly passes. Nothing asked whether the number was
+    # still a measurement.
+    #
+    # DECLARED, not inferred, and that is the whole design. Whether a constant
+    # series is a fault is a DOMAIN question: a CPU temperature that never
+    # moves is broken, and a desired-replica count, a nominal setpoint, a
+    # config value or a switched-off pump are all correctly constant. A checker
+    # that decided this for itself would be carrying domain behaviour, which is
+    # the one thing the axiom layer must not do. Same move made when it
+    # took CONSISTENCY and RESPONSIVENESS off guessing from the indicator name.
+    #
+    # `None` means undeclared, and undeclared means no check — so every model
+    # written before this field behaves exactly as it did.
+    expect_variation: Optional[bool] = None
+
     def __post_init__(self):
         if not self.property_name:
             self.property_name = self.name

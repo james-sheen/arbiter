@@ -83,7 +83,8 @@ domain:
 | may it only ever rise (or fall)? | `MONOTONICITY` |
 | does what goes in come out? | `CONSERVATION` |
 | must this thing be attached to that thing? | `CONNECTIVITY` |
-| do two independent readings agree? | `CONSISTENCY` |
+| is this value possible on its own terms? | `CONSISTENCY` (count >= 0, percentage 0-100, ratio 0-1) |
+| do two independent readings agree? | **no axiom compares two signals** — see the note below |
 | did it react before the deadline? | `RESPONSIVENESS` |
 
 `axioms: []` is meaningful — the values flow into history without a per-cycle check. Silence is a
@@ -196,14 +197,16 @@ declared invariants. It is not judged on how interesting the vertical is.
 
 **A1. Kubernetes cluster health [P] — fit: strong**
 Entities: Node, Pod, Deployment, PVC, Service. Indicators: `cpuUsageNanoCores` (STABILITY,
-BOUNDEDNESS, HOMEOSTASIS), `restartCount` (MONOTONICITY), replica actual-vs-desired (CONSISTENCY),
+BOUNDEDNESS, HOMEOSTASIS), `restartCount` (MONOTONICITY), replica deficit actual-minus-desired (BOUNDEDNESS on the
+difference, which the adapter computes -- see the note below),
 Service-to-Pod selector (CONNECTIVITY). Adapter: metrics-server + the API.
 **Silent failure caught**: a Service whose selector matches no Pods — every dashboard green, traffic
 blackholed. CONNECTIVITY names it; a threshold checker cannot see it.
 
 **A2. Container fleet / Swarm [P] — fit: strong**
 As above without the K8s object model. Indicators: container restarts (MONOTONICITY), memory
-(BOUNDEDNESS), image drift across replicas (CONSISTENCY).
+(BOUNDEDNESS), distinct image count across replicas (BOUNDEDNESS, critical above 1 -- the adapter
+counts, the engine checks the count).
 **Silent failure**: one replica running last week's image. Nothing is *wrong* on any single host.
 
 **A3. AI/ML model serving [P] — fit: strong**
@@ -220,15 +223,39 @@ power (HOMEOSTASIS), packets-in vs packets-out (CONSERVATION), session adjacency
 
 **A5. Data centre facilities / DCIM [P] — fit: strong**
 Entities: Rack, PDU, CRAC, UPS. Indicators: rack power draw (BOUNDEDNESS), inlet temperature
-(BOUNDEDNESS + HOMEOSTASIS), PDU feed A/B balance (CONSISTENCY), UPS runtime (MONOTONICITY
+(BOUNDEDNESS + HOMEOSTASIS), PDU feed A/B imbalance ratio (BOUNDEDNESS on the ratio, which the
+adapter computes), UPS runtime (MONOTONICITY
 decreasing), rack-to-PDU (CONNECTIVITY).
 **Silent failure**: a dual-fed rack drawing everything from one side. Both feeds healthy; redundancy
 gone.
 
 **A6. Server firmware / BMC [P] — fit: good**
 Entities: Chassis, PSU, Fan, Sensor. Indicators: fan RPM (STABILITY), PSU input-vs-output
-(CONSERVATION), sensor readings vs redundant sensor (CONSISTENCY).
+(CONSERVATION), sensor-to-redundant-sensor difference (BOUNDEDNESS on the difference, which the
+adapter computes).
 **Silent failure**: a sensor that stopped updating but still returns its last value.
+
+**Corrected 2026-08-16, and both corrections were reported from outside.** This entry made two
+claims the engine did not support when it was written.
+
+The frozen-sensor claim above is now true and was not: STABILITY measures OSCILLATION, so a flat
+series scored as maximally stable and a dead sensor produced an envelope byte-identical to a live
+one. It holds only where the model declares `expect_variation: true` on the indicator, which is a
+deliberate limit rather than a gap — whether a constant series is a fault is a question about the
+domain, and a setpoint or a switched-off pump is correctly flat.
+
+**`sensor readings vs redundant sensor (CONSISTENCY)` does not describe what CONSISTENCY does.** It
+is a single-value plausibility check: a count is not negative, a percentage is within 0-100, a ratio
+within 0-1. It reads one indicator and asks whether that value is possible on its own terms. It
+never sees a second indicator, and no field in the schema could tell it about one — a temperature
+has no role to declare at all, so the pair does not merely go unchecked, it cannot be reached.
+**`model_describe` reports it as an unreachable declaration before any cycle runs**, which is how
+this was found.
+
+**To get the detection today, compare in the adapter and give the engine the difference.** An
+indicator carrying `abs(temp_c - temp_c_redundant)` is a plausible quantity with a threshold, and
+BOUNDEDNESS reads it. Whether the engine should do the comparison itself is open, not settled — see
+the same note under Honest limits.
 
 **A7. SIEM detection coverage [P] — fit: good, unusual**
 Entities: LogSource, Rule, Asset. Indicators: events per source per hour (HOMEOSTASIS), rule
@@ -275,7 +302,8 @@ tap-changer operations (MONOTONICITY), breaker-to-feeder (CONNECTIVITY).
 
 **B7. Battery energy storage [N] — fit: strong**
 Entities: Rack, Module, Cell, Inverter. Indicators: state of charge (HOMEOSTASIS), cell voltage
-spread (CONSISTENCY — the single most valuable check in BESS), cycle count (MONOTONICITY), energy in
+spread (BOUNDEDNESS on a spread the adapter computes — the single most valuable check in BESS, and
+the engine does not compute the spread for you), cycle count (MONOTONICITY), energy in
 vs out (CONSERVATION = round-trip efficiency).
 **Silent failure**: one cell drifting from its pack. Pack-level metrics stay nominal until thermal
 runaway.
@@ -312,7 +340,8 @@ Entities: Ledger, Account, Gateway. Indicators: debits vs credits (CONSERVATION)
 
 **C4. Treasury and liquidity [N] — fit: good**
 Entities: Entity, Account, Facility. Indicators: buffer vs requirement (HOMEOSTASIS), facility
-utilisation (BOUNDEDNESS), forecast-vs-actual (CONSISTENCY).
+utilisation (BOUNDEDNESS), forecast-vs-actual variance (BOUNDEDNESS on the variance, which the
+adapter computes).
 
 ---
 
@@ -320,7 +349,8 @@ utilisation (BOUNDEDNESS), forecast-vs-actual (CONSISTENCY).
 
 **D1. GMP bioreactor / process [N] — fit: strong, high value**
 Entities: Reactor, Probe, FeedPump, Batch. Indicators: dissolved oxygen (HOMEOSTASIS + BOUNDEDNESS),
-pH (HOMEOSTASIS), redundant probe agreement (CONSISTENCY), feed in vs mass balance (CONSERVATION),
+pH (HOMEOSTASIS), redundant probe disagreement (BOUNDEDNESS on the difference, which the adapter
+computes), feed in vs mass balance (CONSERVATION),
 control response (RESPONSIVENESS).
 **Why this vertical is the strongest non-obvious fit**: GMP requires you to demonstrate the process
 stayed in a validated state. *"We checked N invariants, these held, these declined and here is
@@ -330,7 +360,8 @@ the deviation report.
 
 **D2. Clinical trial data integrity [N] — fit: good, unusual**
 Entities: Site, Subject, Form, Query. Indicators: enrolment rate (HOMEOSTASIS), query aging
-(MONOTONICITY), source-vs-EDC agreement (CONSISTENCY), Subject-to-Site (CONNECTIVITY).
+(MONOTONICITY), source-vs-EDC discrepancy count (BOUNDEDNESS on the count, which the adapter
+computes), Subject-to-Site (CONNECTIVITY).
 **Silent failure**: a site whose data is *too* clean. HOMEOSTASIS against the multi-site baseline
 flags the outlier that no per-site rule can.
 
@@ -357,7 +388,8 @@ which tables were not covered at all.
 
 **E2. Feature store and model drift [N] — fit: strong**
 Entities: Feature, Model, Serving. Indicators: feature distribution (HOMEOSTASIS), training-vs-
-serving skew (CONSISTENCY), null rate (BOUNDEDNESS), Model-to-Feature (CONNECTIVITY).
+serving skew (BOUNDEDNESS on a skew metric the adapter computes), null rate (BOUNDEDNESS),
+Model-to-Feature (CONNECTIVITY).
 **Silent failure**: training-serving skew. Both pipelines healthy in isolation.
 
 **E3. LLM application guardrails [N] — fit: good**
@@ -403,9 +435,11 @@ names every SKU with one supplier.
 
 **G1. Environmental sensor networks [N] — fit: strong**
 Entities: Station, Sensor, Region. Indicators: reading (BOUNDEDNESS + HOMEOSTASIS), co-located
-sensor agreement (CONSISTENCY), reporting gap (RESPONSIVENESS), Sensor-to-Station (CONNECTIVITY).
-**Silent failure**: a stuck sensor reporting a plausible constant. CONSISTENCY against a neighbour
-catches it; a range check never will.
+sensor disagreement (BOUNDEDNESS on the difference, which the adapter computes), reporting gap
+(RESPONSIVENESS), Sensor-to-Station (CONNECTIVITY).
+**Silent failure**: a stuck sensor reporting a plausible constant. **`expect_variation: true` on the
+indicator catches it as of 2026-08-16** (STABILITY, `frozen_series`) — a range check never will.
+This entry previously credited CONSISTENCY against a neighbour, which the engine cannot do.
 
 **G2. Fleet telematics [N] — fit: good**
 Entities: Vehicle, Route, Depot. Indicators: fuel in vs distance (CONSERVATION), odometer
@@ -448,6 +482,33 @@ its own onboarding.
 
 ## 4. Honest limits
 
+- **No cross-indicator comparison, and this document sold it eleven times.** Nothing on the
+  supported surface expresses *these two readings should agree*. CONSISTENCY is a single-value
+  plausibility check — count >= 0, percentage 0-100, ratio 0-1 — reading one indicator and asking
+  whether that value is possible on its own terms. It never sees a second indicator, and no schema
+  field could tell it about one.
+
+  **Reported from outside 2026-08-16.** The report named four entries in Family A and said its
+  author had not audited Families B-G; the audit found **seven more**, including the axiom-choosing
+  table in section 1, which is where a reader decides. A1, A2, A5, A6, B7, C4, D1, D2, E2 and G1 are
+  all corrected above, and each now names the honest route: **compute the comparison in your
+  adapter and give the engine the difference**, which is a plausible quantity with a threshold that
+  BOUNDEDNESS reads. C3 and F2 were always correct — a balance ratio and a coverage ratio really are
+  single-value plausibility checks.
+
+  **Whether the engine should do the comparison itself is OPEN, not settled.** A `compare_to:` field
+  naming a peer indicator and a tolerance would give CONSISTENCY the cross-signal rule, and the
+  argument for it is that eleven independent entries reached for it — which is evidence about what
+  domains need rather than about what one author assumed. Filed as a decision, deliberately unruled,
+  so that nothing published here forecloses either answer.
+
+  **The detection it would buy is real**: two sensors that disagree means at least one is lying,
+  and neither breaches a threshold, so nothing else in the axiom set can see it.
+- **A frozen input is only caught where the model says so.** `expect_variation: true` on an
+  indicator makes a series that never moves a finding. Left undeclared, nothing is reported, and
+  that silence is a decision rather than an oversight: a setpoint, a replica count and a
+  switched-off pump are all correctly constant, and only the model knows which is which. Before
+  2026-08-16 the check did not exist at all and a dead sensor read as a healthy one.
 - **No collectors.** Every use case needs an adapter you write. This is the bulk of the work.
 - **No persistence, scheduler, UI or alerting.** It is a library.
 - **PREDICT is plumbed but thinly fed.** `projected` needs fitted trends on the start nodes.

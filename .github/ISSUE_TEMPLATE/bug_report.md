@@ -21,6 +21,15 @@ Three that account for most surprises:
   `percent`/`pct`, `ratio` for one; `response` or `latency` for the other. If an
   indicator you expected to be checked was not, declare its role rather than
   renaming it. The fallback is for models written before the field existed.
+
+  **If no role fits your quantity, that is the answer rather than a puzzle.**
+  The vocabulary is `count`, `percentage`, `ratio`, `latency`; a temperature is
+  none of them, and declaring one anyway makes the check run and assert
+  something untrue about your units. `CONSISTENCY` is a single-value
+  plausibility check, so an indicator whose plausible range is not one of those
+  four has nothing for it to test. Note it does **not** compare one indicator
+  against another — to check that two readings agree, compute the difference in
+  your adapter and give the engine that.
 - **`no_current_value`** — the value is present, in the store this checker does
   not read. Threshold axioms read the entity's `properties`; temporal axioms read
   observation history. The decline names the observation count it can see.

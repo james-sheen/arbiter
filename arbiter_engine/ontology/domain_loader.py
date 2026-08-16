@@ -356,6 +356,42 @@ def _resolve_role(raw: Any, indicator_name: str = "") -> Optional[str]:
     return resolved
 
 
+#: The words YAML authors actually write for a boolean, beyond what the parser
+#: already turns into `True`/`False`. Quoted values arrive here as strings.
+_TRUE = {"true", "yes", "y", "on", "1"}
+_FALSE = {"false", "no", "n", "off", "0"}
+
+
+def _resolve_expect_variation(raw: Any, indicator_name: str = "") -> Optional[bool]:
+    """The declared `expect_variation:` for an indicator, or None.
+
+    None means *undeclared*, and undeclared means the frozen-series check does
+    not run. That is the safe default in both directions: a model written
+    before this field keeps its behaviour, and a quantity that is legitimately
+    constant is never accused of being a dead sensor because nobody said it
+    should move.
+
+    An unrecognised value is warned about and treated as absent, for the same
+    reason `_resolve_role` does it — `expect_variation: sometimes` coerced to
+    True by truthiness would give the author a check they did not ask for and
+    cannot see, which is worse than the defect this closes.
+    """
+    if raw is None or str(raw).strip() == "":
+        return None
+    if isinstance(raw, bool):
+        return raw
+    word = str(raw).strip().lower()
+    if word in _TRUE:
+        return True
+    if word in _FALSE:
+        return False
+    logger.warning(
+        "unreadable expect_variation %r on indicator %r — ignored; write "
+        "true or false", raw, indicator_name,
+    )
+    return None
+
+
 def _resolve_severity(raw: Any) -> Severity:
     if not raw:
         return Severity.HIGH
@@ -412,6 +448,12 @@ def parse_indicator(
             # file. Dropping it silently would be worse than the defect this
             # closes: the author would believe they had declared a role.
             role=_resolve_role(data.get("role"), name),
+            # Same convention as `role` above: normalised here, and an
+            # unrecognised value is reported and dropped rather than coerced.
+            # `expect_variation: yes` must not become False by way of
+            # `bool("yes")` logic somewhere downstream.
+            expect_variation=_resolve_expect_variation(
+                data.get("expect_variation"), name),
         )
     except Exception as exc:  # one bad indicator must not cost the file
         logger.warning("failed to parse indicator %r: %s", name, exc)

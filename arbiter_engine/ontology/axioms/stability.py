@@ -104,6 +104,17 @@ class StabilityChecker:
         problems.extend(outcome)
         declines.extend(getattr(outcome, "not_evaluated", ()))
 
+        # a series that never moves, where the model said it should.
+        # Reported from outside as issue #3: a frozen sensor and a live one
+        # returned byte-identical envelopes, because OSCILLATION is what this
+        # axiom measures and a flat line oscillates least of all. The check
+        # that reads the series was the one place a reader would look for
+        # this, which is why it lives here rather than in a ninth axiom.
+        frozen = self._check_frozen_series(
+            entity, indicator, history, window, window_size)
+        problems.extend(frozen)
+        declines.extend(getattr(frozen, "not_evaluated", ()))
+
         # Check transient state timeout
         if indicator.indicator_type.value == 'state' and indicator.transient_states:
             problems.extend(self._check_transient_timeout(
@@ -198,6 +209,88 @@ class StabilityChecker:
             ))
 
         return problems
+
+    def _check_frozen_series(
+        self,
+        entity: Entity,
+        indicator: IndicatorSpec,
+        history: ObservationHistory,
+        window: timedelta,
+        window_size: int,
+    ) -> CheckOutcome:
+        """A live measurement that has stopped moving.
+
+        Runs ONLY where the model declared `expect_variation: true`. Whether a
+        constant series is a fault is a domain question and the checker is not
+        entitled to an opinion: a CPU temperature that never moves is broken,
+        and a setpoint, a replica count or a switched-off pump are correctly
+        flat. Undeclared means no check, so nothing that worked before changes.
+
+        The AXIOMS READING THE VALUE ARE NOT SUPPRESSED, deliberately. It is
+        tempting to decline BOUNDEDNESS here on the grounds that judging a dead
+        number is meaningless, and it costs more than it buys: a sensor frozen
+        ABOVE its critical threshold still deserves the finding it currently
+        produces, and suppressing it would trade a vacuous pass for a missing
+        alarm. The frozen finding tells the operator the input is dead; they
+        can discount the other verdicts themselves, which is the division of
+        labour the envelope exists for.
+        """
+        problems: List[Problem] = []
+        if indicator.expect_variation is not True:
+            return CheckOutcome(problems)
+        if indicator.indicator_type.value != 'numeric':
+            return CheckOutcome(problems)
+
+        values = [v for _, v in history.get_values(
+            entity.id, indicator.property_name, window)]
+
+        if len(values) < window_size:
+            # Two identical readings are a coincidence, so there IS a floor,
+            # and it is the same one the oscillation arm uses -- a second,
+            # quieter threshold for the same axiom is how a number ends up true
+            # in one arm and wrong in the other.
+            #
+            # It returns rather than declining, and that is the correction.
+            # Declining here emitted a SECOND not_evaluated record for one
+            # (axiom, entity, indicator) evaluation, because the oscillation arm
+            # has already declined INSUFFICIENT_SAMPLES on the same starved
+            # input. Two records for one evaluation breaks the accounting the
+            # envelope rests on -- declines exceeded `evaluations_attempted`,
+            # and the denominator is the whole reason that leg exists. Caught by
+            # a test asserting exactly that invariant on the shipped
+            # example, not by this arm's own tests.
+            return CheckOutcome(problems)
+
+        if len(set(values)) > 1:
+            return CheckOutcome(problems)
+
+        # BOTH counts when they differ, following the convention set
+        # for the same reason: sixty samples at one-minute spacing span exactly
+        # a one-hour window, so the oldest sits on the boundary and a reader who
+        # supplied sixty is otherwise told fifty-nine with no explanation.
+        total = history.get_observation_count(entity.id, indicator.property_name)
+        seen = (f"{len(values)} of {total} observations" if total != len(values)
+                else f"{len(values)} observations")
+
+        problems.append(Problem.from_entity(
+            entity=entity,
+            problem_type=f'frozen_series:{indicator.name}',
+            severity=Severity.HIGH,
+            reason=(f"{indicator.name} has not changed across {seen} in "
+                    f"window; the model declares it should vary, so the "
+                    f"reading is no longer a measurement"),
+            axiom=Axiom.STABILITY,
+            source_layer=DetectionLayer.ONTOLOGY,
+            evidence={
+                'indicator': indicator.name,
+                'value': values[0],
+                'observations': len(values),
+                'total_observations': total,
+                'window_seconds': window.total_seconds(),
+            },
+            confidence=1.0,
+        ))
+        return CheckOutcome(problems)
 
     def _check_numeric_stability(
         self,
