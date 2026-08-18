@@ -15,6 +15,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set
 
+from ..clock import now_utc
 from ..interfaces import Entity, Problem
 from ..types import Axiom, Severity
 from ..temporal.temporal_edge import ResponseModel
@@ -94,7 +95,7 @@ class AxiomState:
     """Per-axiom evaluation result stored on a node."""
     axiom: Axiom
     verdict: Severity = Severity.INFO  # INFO = not yet evaluated
-    checked_at: datetime = field(default_factory=datetime.utcnow)
+    checked_at: datetime = field(default_factory=now_utc)
     evidence: Dict[str, Any] = field(default_factory=dict)
     indicator_name: str = ""
 
@@ -132,7 +133,7 @@ class TopologyGap:
     location: str
     description: str
     discovered_during: str = ""
-    discovered_at: datetime = field(default_factory=datetime.utcnow)
+    discovered_at: datetime = field(default_factory=now_utc)
     suggested_strategy: ResolutionStrategy = ResolutionStrategy.AUTO_DISCOVER
     resolution_attempts: List[Dict[str, Any]] = field(default_factory=list)
     resolved: bool = False
@@ -338,7 +339,7 @@ class DigitalTwinTopology:
     gaps: List[TopologyGap] = field(default_factory=list)
 
     # Metadata
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=now_utc)
     last_traversal_at: Optional[datetime] = None
     fidelity: float = 0.0
 

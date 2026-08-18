@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable, Dict, FrozenSet, Iterable, List, Optional, Set, Tuple
 
+from ..clock import now_utc
 from ..interfaces import Problem, RelationshipGraph
 from .weight_learner import LearnedWeight
 from arbiter_engine.rca import greedy_set_cover
@@ -91,7 +92,7 @@ class RootCauseResult:
     anomaly_count: int = 0
     explained_count: int = 0
     coverage_ratio: float = 0.0
-    generated_at: datetime = field(default_factory=datetime.utcnow)
+    generated_at: datetime = field(default_factory=now_utc)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -39,6 +39,8 @@ import uuid
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from ..clock import as_naive_utc, now_utc
+
 from typing import Any, Deque, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 GRADE_CONFIRMED: str = "confirmed"
@@ -163,7 +165,7 @@ class PredictionLedger:
     ) -> List[str]:
         """File one PredictionRecord per DownstreamImpact; returns ids."""
         tid = traversal_id or str(uuid.uuid4())
-        ts = predicted_at or datetime.utcnow()
+        ts = as_naive_utc(predicted_at) if predicted_at else now_utc()
         ids: List[str] = []
         for imp in impacts or []:
             entity_id = str(getattr(imp, "entity_id", "") or "")
@@ -209,7 +211,7 @@ class PredictionLedger:
             probability=float(probability),
             horizon_s=float(horizon_s),
             severity=str(severity).lower(),
-            predicted_at=predicted_at or datetime.utcnow(),
+            predicted_at=as_naive_utc(predicted_at) if predicted_at else now_utc(),
             indicator=str(indicator) if indicator else None,
         )
         self._note_eviction()
@@ -240,7 +242,7 @@ class PredictionLedger:
             probability=float(confidence),
             horizon_s=float(horizon_s),
             severity="medium",
-            predicted_at=predicted_at or datetime.utcnow(),
+            predicted_at=as_naive_utc(predicted_at) if predicted_at else now_utc(),
             indicator=str(property_name),
             value=float(predicted_value),
             tolerance=float(tolerance),
@@ -392,7 +394,7 @@ class PredictionLedger:
         UNGRADEABLE exists as a verdict instead of defaulting to either
         error direction.
         """
-        now = now or datetime.utcnow()
+        now = as_naive_utc(now) if now else now_utc()
         by_entity: Dict[str, List[Any]] = {}
         for p in problems or []:
             ptype = str(getattr(p, "problem_type", "") or "")

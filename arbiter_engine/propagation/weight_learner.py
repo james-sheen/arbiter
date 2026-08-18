@@ -25,6 +25,7 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
+from ..clock import now_utc
 from ..interfaces import Problem, RelationshipGraph
 
 logger = logging.getLogger(__name__)
@@ -55,7 +56,7 @@ class LearnedWeight:
     avg_delay_s: float = 0.0
     std_delay_s: float = 0.0
     confidence: float = 0.0
-    last_updated: datetime = field(default_factory=datetime.utcnow)
+    last_updated: datetime = field(default_factory=now_utc)
 
     @property
     def is_reliable(self) -> bool:
@@ -146,7 +147,7 @@ class PropagationWeightLearner:
 
         # Merge into stored weights.
         all_pairs = set(source_counts.keys()) | set(delay_records.keys())
-        now = datetime.utcnow()
+        now = now_utc()
 
         for pair in all_pairs:
             weight = self._weights.setdefault(pair, LearnedWeight())

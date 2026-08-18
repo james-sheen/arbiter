@@ -21,6 +21,7 @@ import logging
 from datetime import timedelta
 from typing import List, Optional
 
+from ...clock import now_utc
 from ...interfaces import (
     Entity,
     Problem,
@@ -398,7 +399,7 @@ class StabilityChecker:
 
         if state_start:
             from datetime import datetime
-            duration = datetime.utcnow() - state_start
+            duration = now_utc() - state_start
             if duration > timeout:
                 problems.append(Problem.from_entity(
                     entity=entity,

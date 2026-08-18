@@ -18,11 +18,12 @@ For indicators marked as response/latency, basic checks apply.
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Tuple
 
 import numpy as np
 
+from ...clock import as_naive_utc, now_utc
 from ...interfaces import (
     Entity,
     Problem,
@@ -603,9 +604,9 @@ class ResponsivenessChecker:
             if isinstance(created_at, str):
                 created_at = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
             elif isinstance(created_at, (int, float)):
-                created_at = datetime.fromtimestamp(created_at)
+                created_at = datetime.fromtimestamp(created_at, timezone.utc)
 
-            age_seconds = (datetime.utcnow() - created_at.replace(tzinfo=None)).total_seconds()
+            age_seconds = (now_utc() - as_naive_utc(created_at)).total_seconds()
 
             if age_seconds > startup_timeout_seconds:
                 problems.append(Problem.from_entity(

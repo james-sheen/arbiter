@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from collections import defaultdict
 import threading
 
+from ..clock import as_naive_utc, now_utc
 from ..interfaces import Observation, ObservationHistory
 
 logger = logging.getLogger(__name__)
@@ -92,7 +93,7 @@ class InMemoryObservationHistory(ObservationHistory):
         timestamp: Optional[datetime] = None
     ) -> None:
         """Add an observation to history."""
-        timestamp = timestamp or datetime.utcnow()
+        timestamp = as_naive_utc(timestamp) if timestamp else now_utc()
         key = (entity_id, property_name)
 
         with self._lock:
@@ -143,7 +144,7 @@ class InMemoryObservationHistory(ObservationHistory):
             from arbiter_engine.history.observation_production import (
                 record_observation,
             )
-            freshness_age = max(0.0, (datetime.utcnow() - timestamp).total_seconds())
+            freshness_age = max(0.0, (now_utc() - timestamp).total_seconds())
             observation_id = f"{entity_id}:{property_name}:{timestamp.isoformat()}"
             record_observation(
                 observation_id=observation_id,
@@ -176,7 +177,7 @@ class InMemoryObservationHistory(ObservationHistory):
         Filters non-scalar properties (lists, dicts, long strings)
         to prevent false stability oscillation and memory waste.
         """
-        timestamp = timestamp or datetime.utcnow()
+        timestamp = as_naive_utc(timestamp) if timestamp else now_utc()
 
         def add_props(props: dict, prefix: str = ''):
             for key, value in props.items():
@@ -257,7 +258,7 @@ class InMemoryObservationHistory(ObservationHistory):
         out-of-order arrivals from batch processing or agent reconnection.
         """
         key = (entity_id, property_name)
-        cutoff = datetime.utcnow() - window
+        cutoff = now_utc() - window
 
         with self._lock:
             observations = self._history.get(key, [])
@@ -284,7 +285,7 @@ class InMemoryObservationHistory(ObservationHistory):
         temporal ordering prevents false oscillation detections.
         """
         key = (entity_id, property_name)
-        cutoff = datetime.utcnow() - window
+        cutoff = now_utc() - window
 
         with self._lock:
             observations = self._history.get(key, [])
@@ -403,7 +404,7 @@ class InMemoryObservationHistory(ObservationHistory):
             ``entity_filter`` provided) only that entity.
         """
         result = {}
-        cutoff = datetime.utcnow() - window
+        cutoff = now_utc() - window
 
         with self._lock:
             for (entity_id, prop), values in self._history.items():
@@ -444,7 +445,7 @@ class InMemoryObservationHistory(ObservationHistory):
 
     def prune_old_observations(self) -> int:
         """Remove observations older than retention period."""
-        cutoff = datetime.utcnow() - self.retention_period
+        cutoff = now_utc() - self.retention_period
         pruned = 0
 
         with self._lock:

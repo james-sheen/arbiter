@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, FrozenSet, List, Optional, Set, Tuple
 
+from ..clock import now_utc
 from ..interfaces import Entity, Problem, ObservationHistory
 from ..types import Axiom, Severity, DetectionLayer, AxiomParameters
 from ..temporal.trend_projection import TrendProjection
@@ -307,7 +308,7 @@ class TopologyTraverser:
 
         result.total_nodes_visited = len(visited)
         result.traversal_time_ms = (time.monotonic() - start_time) * 1000
-        self.topology.last_traversal_at = datetime.utcnow()
+        self.topology.last_traversal_at = now_utc()
 
         # the established pattern native 6th sub-cluster callsite-wire.
         # Defensive: substrate-unavailable / gate-off → no-op silently.

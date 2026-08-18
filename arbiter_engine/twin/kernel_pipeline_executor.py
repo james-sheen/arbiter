@@ -15,9 +15,10 @@ kernel-amplification move.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 import uuid
+
+from ..clock import now_utc
 
 
 KERNEL_MODE_TRAVERSE: str = "TRAVERSE"
@@ -112,7 +113,7 @@ class KernelPipelineExecutor:
         request: PipelineRequest,
     ) -> PipelineResult:
         """Execute pipeline; return aggregate result."""
-        start = datetime.now(timezone.utc)
+        start = now_utc()
         steps_to_run = list(request.pipeline)[: self.max_steps]
         results: List[PipelineStepResult] = []
         upstream_output: Dict[str, Any] = {}
@@ -155,7 +156,7 @@ class KernelPipelineExecutor:
                 if self.fail_fast:
                     break
 
-        end = datetime.now(timezone.utc)
+        end = now_utc()
         succeeded = sum(1 for r in results if r.status == "success")
         failed = sum(1 for r in results if r.status == "failed")
 
@@ -434,7 +435,7 @@ class KernelPipelineExecutor:
                 succeeded_steps=result.succeeded_steps,
                 failed_steps=result.failed_steps,
                 tenant_id=request.tenant_id,
-                observed_at=datetime.now(timezone.utc),
+                observed_at=now_utc(),
             )
         except (TypeError, ValueError):
             return 0

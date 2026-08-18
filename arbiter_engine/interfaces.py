@@ -14,6 +14,7 @@ from typing import (
 )
 import uuid
 
+from .clock import as_naive_utc, now_utc
 from .types import (
     Axiom,
     Severity,
@@ -246,11 +247,11 @@ class Entity:
             if state != current_value:
                 # Previous state was different, current state started after this
                 if i + 1 < len(states):
-                    return datetime.utcnow() - states[i + 1][0]
+                    return now_utc() - states[i + 1][0]
                 break
 
         # Been in this state for entire history
-        return datetime.utcnow() - states[0][0]
+        return now_utc() - states[0][0]
 
 
 @dataclass
@@ -277,7 +278,7 @@ class Problem:
     confidence: float = 1.0
     source_layer: DetectionLayer = DetectionLayer.CONSTRAINTS
     recommended_action: Optional[str] = None
-    detected_at: datetime = field(default_factory=datetime.utcnow)
+    detected_at: datetime = field(default_factory=now_utc)
     metadata: Dict[str, Any] = field(default_factory=dict)
     diagnostic_sequence: Optional[List[Dict[str, Any]]] = None
     action_constraints: Optional[List[str]] = None
@@ -868,13 +869,28 @@ class IndicatorSpec:
 
 @dataclass
 class Observation:
-    """A single observation of an entity property."""
+    """A single observation of an entity property.
+
+    ``timestamp`` is NAIVE and reads as UTC. That is the engine's internal
+    convention, and it is stated here because this class is on the public
+    surface: a caller reading the signature saw ``timestamp: datetime`` and no
+    convention at all, so an aware value was equally reasonable to pass.
+
+    An aware value IS accepted -- normalises it here rather than at the
+    comparisons downstream, because there were two answers down there. It is
+    converted to UTC and then flattened, in that order; doing only the second
+    half keeps the local wall-clock reading and silently moves the instant by
+    the discarded offset.
+    """
     entity_id: str
     entity_type: str
     property_name: str
     property_type: str  # 'numeric', 'state', 'relationship'
     value: Any
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=now_utc)
+
+    def __post_init__(self):
+        self.timestamp = as_naive_utc(self.timestamp)
 
 
 @dataclass
@@ -885,7 +901,7 @@ class DetectionResult:
     layer: DetectionLayer = DetectionLayer.CONSTRAINTS
     entities_checked: int = 0
     duration_ms: float = 0.0
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=now_utc)
     metadata: Dict[str, Any] = field(default_factory=dict)
     # What this run declined to evaluate, and why. Empty is a real
     # answer here — it means every declared axiom was actually evaluated — so
@@ -921,7 +937,7 @@ class MultiDomainDetectionResult:
     cross_domain_problems: List[Problem] = field(default_factory=list)
     total_problems: int = 0
     total_duration_ms: float = 0.0
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=now_utc)
 
 
 # =============================================================================

@@ -24,6 +24,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
+from ..clock import as_naive_utc, now_utc
 from ..interfaces import (
     Entity,
     Problem,
@@ -493,7 +494,7 @@ def record_production_temporal_edge(
     policy = resolve_production_temporal_emit_policy(emit_policy)
     if policy == PRODUCTION_TEMPORAL_EMIT_POLICY_SUPPRESSED:
         return None
-    ts = observed_at or datetime.utcnow()
+    ts = as_naive_utc(observed_at) if observed_at else now_utc()
     if policy == PRODUCTION_TEMPORAL_EMIT_POLICY_HYBRID:
         if not _severity_at_or_above_floor(severity, DT_PRODUCTION_TEMPORAL_SEVERITY_FLOOR):
             return None

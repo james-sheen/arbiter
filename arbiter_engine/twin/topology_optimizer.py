@@ -15,9 +15,10 @@ kernel-amplification move.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
 import uuid
+
+from ..clock import now_utc
 
 
 # ---------------------------------------------------------------------------
@@ -276,7 +277,7 @@ class TopologyOptimizer:
                 max_objective_value=max((p.objective_value for p in plans), default=0.0),
                 max_constraint_satisfaction=max((p.constraint_satisfaction for p in plans), default=0.0),
                 tenant_id=request.tenant_id,
-                observed_at=datetime.now(timezone.utc),
+                observed_at=now_utc(),
             )
         except (TypeError, ValueError):
             return 0

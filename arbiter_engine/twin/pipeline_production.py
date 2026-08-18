@@ -17,6 +17,8 @@ import os
 import threading
 from dataclasses import dataclass
 from datetime import datetime
+from ..clock import as_naive_utc, now_utc
+
 from typing import Dict, List, Optional
 
 
@@ -125,7 +127,7 @@ def record_production_pipeline(
         effective_severity, DT_PRODUCTION_PIPELINE_SEVERITY_FLOOR
     ):
         return None
-    ts = observed_at or datetime.utcnow()
+    ts = as_naive_utc(observed_at) if observed_at else now_utc()
     record = ProductionPipeline(
         pipeline_id=pipeline_id,
         total_steps=int(total_steps),

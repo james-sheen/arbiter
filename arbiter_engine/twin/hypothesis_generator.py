@@ -16,9 +16,11 @@ the canonical kernel-amplification methodology.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 import uuid
+
+from ..clock import now_utc
 
 
 # ---------------------------------------------------------------------------
@@ -164,7 +166,7 @@ class HypothesisGenerator:
                         confidence=confidence,
                         evidence_traversal_id=evidence_traversal_id,
                         tenant_id=self.tenant_id,
-                        observed_at=datetime.now(timezone.utc),
+                        observed_at=now_utc(),
                         nl_text=nl_text,
                     )
                 )
@@ -211,7 +213,7 @@ class HypothesisGenerator:
                             confidence=confidence,
                             evidence_traversal_id=evidence_traversal_id,
                             tenant_id=self.tenant_id,
-                            observed_at=datetime.now(timezone.utc),
+                            observed_at=now_utc(),
                             nl_text=nl_text,
                         )
                     )
@@ -249,7 +251,7 @@ class HypothesisGenerator:
                         confidence=confidence,
                         evidence_traversal_id=evidence_traversal_id,
                         tenant_id=self.tenant_id,
-                        observed_at=datetime.now(timezone.utc),
+                        observed_at=now_utc(),
                         nl_text=nl_text,
                     )
                 )
@@ -288,7 +290,7 @@ class HypothesisGenerator:
                         confidence=confidence,
                         evidence_traversal_id=evidence_traversal_id,
                         tenant_id=self.tenant_id,
-                        observed_at=datetime.now(timezone.utc),
+                        observed_at=now_utc(),
                         nl_text=nl_text,
                     )
                 )

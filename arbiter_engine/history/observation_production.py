@@ -29,6 +29,8 @@ import os
 import threading
 from dataclasses import dataclass
 from datetime import datetime
+from ..clock import as_naive_utc, now_utc
+
 from typing import Dict, List, Optional
 
 
@@ -173,7 +175,7 @@ def _bump_ingest_heartbeat(now: Optional[datetime] = None) -> None:
     tag = _classify_ingest_caller() if DT_INGEST_CALLER_TAG_ENABLED else None
     with _PRODUCTION_LOCK:
         _INGEST_COUNT_TOTAL += 1
-        _LAST_INGEST_AT = now or datetime.utcnow()
+        _LAST_INGEST_AT = as_naive_utc(now) if now else now_utc()
         if tag is not None:  #
             _INGEST_CALLER_TAGS[tag] = _INGEST_CALLER_TAGS.get(tag, 0) + 1
 
@@ -191,7 +193,7 @@ def get_seconds_since_last_ingest() -> Optional[float]:
     """
     if _LAST_INGEST_AT is None:
         return None
-    return max(0.0, (datetime.utcnow() - _LAST_INGEST_AT).total_seconds())
+    return max(0.0, (now_utc() - _LAST_INGEST_AT).total_seconds())
 
 
 def reset_ingest_heartbeat_for_test() -> None:
@@ -242,7 +244,7 @@ def record_observation(
     policy = resolve_production_observation_emit_policy(emit_policy)
     if policy == PRODUCTION_OBSERVATION_EMIT_POLICY_SUPPRESSED:
         return None
-    ts = observed_at or datetime.utcnow()
+    ts = as_naive_utc(observed_at) if observed_at else now_utc()
     current_health = _derive_source_health(freshness_age_seconds)
     if policy == PRODUCTION_OBSERVATION_EMIT_POLICY_HYBRID:
         with _PRODUCTION_LOCK:

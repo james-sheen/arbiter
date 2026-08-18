@@ -9,6 +9,7 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from ..clock import now_utc
 from ..interfaces import Entity, ObservationHistory
 from ..types import Axiom, AxiomReadiness, AXIOM_MINIMUMS  # noqa: F401
 
@@ -231,7 +232,7 @@ class AxiomReadinessTracker:
         return {
             'entity_count': len(entities),
             'axiom_summary': summary,
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': now_utc().isoformat(),
         }
 
     def get_warmup_status(

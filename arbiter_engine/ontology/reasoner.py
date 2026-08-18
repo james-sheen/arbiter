@@ -16,6 +16,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional
 
+from ..clock import as_naive_utc, now_utc
 from ..interfaces import (
     AxiomChecker,
     DetectionResult,
@@ -981,7 +982,7 @@ def record_production_prediction(
     policy = resolve_production_prediction_emit_policy(emit_policy)
     if policy == PRODUCTION_PREDICTION_EMIT_POLICY_SUPPRESSED:
         return None
-    ts = observed_at or _datetime_cd1213.utcnow()
+    ts = as_naive_utc(observed_at) if observed_at else now_utc()
     if policy == PRODUCTION_PREDICTION_EMIT_POLICY_HYBRID:
         if not _severity_at_or_above_floor_cd1213(
             severity, DT_PRODUCTION_PREDICTION_SEVERITY_FLOOR

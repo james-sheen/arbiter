@@ -34,6 +34,8 @@ no shadow storage.
 import logging
 from collections import Counter, defaultdict, deque
 from datetime import datetime, timedelta
+from .clock import as_naive_utc, now_utc
+
 from typing import Counter as TypedCounter
 from typing import DefaultDict, Deque, Dict, Optional, Tuple
 
@@ -97,7 +99,7 @@ class FireFrequencyTracker:
                 (axiom-level total).
             timestamp: Override clock for testing.
         """
-        now = timestamp or datetime.utcnow()
+        now = as_naive_utc(timestamp) if timestamp else now_utc()
         key = self._key(axiom, domain, indicator)
         self._fires[key].append(now)
         self._prune_one(key, now)
@@ -117,7 +119,7 @@ class FireFrequencyTracker:
 
     def prune(self, now: Optional[datetime] = None) -> int:
         """Evict every entry older than retention. Returns count removed."""
-        now = now or datetime.utcnow()
+        now = as_naive_utc(now) if now else now_utc()
         cutoff = now - self.retention
         removed = 0
         for key in list(self._fires.keys()):
@@ -150,7 +152,7 @@ class FireFrequencyTracker:
         now: Optional[datetime] = None,
     ) -> int:
         """Return fire count for ``(axiom, domain, indicator)`` over ``window``."""
-        now = now or datetime.utcnow()
+        now = as_naive_utc(now) if now else now_utc()
         cutoff = now - window
         key = self._key(axiom, domain, indicator)
         return self._count_in_window(key, cutoff, now)
@@ -166,7 +168,7 @@ class FireFrequencyTracker:
         provides the same surface so reflection state_api can swap to
         this tracker without changing the API contract.
         """
-        now = now or datetime.utcnow()
+        now = as_naive_utc(now) if now else now_utc()
         cutoff = now - window
         out: DefaultDict[str, Counter] = defaultdict(Counter)
         for (axiom, domain, _indicator), dq in self._fires.items():
@@ -181,7 +183,7 @@ class FireFrequencyTracker:
         now: Optional[datetime] = None,
     ) -> Dict[Tuple[str, str, str], int]:
         """Return ``{(axiom, domain, indicator): count}`` over ``window``."""
-        now = now or datetime.utcnow()
+        now = as_naive_utc(now) if now else now_utc()
         cutoff = now - window
         out: Dict[Tuple[str, str, str], int] = {}
         for key, dq in self._fires.items():

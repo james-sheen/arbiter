@@ -272,7 +272,7 @@ The engine is open. The knowledge and the operations are not.
 
 ## Status
 
-**v0.1.** 57 Python files, 55 modules importing on the declared dependencies alone, 11 supported
+**v0.1.** 58 Python files, 56 modules importing on the declared dependencies alone, 11 supported
 names — **counted in this repository**, which is the package you are holding.
 
 That basis is stated because it is easy to get wrong in a way nobody notices. The build adds one
@@ -281,7 +281,7 @@ are holding — and this line published the smaller figure until 2026-08-12, whe
 falsify it with `find . -name '*.py' | wc -l`. A checkable false claim, in the Status section of a
 project whose subject is checkable claims. Count the artifact, never an earlier stage of it.
 
-The import figure carries the same hazard one layer down, and it depends on what you have installed. Sweeping the package where `scipy` happens to be present imports 56; on the declared dependencies alone it is the 55 above, because `propagation.lp_confidence` is the one module that needs `scipy` and it is a deep path outside the supported surface. Count the artifact **in the state the reader will have it**, not in the state the person measuring happens to be standing in — this line quoted the with-`scipy` figure until 2026-08-12, which no reader installing normally could reproduce.
+The import figure carries the same hazard one layer down, and it depends on what you have installed. Sweeping the package where `scipy` happens to be present imports 57; on the declared dependencies alone it is the 56 above, because `propagation.lp_confidence` is the one module that needs `scipy` and it is a deep path outside the supported surface. Count the artifact **in the state the reader will have it**, not in the state the person measuring happens to be standing in — this line quoted the with-`scipy` figure until 2026-08-12, which no reader installing normally could reproduce.
 
 Honest boundaries, stated because you would otherwise find them yourself:
 

@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
+from ..clock import now_utc
 from ..interfaces import Entity, Problem, RelationshipGraph
 from ..types import Axiom, Severity, DetectionLayer
 from .weight_learner import LearnedWeight
@@ -96,7 +97,7 @@ class ImpactForecast:
     downstream_impacts: List[DownstreamImpact] = field(default_factory=list)
     total_affected: int = 0
     max_hop_distance: int = 0
-    generated_at: datetime = field(default_factory=datetime.utcnow)
+    generated_at: datetime = field(default_factory=now_utc)
 
     def as_problems(self, entity_registry: Optional[Dict[str, Entity]] = None) -> List[Problem]:
         """Convert significant downstream impacts to :class:`Problem` instances.

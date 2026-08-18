@@ -28,6 +28,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
+from ...clock import as_naive_utc, now_utc
 from ...interfaces import (
     Entity,
     Problem,
@@ -481,7 +482,7 @@ class HomeostasisChecker:
             try:
                 if isinstance(last_update, str):
                     last_update = datetime.fromisoformat(last_update.replace('Z', '+00:00'))
-                age = (datetime.utcnow() - last_update.replace(tzinfo=None)).total_seconds()
+                age = (now_utc() - as_naive_utc(last_update)).total_seconds()
                 if age < tolerance_seconds:
                     return problems  # Still in grace period
             except (ValueError, TypeError):
@@ -583,7 +584,7 @@ class HomeostasisChecker:
                 resolved = False
 
             if detected and not resolved:
-                age = (datetime.utcnow() - ts).total_seconds()
+                age = (now_utc() - ts).total_seconds()
                 if age > recovery_timeout_seconds:
                     unresolved.append({
                         'timestamp': ts.isoformat(),
@@ -702,7 +703,7 @@ class HomeostasisChecker:
                     try:
                         if isinstance(created_at, str):
                             created_at = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
-                        age = (datetime.utcnow() - created_at.replace(tzinfo=None)).total_seconds()
+                        age = (now_utc() - as_naive_utc(created_at)).total_seconds()
 
                         if age > degradation_threshold_seconds:
                             problems.append(Problem.from_entity(
@@ -739,7 +740,7 @@ class HomeostasisChecker:
 
         # If still degraded, add time until now
         if last_degraded_start:
-            degraded_duration += (datetime.utcnow() - last_degraded_start).total_seconds()
+            degraded_duration += (now_utc() - last_degraded_start).total_seconds()
 
         if degraded_duration > degradation_threshold_seconds:
             problems.append(Problem.from_entity(

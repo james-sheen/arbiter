@@ -45,6 +45,8 @@ import os
 import threading
 from dataclasses import dataclass
 from datetime import datetime
+from ..clock import as_naive_utc, now_utc
+
 from typing import Dict, List, Optional
 
 
@@ -220,7 +222,7 @@ def record_production_traversal(
         effective_severity, DT_PRODUCTION_TRAVERSAL_SEVERITY_FLOOR
     ):
         return None
-    ts = observed_at or datetime.utcnow()
+    ts = as_naive_utc(observed_at) if observed_at else now_utc()
     record = ProductionTraversal(
         start_node=start_node,
         direction=direction,

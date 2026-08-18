@@ -23,6 +23,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
+from .clock import now_utc
 from arbiter_engine.envelope import (
     CheckedSummary, Envelope, build_envelope, unavailable_envelope,
 )
@@ -84,7 +85,7 @@ class EngineSession:
     def add_observations(self, entity_id: str, property_name: str,
                          values: Sequence[float],
                          interval_seconds: float = 60.0) -> None:
-        now = datetime.utcnow()
+        now = now_utc()
         count = len(values)
         for i, value in enumerate(values):
             self.history.add(
