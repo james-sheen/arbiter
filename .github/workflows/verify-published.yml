@@ -128,14 +128,35 @@ jobs:
           # artifact -- a check red for no reason at all, which is worse than
           # the release-day redness the schedule above exists to avoid. Caught
           # by running this against the index, not by reading it.
+          #
+          # THE SECOND COMPARISON DEFECT IN THIS STEP, and the same lesson: the
+          # quickstart the README documents OPENS with `pip install`, so the
+          # stream captured above is the installer talking and then the value.
+          # Holding that whole stream against the bare value cannot pass on any
+          # runner where pip prints anything, which is every runner. This
+          # workflow had run exactly once in the repository's history and failed
+          # here, and a job with no green behind it has no baseline to fall
+          # from -- so nothing about the failure looked like news.
+          #
+          # The fix is to measure what the reader is actually told to look at:
+          # the LAST thing the quickstart prints. Everything before it belongs
+          # to the installer. Verified both ways against the index before
+          # landing -- it passes on the published artifact, and it still fails
+          # when the README documents a value the engine does not print and
+          # when the quickstart itself breaks.
           python - <<'EOF'
           import pathlib, sys
           e = pathlib.Path("expected.txt").read_text().strip()
-          a = pathlib.Path("actual.txt").read_text().strip()
-          print(f"expected: {e}")
-          print(f"actual  : {a}")
+          out = pathlib.Path("actual.txt").read_text()
+          lines = [l for l in out.splitlines() if l.strip()]
+          a = lines[-1].strip() if lines else ""
+          print(f"expected : {e}")
+          print(f"last line: {a}")
           if e.replace(" ", "") != a.replace(" ", ""):
-              print("::error::the quickstart does not print what the README says")
+              print("::error::the quickstart does not end by printing what the "
+                    "README says it prints")
+              print("--- everything it printed ---")
+              print(out)
               sys.exit(1)
           print("the quickstart prints what the README documents")
           EOF
