@@ -1,0 +1,107 @@
+# The engine's own suite, on every change.
+#
+# The sibling workflow verifies the PUBLISHED package on a schedule; this one
+# is the gate on the way in. Until it existed the package shipped no tests at
+# all, and every regression guard it had lived in a downstream consumer's
+# integration suite -- which meant the engine's protection depended on somebody
+# else's project continuing to exist, and a defect reached six releases and
+# seven issues before anybody upstream could have seen it.
+#
+# THREE LESSONS ARE PRE-APPLIED HERE, each of which cost a real defect in a
+# project that consumes this one. They are the reason this file is longer than
+# `run pytest`.
+#
+# NOTE ON FORMATTING: no hanging indents in these comments. The publication
+# path collapses leading whitespace inside a config-file comment, so an
+# indented continuation would arrive here looking different from how it was
+# written -- and the check that compares the two is worth more than the
+# indent.
+#
+# 1. pytest is installed EXPLICITLY. A CI step that installs nothing runs a
+# bare interpreter. The consuming project's checks job was red on every push
+# for months of subjective time because the runner had no pytest, so no test
+# ever ran server-side -- and nobody reads a job that has never been green.
+#
+# 2. EXIT CODE 5 FAILS. pytest exits 5 when it collects nothing, and a module
+# that skips at import collects nothing. That is the permissive value, and
+# leaving it permissive is how a canary job stayed green for four runs having
+# executed zero tests. "No tests ran" is precisely the hole this workflow
+# exists to close, so it is spelled as a failure below rather than left to a
+# shell's default.
+#
+# 3. THE MATRIX REACHES 3.12. `datetime.utcnow()` gained its DeprecationWarning
+# in 3.12, and `filterwarnings = error::DeprecationWarning` in pyproject.toml
+# is inert below it. A green run on the 3.10 floor proves nothing about that
+# gate; a run that never left 3.10 would report a passing check for a rule that
+# had not been evaluated. 3.10 is here because it is the declared floor, not
+# because it tests the warning.
+
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  suite:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.12', '3.13']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # The package, not the working tree. `pytest` resolves `arbiter_engine`
+      # from site-packages, so this exercises what a user installs -- a module
+      # left out of the wheel fails here rather than in their traceback.
+      #
+      # The `mcp` extra is installed deliberately. The transport binding is
+      # skipped without it, and a component whose only test is skipped
+      # everywhere wears the same green as one that is covered. That shim
+      # already shipped once having never been executed.
+      - name: Install the package and the suite's requirements
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install .[mcp]
+          python -m pip install pytest
+
+      # `set +e` is load-bearing, not tidiness. GitHub runs `run:` steps under
+      # `bash -e`, so a failing pytest would end the step at that line and the
+      # exit-5 branch below would never execute -- a handler that reads
+      # correctly and cannot run. Verified by running it, because reading it
+      # was how it looked fine.
+      - name: Run the suite, and fail if it ran nothing
+        run: |
+          set +e
+          pytest -q --tb=short
+          rc=$?
+          if [ "$rc" -eq 5 ]; then
+            echo "::error::pytest exited 5 -- it collected no tests. A suite that runs nothing reports the same green as one that passes."
+            exit 1
+          fi
+          exit "$rc"
+
+      # Asserts the outcome, not the mechanism. The step above could pass with
+      # a handful of tests if collection silently narrowed, so the count is
+      # read back and held against a floor. A bare count would be a number to
+      # maintain; a floor only ever goes red when coverage SHRINKS.
+      - name: The suite is not quietly shrinking
+        run: |
+          set +e
+          COLLECTED=$(pytest --collect-only -q 2>/dev/null | tail -1 | grep -oE '^[0-9]+')
+          echo "collected: $COLLECTED"
+          if [ -z "$COLLECTED" ] || [ "$COLLECTED" -lt 60 ]; then
+            echo "::error::collected ${COLLECTED:-0} tests; the suite has lost coverage"
+            exit 1
+          fi

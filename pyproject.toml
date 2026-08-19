@@ -45,3 +45,7 @@ packages = ["arbiter_engine"]
 Homepage = "https://github.com/james-sheen/arbiter"
 Source = "https://github.com/james-sheen/arbiter"
 Issues = "https://github.com/james-sheen/arbiter/issues"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["error::DeprecationWarning"]
