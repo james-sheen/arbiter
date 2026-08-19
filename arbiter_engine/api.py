@@ -20,10 +20,10 @@ whole relationship, and it points one way only.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
-from .clock import now_utc
+from .clock import as_naive_utc, now_utc
 from arbiter_engine.axiom_thresholds import (
     CD508_ENTITY_PROPERTY_KEY, OVERRIDE_CONSULTED_BY,
     OVERRIDE_DECLARED_BUT_UNREACHABLE,
@@ -87,11 +87,57 @@ class EngineSession:
         )
 
     def add_observations(self, entity_id: str, property_name: str,
-                         values: Sequence[float],
+                         values: Sequence[Any],
                          interval_seconds: float = 60.0) -> None:
+        """Feed a series. Two shapes, because real telemetry has two.
+
+        ``[1.0, 2.0, 3.0]`` — bare readings, spaced ``interval_seconds`` apart
+        and ending now. This is the synthetic shape: it is what a test or a
+        demo has, and it was the only shape this method accepted.
+
+        ``[(when, 1.0), (when, 2.0)]`` —. Timestamped samples, which is
+        what a real collector produces. Snapshots arrive at the interval the
+        scrape happened to take, gaps exist, and back-filling a batch is
+        normal. Reconstructing that as a uniform ladder ending at *now* moves
+        every reading: a window that should have contained six samples contains
+        whatever the fake spacing put in it, and the axioms that read a window
+        answer about a series nobody supplied.
+
+        ``when`` may be a ``datetime`` (naive or aware) or a POSIX timestamp.
+        **Aware values are converted, not stripped.** That distinction is the
+        subject of this engine's clock module and is worth restating at the one
+        boundary a caller actually touches: dropping the zone keeps the local
+        wall-clock reading and discards the fact that explains it, which
+        measured three different verdicts for one instant depending on the
+        reporter's timezone. Everything stored past this line is naive UTC.
+
+        Mixed shapes in one call raise, rather than guessing. A list whose
+        first element is a pair and whose fifth is a bare float is a caller
+        bug, and silently reading the pair as a value would put a tuple into
+        the history for an axiom to trip over three layers down.
+        """
+        samples = list(values)
+        if not samples:
+            return
+
+        paired = [_is_timestamped(v) for v in samples]
+        if any(paired) and not all(paired):
+            raise ValueError(
+                "add_observations got a mix of bare readings and "
+                "(timestamp, value) pairs; supply one shape or the other — "
+                "the interval used to space bare readings has no meaning "
+                "beside a real timestamp"
+            )
+
+        if all(paired):
+            for when, value in samples:
+                self.history.add(
+                    entity_id, property_name, float(value), _as_timestamp(when))
+            return
+
         now = now_utc()
-        count = len(values)
-        for i, value in enumerate(values):
+        count = len(samples)
+        for i, value in enumerate(samples):
             self.history.add(
                 entity_id, property_name, float(value),
                 now - timedelta(seconds=(count - i) * interval_seconds),
@@ -628,6 +674,47 @@ class _WithPayload(Envelope):
 
     def to_dict(self) -> Dict[str, Any]:
         return dict(self._payload)
+
+
+def _is_timestamped(sample: Any) -> bool:
+    """Is this sample a ``(when, value)`` pair rather than a bare reading?
+
+    Shape, not type: a two-element sequence whose first element is a datetime
+    or a number that could be a POSIX timestamp. Deliberately does NOT accept
+    any two-element sequence — a caller feeding `[[1, 2], [3, 4]]` means two
+    readings of a vector, not two timestamped samples, and guessing otherwise
+    would silently reinterpret their data.
+
+    A string is excluded explicitly. It has a length and is indexable, so a
+    two-character reading like `"ok"` would otherwise unpack as a pair.
+    """
+    if isinstance(sample, (str, bytes)) or isinstance(sample, datetime):
+        return False
+    if not isinstance(sample, (tuple, list)) or len(sample) != 2:
+        return False
+    first = sample[0]
+    if isinstance(first, datetime):
+        return True
+    # A POSIX timestamp. Bounded rather than "any number", because an
+    # unbounded rule reads a two-element vector of small readings as a
+    # timestamped sample. 10^9 seconds is 2001; anything below it is not a
+    # date anyone is feeding an engine written in 2026.
+    return isinstance(first, (int, float)) and not isinstance(first, bool) \
+        and first >= 1_000_000_000
+
+
+def _as_timestamp(when: Any) -> datetime:
+    """A caller's timestamp, as the engine's naive-UTC convention.
+
+    Both branches end in `as_naive_utc`, and the POSIX one deliberately does not
+    flatten the aware datetime it builds. Doing that here would be a second
+    implementation of the convention, in a module that is not the clock — which
+    is the exact shape `test_no_bare_tzinfo_strip_outside_the_clock` exists to
+    refuse, and it caught this one.
+    """
+    if isinstance(when, datetime):
+        return as_naive_utc(when)
+    return as_naive_utc(datetime.fromtimestamp(float(when), tz=timezone.utc))
 
 
 def _q(question: Any) -> Dict[str, Any]:

@@ -68,7 +68,7 @@ CD508_ENTITY_PROPERTY_KEY = "__cd508_axiom_thresholds__"
 #
 # Every row below was established by running the engine both ways -- with the
 # override absent and present -- and watching the verdict move or not. The
-# table is documentation; `test_threshold_overrides_cd1709.py` is the oracle,
+# table is documentation; the source repository is the oracle,
 # and it re-derives every row against the engine rather than trusting this.
 
 #: Axioms whose firing decision consults an override, and the parameter it

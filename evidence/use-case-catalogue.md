@@ -77,14 +77,15 @@ domain:
 
 | If the question is | Use |
 |---|---|
-| is it over a ceiling? | `BOUNDEDNESS` (**upper bounds only**) |
-| is it below where it should be? | `HOMEOSTASIS` — *not* BOUNDEDNESS with an inverted threshold |
+| is it over a ceiling? | `BOUNDEDNESS` — `warning:` / `critical:` |
+| is it below a floor a datasheet or contract GAVE you? | `BOUNDEDNESS` — `lower_warning:` / `lower_critical:` |
+| is it below where it should be, and nobody published the number? | `HOMEOSTASIS` — a floor you invented is a guess with a threshold's authority |
 | does it settle, or hunt? | `STABILITY` |
 | may it only ever rise (or fall)? | `MONOTONICITY` |
 | does what goes in come out? | `CONSERVATION` |
 | must this thing be attached to that thing? | `CONNECTIVITY` |
 | is this value possible on its own terms? | `CONSISTENCY` (count >= 0, percentage 0-100, ratio 0-1) |
-| do two independent readings agree? | **no axiom compares two signals** — see the note below |
+| do two independent readings agree? | `CONSISTENCY` — but ONLY where the model declares the pair with `agrees_with:`; see the note below |
 | did it react before the deadline? | `RESPONSIVENESS` |
 
 `axioms: []` is meaningful — the values flow into history without a per-cycle check. Silence is a
@@ -507,14 +508,28 @@ its own onboarding.
   BOUNDEDNESS reads. C3 and F2 were always correct — a balance ratio and a coverage ratio really are
   single-value plausibility checks.
 
-  **Whether the engine should do the comparison itself is OPEN, not settled.** A `compare_to:` field
-  naming a peer indicator and a tolerance would give CONSISTENCY the cross-signal rule, and the
-  argument for it is that eleven independent entries reached for it — which is evidence about what
-  domains need rather than about what one author assumed. Filed as a decision, deliberately unruled,
-  so that nothing published here forecloses either answer.
+  **Settled in favour of the reporter, 2026-08-19.** It was filed deliberately unruled,
+  and what ruled it was the same evidence the entry names: eleven independent entries reached for
+  the capability, which is evidence about what domains need rather than about what one author
+  assumed. CONSISTENCY now carries a second rule. An indicator declaring
+  `consistency: {agrees_with: [peer_property], tolerance: 0.02}` is compared against that reading,
+  and a divergence past the tolerance is a finding naming both values. It runs regardless of
+  `role:`, because a redundant pair of temperature sensors carries no role and requiring one would
+  have made the commonest case unreachable.
 
-  **The detection it would buy is real**: two sensors that disagree means at least one is lying,
-  and neither breaches a threshold, so nothing else in the axiom set can see it.
+  **The spelling is not the reporter's, and that is worth stating rather than shipping quietly.**
+  They proposed `compare_to:`, which describes the mechanism. The field is `agrees_with:` because
+  every other declaration in this format states a fact about the world and lets the check follow
+  from it — `expect_variation`, `role`, `direction` — and *these two measure the same thing* is the
+  fact. One capability with two spellings would be the drift this project keeps paying for, so
+  there is no alias.
+
+  **The detection it buys is real**: two sensors that disagree means at least one is lying, and
+  neither breaches a threshold, so nothing else in the axiom set can see it.
+
+  **What is still true from the paragraph above**: the comparison is DECLARED. An author who
+  expects two readings to be compared because they look related still gets silence, and the
+  adapter-side difference is still a perfectly good answer where the pair is not modelled.
 - **A frozen input is only caught where the model says so.** `expect_variation: true` on an
   indicator makes a series that never moves a finding. Left undeclared, nothing is reported, and
   that silence is a decision rather than an oversight: a setpoint, a replica count and a

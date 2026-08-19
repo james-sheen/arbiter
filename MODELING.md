@@ -82,18 +82,31 @@ find a ninth you need, the format does not stop you.
 
 ## The rule that is easy to get wrong
 
-**BOUNDEDNESS is for upper bounds only.**
+**A floor is a specification, not a guess.**
 
-For a metric where lower is worse — accuracy, satisfaction, margin, compliance rate, headroom —
-do **not** set a warning/critical floor and call it BOUNDEDNESS. Use HOMEOSTASIS instead, and let
-the baseline decide what "too low" means.
+BOUNDEDNESS has four threshold keys. `warning:` and `critical:` are ceilings; `lower_warning:` and
+`lower_critical:` are floors. Declaring both pairs on one indicator gives you a band, and a reading
+outside it in either direction is reported with the direction stated.
 
-The reason is that a floor on a lower-is-worse metric encodes an assumption you almost never have:
-that you know the correct value in advance. Baseline deviation makes no such assumption. It asks
-whether *this* system has changed, which is the question you actually wanted answered.
+The question is not whether a floor is expressible. It is where the number comes from.
 
-In practice this shows up as an absence. A lower-is-worse indicator carries `direction: LOWER`,
-declares HOMEOSTASIS, and simply has no thresholds:
+**Declare a floor when something told you the number.** A datasheet says the fan stalls below 1000
+rpm. A contract says throughput under 500 tps is a breach. Physics says a pressure cannot go below
+ambient. The number exists before you write the model, and the model transcribes it.
+
+**Do not invent one.** For accuracy, satisfaction, margin, compliance rate — the metrics where lower
+is worse and nobody has published a line — a floor encodes an assumption you almost never have:
+that you know the correct value in advance. Use HOMEOSTASIS instead and let the baseline decide
+what "too low" means. It asks whether *this* system has changed, which is the question you actually
+wanted answered.
+
+Both halves of that were always the rule. Until 0.1.7 only the second half was expressible, so the
+guide said *BOUNDEDNESS is for upper bounds only* — true of the engine, and over-general as advice.
+It was reported from outside by someone transcribing real fan thresholds from a vendor declaration:
+exactly the case where the number is given to you and the guidance did not apply.
+
+A metric with no published floor carries `direction: LOWER`, declares HOMEOSTASIS, and has no
+thresholds at all:
 
 ```yaml
 - name: accuracy_score
@@ -101,6 +114,21 @@ declares HOMEOSTASIS, and simply has no thresholds:
   axioms: [HOMEOSTASIS, MONOTONICITY]
   direction: LOWER
 ```
+
+A quantity whose floor is documented declares it:
+
+```yaml
+- name: speed_rpm
+  type: NUMERIC
+  axioms: [BOUNDEDNESS]
+  lower_warning: 2000       # vendor minimum, with margin
+  lower_critical: 1000      # vendor stall speed
+  critical: 12000           # both pairs: the band a fan must run inside
+```
+
+`direction:` is not involved. It selects which side HOMEOSTASIS fires on, and it has never had
+anything to do with thresholds — one field meaning two things across two axioms is the confusion
+that separate floor keys exist to avoid.
 
 Contrast an upper-is-worse indicator, where a fixed line is meaningful and BOUNDEDNESS applies
 alongside baseline deviation:

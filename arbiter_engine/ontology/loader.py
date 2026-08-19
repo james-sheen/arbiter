@@ -359,6 +359,13 @@ class OntologyLoader:
             if indicator_type == IndicatorType.NUMERIC:
                 spec.warning_threshold = self._get_float(indicator_uri, HEALTH.warningThreshold)
                 spec.critical_threshold = self._get_float(indicator_uri, HEALTH.criticalThreshold)
+                # the third loader. A field carried by two of the
+                # three input formats is the shape that reads as supported and
+                # is not, in whichever format the reader happened not to use.
+                spec.lower_warning_threshold = self._get_float(
+                    indicator_uri, HEALTH.lowerWarningThreshold)
+                spec.lower_critical_threshold = self._get_float(
+                    indicator_uri, HEALTH.lowerCriticalThreshold)
                 spec.time_window = self._get_duration(indicator_uri, HEALTH.timeWindow)
 
             elif indicator_type == IndicatorType.STATE:
@@ -402,8 +409,15 @@ class OntologyLoader:
                 return IndicatorType.TIMESTAMP
 
         # Infer from properties
-        if self._get_float(indicator_uri, HEALTH.warningThreshold) is not None:
-            return IndicatorType.NUMERIC
+        # the floor pair counts as evidence of a numeric indicator
+        # too. Testing only the ceiling would classify an indicator declaring
+        # nothing but a floor as STATE or RELATIONSHIP, and BOUNDEDNESS then
+        # declines it for the wrong indicator type.
+        for predicate in (HEALTH.warningThreshold, HEALTH.criticalThreshold,
+                          HEALTH.lowerWarningThreshold,
+                          HEALTH.lowerCriticalThreshold):
+            if self._get_float(indicator_uri, predicate) is not None:
+                return IndicatorType.NUMERIC
         if self._get_list(indicator_uri, HEALTH.normalStates):
             return IndicatorType.STATE
         if self._get_string(indicator_uri, HEALTH.targetType):
@@ -633,6 +647,16 @@ class OntologyLoader:
                 critical_threshold=(
                     float(data['critical']) if data.get('critical') is not None
                     else None),
+                # the floor pair, here for the reason that
+                # gives for the nested blocks: fixing one loader and not the
+                # other leaves the extracted package shipping the gap this
+                # closes.
+                lower_warning_threshold=(
+                    float(data['lower_warning'])
+                    if data.get('lower_warning') is not None else None),
+                lower_critical_threshold=(
+                    float(data['lower_critical'])
+                    if data.get('lower_critical') is not None else None),
                 time_window=window,
                 normal_states=data.get('normal', []),
                 transient_states=data.get('transient', []),
@@ -651,6 +675,10 @@ class OntologyLoader:
                 # MONOTONICITY silently assumed increasing/allow_reset.
                 conservation_config=data.get('conservation') or None,
                 monotonicity_config=data.get('monotonicity') or None,
+                # the third loader gets it too; a field carried by
+                # one of the two YAML paths reads as supported and is not.
+                consistency_config=data.get('consistency') or None,
+                stability_config=data.get('stability') or None,   #
             )
         except Exception as e:
             # `data.get` assumes a dict, so a non-dict argument made

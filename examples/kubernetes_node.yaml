@@ -1,0 +1,158 @@
+# A worked example: Kubernetes nodes and the workloads on them.
+#
+# Deliberately synthetic, like `water_tank.yaml`, and written for this
+# repository rather than extracted from a running cluster -- so every threshold
+# below is a teaching choice and none of them is advice about your cluster.
+#
+# What this one adds over the water tank: it is the smallest domain where the
+# BAND matters. A node is unhealthy when memory is too HIGH and when allocatable
+# CPU has fallen too LOW, and those are two different faults with two different
+# remedies. Before floors existed, the second could only be modelled by feeding
+# the engine a negated property and translating the finding text back.
+
+domain:
+  id: k8s-node
+  name: Kubernetes node health
+  description: >
+    Nodes, the pods scheduled onto them, and the kubelet that reports both.
+    Three entity types, because CONNECTIVITY needs somewhere to point.
+
+  entity_types:
+    - Node
+    - Pod
+    - Kubelet
+
+  relationship_types:
+    - hosts
+    - reports_for
+
+  indicators:
+    Node:
+      # A ceiling. Nothing surprising -- memory pressure is upper-is-worse and
+      # the numbers come from the eviction thresholds a cluster already has.
+      - name: memory_used_pct
+        type: NUMERIC
+        role: percentage
+        axioms: [BOUNDEDNESS, HOMEOSTASIS, CONSISTENCY]
+        warning: 80
+        critical: 90
+        window: 15m
+
+      # A FLOOR, and the reason this example exists.
+      #
+      # Allocatable CPU falling is how a node degrades before it goes NotReady:
+      # the kubelet reserves more, or a system daemon starts consuming what it
+      # had promised. The floor is a SPECIFICATION here -- the value comes from
+      # the node's own capacity and the reservation the operator configured,
+      # not from a guess about what looks low.
+      - name: allocatable_cpu_cores
+        type: NUMERIC
+        axioms: [BOUNDEDNESS, MONOTONICITY]
+        lower_warning: 3.5
+        lower_critical: 3.0
+        window: 1h
+        # Allocatable should not drift downward on its own. `allow_reset` covers
+        # the legitimate case: a node rejoining after a reboot reports its full
+        # capacity again.
+        monotonicity:
+          expected_direction: increasing
+          allow_reset: true
+
+      # A BAND. Both pairs on one indicator, which a single `direction:` switch
+      # could not express.
+      #
+      # A node running no pods at all is as much a signal as one running too
+      # many: it is cordoned, or the scheduler cannot place work on it, or its
+      # taints are wrong. Neither end is visible from the other's threshold.
+      - name: running_pod_count
+        type: NUMERIC
+        role: count
+        axioms: [BOUNDEDNESS, STABILITY, CONSISTENCY]
+        lower_critical: 0
+        lower_warning: 1
+        warning: 100
+        critical: 110
+        window: 30m
+        # A node whose pod count never moves across half an hour is either
+        # perfectly stable or reporting a cached value. The model says which
+        # answer to prefer; the checker has no way to know.
+        expect_variation: true
+
+      # A node reports its own clock skew, and a controller reads it. Slow
+      # hunting here is the signature of an NTP client fighting a hypervisor's
+      # clock -- a four- or six-sample cycle that the period-2 oscillation check
+      # cannot see, because each reading is close to its neighbour.
+      - name: clock_skew_ms
+        type: NUMERIC
+        axioms: [STABILITY, HOMEOSTASIS]
+        window: 2h
+        stability:
+          detect_slow_oscillation: true
+          min_amplitude: 0.10
+          min_crossings: 4
+
+    Pod:
+      - name: restart_count
+        type: NUMERIC
+        role: count
+        axioms: [MONOTONICITY, CONSISTENCY]
+        window: 24h
+        monotonicity:
+          expected_direction: increasing
+          allow_reset: true
+
+      - name: phase
+        type: STATE
+        axioms: [STABILITY]
+        normal: [Running, Succeeded]
+        transient: [Pending, ContainerCreating]
+        bad: [CrashLoopBackOff, ImagePullBackOff, Failed]
+        timeout: 5m
+
+      # CONNECTIVITY -- a pod with no node is a scheduling failure, and the
+      # engine reads the RELATIONSHIP GRAPH for this rather than a property.
+      - name: scheduled_onto
+        type: RELATIONSHIP
+        axioms: [CONNECTIVITY]
+        target_type: Node
+        relation_type: hosts
+        min_cardinality: 1
+        max_cardinality: 1
+        violation_severity: HIGH
+
+    Kubelet:
+      # RESPONSIVENESS judges a latency against its thresholds. `role: latency`
+      # is what makes it evaluate -- without it the engine falls back to
+      # guessing from the name, and `pleg_relist_duration_ms` contains neither
+      # `latency` nor `response`.
+      - name: pleg_relist_duration_ms
+        type: NUMERIC
+        role: latency
+        axioms: [RESPONSIVENESS, HOMEOSTASIS]
+        warning: 1000
+        critical: 3000
+        window: 30m
+
+      # CONSISTENCY, both rules on one indicator.
+      #
+      # The role rule range-checks it as a count. The `consistency:` block adds
+      # the second question: the kubelet's own pod count and the API server's
+      # count for this node are DECLARED redundant, so a divergence past 2% is
+      # a finding naming both numbers. That disagreement means at least one is
+      # lying, and neither breaches a threshold -- nothing else in the axiom set
+      # can see it.
+      - name: reported_pod_count
+        type: NUMERIC
+        role: count
+        axioms: [CONSISTENCY]
+        window: 15m
+        consistency:
+          agrees_with: [apiserver_pod_count]
+          tolerance: 0.02
+
+      - name: apiserver_pod_count
+        type: NUMERIC
+        axioms: []          # observation-only: the peer of the pair above
+        # No `role:` here, deliberately. Nothing reads it on an indicator that
+        # declares no axiom, and `model_describe` says so -- which is how the
+        # first draft of this file was caught declaring one.

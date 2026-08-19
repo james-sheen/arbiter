@@ -1,0 +1,161 @@
+# A worked example: a battery pack, its cells, and the charger feeding it.
+#
+# Deliberately synthetic. The numbers are shaped like a lithium-iron-phosphate
+# pack because that makes the reasoning legible, and they are NOT a datasheet --
+# do not transcribe them into anything that has current flowing through it.
+#
+# Why this vertical is here: a battery is the domain where nearly every bound is
+# a FLOOR that somebody published. A cell has a minimum voltage below which it
+# is damaged, a pack has a state-of-charge reserve a contract guarantees, and a
+# charger has a minimum current below which it has stopped working. None of
+# those is a guess -- which is exactly the distinction the modelling guide draws
+# between a floor you may declare and one you may not.
+
+domain:
+  id: battery-pack
+  name: Battery pack
+  description: >
+    A pack of series cells with a charger and a balancer. Small enough to read
+    in one sitting; every bound below is a published limit rather than a
+    baseline.
+
+  entity_types:
+    - Pack
+    - Cell
+    - Charger
+
+  relationship_types:
+    - contains
+    - charges
+
+  indicators:
+    Pack:
+      # A BAND from two different specifications, which is why it is two pairs
+      # and not a direction.
+      #
+      # The ceiling is the charger's cut-off: above it the pack is being
+      # overcharged. The floor is the reserve the deployment contract promises
+      # -- a UPS that discharges below 20% cannot hold up its end. Different
+      # sources, different remedies, one indicator.
+      - name: state_of_charge_pct
+        type: NUMERIC
+        role: percentage
+        axioms: [BOUNDEDNESS, CONSISTENCY, HOMEOSTASIS]
+        lower_critical: 15
+        lower_warning: 20
+        warning: 98
+        critical: 100
+        window: 1h
+
+      # MONOTONICITY on a lifetime counter. Cycles only ever accumulate, and a
+      # reset means the BMS was replaced rather than that the pack got younger.
+      - name: cycle_count
+        type: NUMERIC
+        role: count
+        axioms: [MONOTONICITY, CONSISTENCY]
+        window: 30d
+        monotonicity:
+          expected_direction: increasing
+          allow_reset: true
+
+      # CONSERVATION -- charge in should equal charge out plus what the pack
+      # kept. A persistent deficit past the loss margin is a cell shunting
+      # current somewhere it should not.
+      - name: charge_in_ah
+        type: NUMERIC
+        axioms: [CONSERVATION]
+        window: 6h
+        conservation:
+          input_property: charge_in_ah
+          output_properties: [charge_out_ah, charge_stored_ah]
+          loss_margin: 0.03
+
+      - name: charge_out_ah
+        type: NUMERIC
+        axioms: []
+
+      - name: charge_stored_ah
+        type: NUMERIC
+        axioms: []
+
+    Cell:
+      # The floor that matters most in this domain, and the clearest case of a
+      # published number: below 2.5 V an LFP cell is damaged, and the figure
+      # comes from the cell's datasheet rather than from anything this model
+      # observed. A ceiling exists too, so this is a band.
+      - name: voltage_v
+        type: NUMERIC
+        axioms: [BOUNDEDNESS, STABILITY, HOMEOSTASIS]
+        lower_critical: 2.50
+        lower_warning: 2.80
+        warning: 3.60
+        critical: 3.65
+        window: 30m
+        expect_variation: true
+
+      # Two thermistors per cell, and they are DECLARED redundant. A pair that
+      # disagrees by more than 2 degrees means one of them is failing, and
+      # neither reading need be outside its own range for that to be true --
+      # this is the detection that no threshold can produce.
+      #
+      # `tolerance_absolute` rather than a relative fraction: 2 degrees is 2
+      # degrees whether the cell is at 5 C or 45 C, and a relative tolerance
+      # would tighten as the temperature fell toward zero.
+      - name: temp_c_a
+        type: NUMERIC
+        axioms: [BOUNDEDNESS, CONSISTENCY]
+        warning: 45
+        critical: 55
+        lower_critical: -20
+        window: 15m
+        consistency:
+          agrees_with: [temp_c_b]
+          tolerance_absolute: 2.0
+
+      - name: temp_c_b
+        type: NUMERIC
+        axioms: [BOUNDEDNESS]
+        warning: 45
+        critical: 55
+        lower_critical: -20
+        window: 15m
+
+      # CONNECTIVITY -- a cell that belongs to no pack is a modelling error, and
+      # a balancer reading it would be reading nothing.
+      - name: belongs_to_pack
+        type: RELATIONSHIP
+        axioms: [CONNECTIVITY]
+        target_type: Pack
+        relation_type: contains
+        min_cardinality: 1
+        max_cardinality: 1
+        violation_severity: CRITICAL
+
+    Charger:
+      # A floor with no ceiling. A charger delivering less than 0.5 A while it
+      # believes it is charging has failed; there is no upper bound here because
+      # the pack's own BOUNDEDNESS covers overcharge and duplicating it would
+      # give one fault two alarms.
+      - name: output_current_a
+        type: NUMERIC
+        axioms: [BOUNDEDNESS, STABILITY]
+        lower_warning: 1.0
+        lower_critical: 0.5
+        window: 1h
+        # A charger hunting between constant-current and constant-voltage modes
+        # cycles on a period of several samples, not on alternate ones. The
+        # period-2 detector scores zero on it.
+        stability:
+          detect_slow_oscillation: true
+          min_amplitude: 0.15
+          min_crossings: 4
+
+      # RESPONSIVENESS -- how long the charger takes to react to a balancer
+      # request. `role: latency` is what makes this evaluate.
+      - name: command_ack_ms
+        type: NUMERIC
+        role: latency
+        axioms: [RESPONSIVENESS]
+        warning: 200
+        critical: 1000
+        window: 30m

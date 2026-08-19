@@ -23,8 +23,10 @@ domain:
 
   indicators:
     Tank:
-      # BOUNDEDNESS -- an upper bound. Thresholds are upper bounds ONLY; for a
-      # lower-is-worse quantity use HOMEOSTASIS against a baseline instead.
+      # BOUNDEDNESS -- a ceiling. `lower_warning:` / `lower_critical:` declare a
+      # floor as well; see the Pump's speed_rpm below for both on one indicator.
+      # A tank has no interesting floor -- an empty supply tank is a fact about
+      # the process, not a fault -- so this one declares only the ceiling.
       - name: level_pct
         type: NUMERIC
         axioms: [BOUNDEDNESS, HOMEOSTASIS]
@@ -47,16 +49,21 @@ domain:
         type: NUMERIC
         axioms: []          # observation-only: recorded, never checked per cycle
 
-      # CONSISTENCY -- is this value possible on its own terms?
+      # CONSISTENCY -- two questions, and this indicator asks both.
       #
-      # NOT a comparison against `level_pct`, despite the name. CONSISTENCY
-      # reads ONE indicator and range-checks it against what its role permits,
-      # and this block would behave identically if `level_pct` were deleted
-      # from the model. This comment said `two independent readings that should
-      # agree` until 2026-08-16, which is the reading the use-case catalogue
-      # carried in eleven places and the reason both were reported from
-      # outside on the same day. To compare two readings, compute the
-      # difference in your adapter and give the engine that.
+      # The role rule is single-value: `role: percentage` range-checks this
+      # reading against 0-100 and would behave identically if `level_pct` were
+      # deleted from the model. That was the ONLY rule until, and this
+      # comment said `two independent readings that should agree` until
+      # 2026-08-16 -- the reading the use-case catalogue carried in eleven
+      # places, and the reason both were reported from outside on the same day.
+      #
+      # The `consistency:` block below is the second rule and the one the name
+      # always promised: these two level sensors are DECLARED redundant, so a
+      # divergence past the tolerance is a finding. Declared, because nothing
+      # about two numbers reveals that they measure the same thing -- the same
+      # argument `expect_variation` and `role:` make. Delete the block and this
+      # indicator goes back to being range-checked alone.
       #
       # `role: percentage` selects the 0-100 rule. Without it the engine would
       # infer the same thing from the `pct` token in the name, which is how
@@ -66,6 +73,13 @@ domain:
         role: percentage
         axioms: [CONSISTENCY]
         window: 15m
+        # Declared on ONE side only. The comparison is symmetric -- the
+        # tolerance is relative to the larger of the two readings, so it does
+        # not matter which sensor carries the block -- and declaring it on both
+        # would report the same divergence twice.
+        consistency:
+          agrees_with: [level_pct]
+          tolerance: 0.02       # 2% between two sensors on the same tank
 
     Pump:
       # STABILITY -- does it settle, or hunt?
@@ -78,9 +92,23 @@ domain:
       # a replica count and a switched-off pump are all correctly constant, and
       # the checker has no way to tell those from a frozen probe. The model
       # does. Leave the field out and nothing changes.
+      # BOUNDEDNESS -- and a band, not just a ceiling.
+      #
+      # A pump has both: it must not run away, and it must not stall. The floor
+      # keys are separate from `direction:` deliberately -- that field selects
+      # which side HOMEOSTASIS fires on and has never had anything to do with
+      # thresholds, and a single direction switch could not express a band at
+      # all.
+      #
+      # Declare a floor when a datasheet or a contract gave you the number.
+      # Where nobody has published one -- accuracy, satisfaction, margin -- a
+      # floor is a guess wearing a threshold's clothes, and HOMEOSTASIS against
+      # a baseline is the right shape. MODELING.md carries the full rule.
       - name: speed_rpm
         type: NUMERIC
         axioms: [STABILITY, BOUNDEDNESS]
+        lower_critical: 900     # below this the pump has stalled
+        lower_warning: 1200
         warning: 2800
         critical: 3200
         window: 30m

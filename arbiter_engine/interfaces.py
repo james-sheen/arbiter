@@ -765,6 +765,25 @@ class IndicatorSpec:
     # Numeric indicator fields
     warning_threshold: Optional[float] = None
     critical_threshold: Optional[float] = None
+    # the same two thresholds, pointing down. Reported from outside as
+    # issue #6, which was closed by DOCUMENTING that bounds are upper-only; what
+    # that closure cost is only visible downstream, where every consumer needing
+    # a floor writes a negation transform (feed `-rpm`, declare `-2000`) plus a
+    # report-layer translator, because the engine's own finding text then reads
+    # `rpm_neg exceeds critical threshold` for a fan running SLOW.
+    #
+    # Two slots rather than reusing `direction:` below, for two reasons. That
+    # field already means something else on this same dataclass — which σ-side
+    # HOMEOSTASIS fires on — and one name meaning two things across two axioms is
+    # the vocabulary collision this project keeps paying for. And a switch can
+    # only express one side, while a fan has BOTH a stall floor and a runaway
+    # ceiling; separate slots express the band, and a direction cannot.
+    #
+    # Absent stays None, never 0.0, for the reason that an internal ruling records at length: the
+    # checkers test `is not None`, so a zero default would make every reading
+    # at-or-below a critical floor.
+    lower_warning_threshold: Optional[float] = None
+    lower_critical_threshold: Optional[float] = None
     time_window: Optional[timedelta] = None
     # (implements decision): HOMEOSTASIS direction gate.
     # Default ``BIDIRECTIONAL`` preserves previously behavior (fire on
@@ -810,6 +829,39 @@ class IndicatorSpec:
     # collide with the flat ``warning`` / ``critical`` thresholds.
     conservation_config: Optional[Dict[str, Any]] = None
     monotonicity_config: Optional[Dict[str, Any]] = None
+
+    # the third nested block, and it exists for the same reason the
+    # other two do: what it carries is a LIST plus a tolerance, which cannot be
+    # spelled as flat fields without colliding with the threshold pair.
+    #
+    # `agrees_with` names PROPERTIES, following `conservation.output_properties`
+    # exactly rather than inventing a second convention: a checker holds an
+    # `IndicatorSpec` and an `Entity`, never the model, so it cannot resolve a
+    # declared indicator NAME through a `property_mapping` even if the format
+    # invited one. A block naming things the checker cannot look up is the
+    # shape that produces a declaration nothing reads.
+    #
+    # Issue #4 established that CONSISTENCY is single-value plausibility and not
+    # redundant-signal agreement. The axiom name was reserved for the capability
+    # and the capability was not behind it; this is what goes behind it.
+    consistency_config: Optional[Dict[str, Any]] = None
+
+    # the opt-in slow-period oscillation detector.
+    #
+    # The shipped STABILITY arm is period-2 BY CONSTRUCTION: it asks whether
+    # each value is close to the one two back and far from the one before, so a
+    # controller hunting on a four-, six- or eight-sample period scores zero and
+    # the series reads as perfectly stable. The project's own analysis calls
+    # that hunting genuinely pathological while correctly concluding the
+    # silence is not a defect — it is a detector answering the question it was
+    # built to answer.
+    #
+    # DECLARED, not inferred, and for the same reason `expect_variation` is:
+    # whether a slow cycle is a fault is a DOMAIN question. A day/night thermal
+    # swing, a duty-cycled compressor and a batch process are all correctly
+    # periodic. Undeclared means no check, so nothing written before this
+    # changes behaviour.
+    stability_config: Optional[Dict[str, Any]] = None
 
     # what KIND of quantity this indicator measures — one of
     # latency / count / percentage / ratio. RESPONSIVENESS and CONSISTENCY used

@@ -156,18 +156,45 @@ def roles_for(indicator: Any) -> Tuple[FrozenSet[str], str]:
     return frozenset(found), ("inferred" if found else "none")
 
 
+def has_cross_signal_rule(indicator: Any) -> bool:
+    """does this indicator declare peers it must agree with?
+
+    A second, independent way for CONSISTENCY to have something to do. The
+    role-gated rules ask *is this value possible on its own terms*; the
+    cross-signal rule asks *do two readings that should agree, agree*. Neither
+    implies the other, and a redundant pair of temperature sensors carries no
+    role at all — `temp_c` tokenises to nothing this module knows.
+    """
+    config = getattr(indicator, "consistency_config", None)
+    if not isinstance(config, dict):
+        return False
+    peers = config.get("agrees_with")
+    return bool(peers)
+
+
 def applies(axiom: Axiom, indicator: Any) -> Tuple[bool, FrozenSet[str], str]:
     """Does ``axiom`` have a universal rule for ``indicator``?
 
     Returns ``(applies, matched_roles, source)``. An axiom absent from
     AXIOM_ROLES is not role-gated at all and always applies — the answer for
     BOUNDEDNESS and friends, which read thresholds rather than names.
+
+    a declared cross-signal block makes CONSISTENCY applicable
+    whatever the role says. This has to live HERE rather than only in the
+    checker, because `unreachable_axioms` below reads the same function: an
+    indicator declaring `consistency: {agrees_with:...}` with no role would
+    otherwise be reported by `model_describe` as a declaration that can never
+    fire, while firing. A false entry in the honesty leg is worse than a
+    missing capability — it is the capability we have, denied in the report a
+    reader trusts to be exhaustive.
     """
     wanted = AXIOM_ROLES.get(axiom)
     if wanted is None:
         return True, frozenset(), "not_role_gated"
     roles, source = roles_for(indicator)
     matched = roles & wanted
+    if not matched and axiom is Axiom.CONSISTENCY and has_cross_signal_rule(indicator):
+        return True, frozenset(), "cross_signal"
     return bool(matched), matched, source
 
 
@@ -182,13 +209,20 @@ def explain_absence(axiom: Axiom, indicator: Any) -> str:
     """
     wanted = sorted(AXIOM_ROLES.get(axiom, frozenset()))
     roles, source = roles_for(indicator)
+    # CONSISTENCY has a second way in, so a decline that names only
+    # the first tells half the truth. The remedy an author needs depends on
+    # which question they meant to ask, and the sentence now offers both.
+    alt = ""
+    if axiom is Axiom.CONSISTENCY:
+        alt = (", or declare `consistency: {agrees_with: [...]}` to compare it "
+               "against a redundant reading instead")
     if source == "declared":
         got = sorted(roles)
         return (f"declared role {got[0]!r} has no {axiom.value} rule; "
-                f"this axiom applies to roles {wanted}")
+                f"this axiom applies to roles {wanted}{alt}")
     return (f"no role is declared for this indicator and none could be inferred "
             f"from its name; declare one of {wanted} as `role:` on the "
-            f"indicator to have {axiom.value} evaluate it")
+            f"indicator to have {axiom.value} evaluate it{alt}")
 
 
 def unreachable_axioms(indicator: Any) -> list:

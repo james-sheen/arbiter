@@ -25,11 +25,13 @@ Three that account for most surprises:
   **If no role fits your quantity, that is the answer rather than a puzzle.**
   The vocabulary is `count`, `percentage`, `ratio`, `latency`; a temperature is
   none of them, and declaring one anyway makes the check run and assert
-  something untrue about your units. `CONSISTENCY` is a single-value
+  something untrue about your units. `CONSISTENCY`'s role rule is a single-value
   plausibility check, so an indicator whose plausible range is not one of those
-  four has nothing for it to test. Note it does **not** compare one indicator
-  against another — to check that two readings agree, compute the difference in
-  your adapter and give the engine that.
+  four has nothing for it to test — and a temperature is exactly the quantity
+  that usually has a redundant twin instead. Declare
+  `consistency: {agrees_with: [other_property]}` and the pair is compared
+  regardless of role. The comparison happens only where a model declares it:
+  nothing about two numbers reveals that they measure the same thing.
 - **`no_current_value`** — the value is present, in the store this checker does
   not read. Threshold axioms read the entity's `properties`; temporal axioms read
   observation history. The decline names the observation count it can see.

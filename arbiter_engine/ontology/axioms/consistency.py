@@ -116,8 +116,39 @@ class ConsistencyChecker:
         if roles.RATIO in matched_roles:
             problems.extend(self._check_ratio(entity, indicator.name, value))
 
+        # Rule 4: do two readings that should agree, agree?
+        #
+        # The original promise behind the axiom name. Issue #4 established that
+        # everything above is single-value plausibility — it asks whether a
+        # number is possible on its own terms, and would behave identically if
+        # every other indicator on the entity were deleted. Redundant-signal
+        # agreement is a different question and needs a different input: the
+        # model has to say WHICH readings are supposed to match, because
+        # nothing about two numbers reveals that they measure the same thing.
+        #
+        # Runs independently of the role gate. A redundant pair of temperature
+        # sensors carries no role — `temp_c` tokenises to nothing — and
+        # requiring one would make the commonest case of this capability
+        # unreachable.
+        agreement_declined = None
+        if roles.has_cross_signal_rule(indicator):
+            found, agreement_declined = self._check_agreement(
+                entity, indicator, value)
+            problems.extend(found)
+
         result = apply_property_confidence(
             entity, indicator.property_name, problems)
+
+        # a peer the entity does not carry is a decline, not silence.
+        # Returned here rather than from `_check_agreement` so it passes through
+        # `apply_property_confidence` with everything else; a decline emitted on
+        # a separate path is how return-shape drift starts.
+        if agreement_declined is not None:
+            return CheckOutcome(result).declined(
+                Axiom.CONSISTENCY, entity, indicator.name,
+                NotEvaluatedReason.MISSING_PROPERTY,
+                detail=agreement_declined,
+            )
 
         # every rule here is keyed on the indicator NAME tokenising to
         # count / percent / pct / ratio. An indicator named anything else —
@@ -141,6 +172,113 @@ class ConsistencyChecker:
                 indicator.name, ", ".join(sorted(matched_roles)),
             )
         return result
+
+    def _check_agreement(
+        self,
+        entity: Entity,
+        indicator: IndicatorSpec,
+        value: Any,
+    ) -> tuple:
+        """compare this reading against the peers it must agree with.
+
+        Returns ``(problems, decline_detail_or_None)``.
+
+        ``agrees_with`` names PROPERTIES, matching
+        ``conservation.output_properties``. A checker holds an ``IndicatorSpec``
+        and an ``Entity`` and never the model, so it cannot resolve a declared
+        indicator name through a ``property_mapping``; a block naming things
+        this method cannot look up would be a declaration nothing reads.
+
+        Tolerance is RELATIVE to the larger magnitude of the pair, not to the
+        first-named reading. Dividing by one of the two makes the verdict depend
+        on which was written first, and dividing by their mean makes a pair
+        straddling zero produce a denominator near zero from values that are
+        nowhere near it. ``max(abs(a), abs(b))`` is the conservative choice and
+        is symmetric, which is the property a redundancy check needs most:
+        `a agrees with b` must mean the same as `b agrees with a`, since a model
+        may reasonably declare the block on either side or both.
+        """
+        config = indicator.consistency_config or {}
+        peers = config.get("agrees_with") or []
+        if isinstance(peers, str):
+            # A bare string iterates its characters, which is the
+            # failure this loader learned about the hard way. One peer written
+            # without brackets is the likeliest way to write this block.
+            peers = [peers]
+
+        tolerance = config.get("tolerance")
+        absolute = config.get("tolerance_absolute")
+        if tolerance is None and absolute is None:
+            tolerance = self.params.consistency_agreement_tolerance
+
+        try:
+            reading = float(value)
+        except (TypeError, ValueError):
+            return [], (
+                f"cross-signal agreement needs a numeric reading; "
+                f"{indicator.property_name} is {value!r}")
+
+        problems: List[Problem] = []
+        missing: List[str] = []
+        for peer in peers:
+            other = entity.get_property(str(peer))
+            if other is None:
+                missing.append(str(peer))
+                continue
+            try:
+                other = float(other)
+            except (TypeError, ValueError):
+                missing.append(str(peer))
+                continue
+
+            difference = abs(reading - other)
+            scale = max(abs(reading), abs(other))
+            if absolute is not None:
+                allowed = float(absolute)
+                measure = difference
+                units = "absolute"
+            else:
+                allowed = float(tolerance)
+                # Both readings exactly zero: they agree, and the relative
+                # measure is 0/0. Answering `0.0` is the only reading of that
+                # which is not an accusation.
+                measure = (difference / scale) if scale else 0.0
+                units = "relative"
+
+            if measure > allowed:
+                problems.append(Problem.from_entity(
+                    entity=entity,
+                    problem_type=f'redundant_disagreement:{indicator.name}',
+                    severity=Severity.WARNING,
+                    reason=(
+                        f"{indicator.name} and {peer} are declared redundant "
+                        f"and disagree"),
+                    axiom=Axiom.CONSISTENCY,
+                    source_layer=DetectionLayer.ONTOLOGY,
+                    evidence={
+                        'indicator': indicator.name,
+                        'property': indicator.property_name,
+                        'peer': str(peer),
+                        'value': reading,
+                        'peer_value': other,
+                        'difference': difference,
+                        'divergence': measure,
+                        'tolerance': allowed,
+                        'tolerance_kind': units,
+                    },
+                    confidence=1.0,
+                ))
+
+        if missing:
+            # Deliberately reported even when other peers DID compare. A pair
+            # declared redundant and silently dropped is the absent-data
+            # silence this engine exists to refuse, and `two of three agreed`
+            # is not an answer about the third.
+            return problems, (
+                f"declared redundant with {', '.join(missing)}, which this "
+                f"entity does not carry as a numeric property; agreement "
+                f"cannot be judged against a reading that is not there")
+        return problems, None
 
     def check_entity(
         self,

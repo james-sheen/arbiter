@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/james-sheen/arbiter/blob/master/schema/envelope.schema.json",
+  "title": "Arbiter engine response envelope",
+  "description": "Every tool returns this shape: what was checked, what was not and why, and what the engine needs to know next. `meta.schema_version` names the revision; see COMPATIBILITY.md for what may change without moving it.",
+  "type": "object",
+  "required": ["checked", "findings", "not_checked", "questions", "meta"],
+  "properties": {
+    "checked": {
+      "description": "The denominator. Without it, `not_checked: 8` is uninterpretable -- 8 declined out of 47 attempted is a different statement from 8 out of 9.",
+      "type": "object",
+      "required": ["invariants", "entities"],
+      "properties": {
+        "invariants": {
+          "description": "Evaluations ATTEMPTED. Not declarations, not traversal steps, not matched findings -- all three of which this field has meant somewhere in the past, which is why the two below exist.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "entities": {"type": "integer", "minimum": 0},
+        "steps": {
+          "description": "Traversal steps. Present only for `traverse`, and omitted rather than zero so an absent number is not read as a measured zero.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "declared_invariants": {
+          "description": "What the model DECLARES, which is not what the engine evaluates. Present only for `model_describe`.",
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "findings": {
+      "description": "Problems and warnings together. The reasoner splits them by severity, which is a presentation choice; a caller asking what was found wants both.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["entity_id", "problem_type", "axiom", "severity", "reason"],
+        "properties": {
+          "entity_id": {"type": "string"},
+          "problem_type": {
+            "description": "`<kind>:<indicator>` for indicator-scoped findings. DOMAIN VOCABULARY -- the part after the colon is the model author's name for the thing, so this is not an enumerable set.",
+            "type": "string"
+          },
+          "axiom": {
+            "type": ["string", "null"],
+            "enum": ["STABILITY", "BOUNDEDNESS", "CONNECTIVITY", "CONSISTENCY", "RESPONSIVENESS", "HOMEOSTASIS", "CONSERVATION", "MONOTONICITY", null]
+          },
+          "severity": {
+            "type": ["string", "null"],
+            "enum": ["critical", "high", "medium", "warning", "low", "info", null]
+          },
+          "reason": {"type": "string"}
+        },
+        "additionalProperties": true
+      }
+    },
+    "not_checked": {
+      "description": "What was declined, and why. AN EMPTY LIST IS A REAL ANSWER: it means every declared axiom was actually evaluated. This leg is the product -- a clean `findings` beside a populated `not_checked` means nothing was measured, not that nothing is wrong.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["entity_id", "entity_type", "indicator", "axiom", "reason"],
+        "properties": {
+          "entity_id": {"type": "string"},
+          "entity_type": {"type": "string"},
+          "indicator": {"type": "string"},
+          "axiom": {
+            "type": "string",
+            "enum": ["STABILITY", "BOUNDEDNESS", "CONNECTIVITY", "CONSISTENCY", "RESPONSIVENESS", "HOMEOSTASIS", "CONSERVATION", "MONOTONICITY"]
+          },
+          "reason": {
+            "description": "A CLOSED set, unlike `problem_type`. Read it as three-valued: a member you do not recognise means this engine is newer than your reader, not that the record is malformed.",
+            "type": "string",
+            "enum": ["insufficient_samples", "missing_property",
+                     "no_current_value", "missing_entity_type",
+                     "missing_config", "no_threshold", "wrong_indicator_type",
+                     "not_applicable", "checker_error"]
+          },
+          "detail": {"type": "string"},
+          "observations": {
+            "description": "Count INSIDE the window. Present only where it is meaningful.",
+            "type": "integer", "minimum": 0
+          },
+          "required": {"type": "integer", "minimum": 0},
+          "window_seconds": {"type": "number"},
+          "total_observations": {"type": "integer", "minimum": 0},
+          "sampling_interval_seconds": {"type": "number"},
+          "floor_unreachable_at_this_rate": {
+            "description": "True when the floor CANNOT be met at the observed sampling rate, however long you collect. `remedy` then states the conclusion, because a reader will act on it and should not have to do the arithmetic.",
+            "type": "boolean"
+          },
+          "remedy": {"type": "string"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "questions": {
+      "description": "What the model is missing, from DISCOVER mode. Empty and absent are different: a caller with no topology supplies none, and `meta.source` says which.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["question"],
+        "properties": {
+          "question": {"type": "string"},
+          "gap_type": {"type": ["string", "null"]},
+          "location": {"type": ["string", "null"]},
+          "priority": {"type": ["number", "null"]},
+          "context_path": {"type": "array", "items": {"type": "string"}}
+        },
+        "additionalProperties": true
+      }
+    },
+    "meta": {
+      "type": "object",
+      "required": ["schema_version", "source"],
+      "properties": {
+        "schema_version": {
+          "description": "The ENVELOPE's revision, not the package version. It moves when a reader that worked stops working; adding a key does not move it.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "source": {
+          "description": "the established pattern vocabulary, inherited rather than invented. `unavailable` carries a `reason` and is never an empty success.",
+          "type": "string",
+          "enum": ["live", "warming_up", "unavailable"]
+        },
+        "reason": {"type": "string"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": {
+    "description": "Tool-specific payloads ride ALONGSIDE the five legs rather than inside them: `model` and `unconsumed_observations` and `unread_threshold_overrides` from model_describe, `evidence` from attest. Additive by design -- the four legs plus meta are what every tool satisfies identically, and a tool-specific key is not a change to that contract."
+  }
+}

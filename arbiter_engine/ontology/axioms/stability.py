@@ -363,6 +363,126 @@ class StabilityChecker:
                 confidence=min(1.0, oscillation_score),
             ))
 
+        # the FULL window, not `recent_values`.
+        #
+        # The period-2 arm above deliberately truncates to `window_size`
+        # samples, because its question is about the last few readings. A
+        # slow-period detector handed the same ten samples sees at most one
+        # cycle of a period-8 signal, counts two or three crossings, and stays
+        # silent on exactly the series it exists to catch. Measured that way
+        # first: the arm ran, on the right data shape, and could not have fired
+        # for any input, which is the failure mode a check that never refuses
+        # anything produces.
+        problems.extend(self._check_slow_oscillation(
+            entity, indicator, values))
+
+        return problems
+
+    def _check_slow_oscillation(
+        self,
+        entity: Entity,
+        indicator: IndicatorSpec,
+        recent_values: list,
+    ) -> List[Problem]:
+        """hunting on a period the arm above cannot see.
+
+        The detector above is period-2 BY CONSTRUCTION: it asks whether each
+        value is close to the one two back and far from the one before. A
+        controller hunting on a four-, six- or eight-sample period scores
+        exactly zero there, so the series reads as maximally stable. That is a
+        detector correctly answering the question it was built to answer, and
+        the project's own analysis says so while calling slow hunting genuinely
+        pathological.
+
+        **Zero-crossings about the mean rather than an FFT.** numpy is already a
+        dependency so the transform was available, and the count is the better
+        instrument here for a reason that is not about accuracy: this engine's
+        product is evidence a reader can check. `crossed its mean six times in
+        forty samples, so the period is about thirteen` is a sentence an
+        operator can verify against their own graph. A dominant bin in a
+        periodogram is not, and it brings windowing and leakage questions that
+        would need their own parameters to answer.
+
+        **Opt-in.** Whether a slow cycle is a fault is a domain question — a
+        day/night thermal swing, a duty-cycled compressor and a batch process
+        are all correctly periodic — so this runs only where the model declares
+        it, the same ruling `expect_variation` got.
+        """
+        problems: List[Problem] = []
+        config = getattr(indicator, "stability_config", None)
+        if not isinstance(config, dict) or not config.get("detect_slow_oscillation"):
+            return problems
+
+        values = [float(v) for _, v in recent_values]
+        if len(values) < 6:
+            # A period this arm can report needs at least a couple of cycles;
+            # below six samples any crossing count is as consistent with noise
+            # as with a cycle. Returns rather than declining, for the reason
+            # `_check_frozen_series` records: the oscillation arm above has
+            # already declined on a starved input, and two records for one
+            # evaluation breaks the denominator the envelope rests on.
+            return problems
+
+        mean = sum(values) / len(values)
+        scale = max(abs(v) for v in values) or 1.0
+        # Relative, so the same declaration works for a temperature in Kelvin
+        # and a ratio in [0, 1] -- the reasoning that put a relative
+        # slope minimum in BOUNDEDNESS.
+        min_amplitude = float(config.get("min_amplitude", 0.05))
+        # Half the amplitude gate, so a swing that qualifies cannot be split
+        # into crossings that individually do not. A separate parameter here
+        # would be a second number meaning the same thing.
+        dead_band = (min_amplitude / 2) * scale
+
+        amplitude = (max(values) - min(values)) / scale
+        if amplitude < min_amplitude:
+            return problems
+
+        crossings = 0
+        side = 0
+        for value in values:
+            offset = value - mean
+            if abs(offset) < dead_band:
+                continue          # inside the noise band; not a crossing
+            now = 1 if offset > 0 else -1
+            if side and now != side:
+                crossings += 1
+            side = now
+
+        min_crossings = int(config.get("min_crossings", 4))
+        if crossings < min_crossings:
+            return problems
+
+        # Two crossings per cycle, so the period in samples is 2n/crossings.
+        period_samples = 2 * len(values) / crossings
+
+        # The arm above owns period 2. Reporting here as well would give one
+        # signal two findings, and the boundary is the honest one rather than a
+        # suppression: below three samples per period this IS the fast case.
+        if period_samples < 3:
+            return problems
+
+        problems.append(Problem.from_entity(
+            entity=entity,
+            problem_type=f'slow_oscillation:{indicator.name}',
+            severity=Severity.MEDIUM,
+            reason=(f"{indicator.name} is cycling on a period of about "
+                    f"{period_samples:.0f} samples, which the period-2 "
+                    f"oscillation check cannot see"),
+            axiom=Axiom.STABILITY,
+            source_layer=DetectionLayer.ONTOLOGY,
+            evidence={
+                'indicator': indicator.name,
+                'mean_crossings': crossings,
+                'estimated_period_samples': period_samples,
+                'relative_amplitude': amplitude,
+                'min_amplitude': min_amplitude,
+                'min_crossings': min_crossings,
+                'observations': len(values),
+                'mean': mean,
+            },
+            confidence=1.0,
+        ))
         return problems
 
     def _check_transient_timeout(

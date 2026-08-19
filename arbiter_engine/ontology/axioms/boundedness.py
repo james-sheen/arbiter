@@ -49,6 +49,55 @@ from ...axiom_thresholds import (
 logger = logging.getLogger(__name__)
 
 
+def _contradictory_band(
+    warning: Optional[float],
+    critical: Optional[float],
+    lower_warning: Optional[float],
+    lower_critical: Optional[float],
+) -> Optional[str]:
+    """describe the contradiction in a band, or return None.
+
+    A band is contradictory when no value can satisfy it. Three ways to write
+    one, and they are checked separately because the remedies differ:
+
+    *a floor at or above its own ceiling — every reading breaches something;
+    *a critical floor above the warning floor — the warning is unreachable,
+      since anything low enough to warn is already critical;
+    *a critical ceiling below the warning ceiling — the mirror of the above,
+      and the one case that was already declarable before the floor existed.
+
+    That third check is deliberately included even though it predates this
+    change and nothing asked for it. Adding the floor's version and not the
+    ceiling's would leave the engine refusing one spelling of a mistake and
+    silently accepting its mirror, which is a worse contract than refusing
+    neither: an author who learns that the engine validates bands would
+    reasonably conclude an accepted band is coherent.
+
+    Returns the sentence rather than a bool so the decline can say WHICH
+    contradiction, with the numbers. `is not None` throughout, so a threshold
+    of 0.0 is a real bound.
+    """
+    if lower_warning is not None and warning is not None and lower_warning >= warning:
+        return (f"lower_warning ({lower_warning:g}) is at or above warning "
+                f"({warning:g}), so every reading breaches one of them; a "
+                f"band needs its floor below its ceiling")
+    if (lower_critical is not None and critical is not None
+            and lower_critical >= critical):
+        return (f"lower_critical ({lower_critical:g}) is at or above critical "
+                f"({critical:g}), so every reading breaches one of them; a "
+                f"band needs its floor below its ceiling")
+    if (lower_critical is not None and lower_warning is not None
+            and lower_critical > lower_warning):
+        return (f"lower_critical ({lower_critical:g}) is above lower_warning "
+                f"({lower_warning:g}), so the warning floor can never be "
+                f"reported — anything low enough to warn is already critical")
+    if warning is not None and critical is not None and critical < warning:
+        return (f"critical ({critical:g}) is below warning ({warning:g}), so "
+                f"the warning can never be reported — anything high enough to "
+                f"warn is already critical")
+    return None
+
+
 class BoundednessChecker:
     """
     Check BOUNDEDNESS axiom for entities.
@@ -167,6 +216,34 @@ class BoundednessChecker:
         warning_threshold = self._effective_threshold(
             entity, indicator, 'warning', indicator.warning_threshold
         )
+        # the floor pair goes through the same overlay resolution as
+        # the ceiling pair. Skipping it would give a model two thresholds an
+        # operator can retune at runtime and two they cannot, with nothing
+        # saying which is which.
+        lower_critical = self._effective_threshold(
+            entity, indicator, 'lower_critical',
+            indicator.lower_critical_threshold
+        )
+        lower_warning = self._effective_threshold(
+            entity, indicator, 'lower_warning',
+            indicator.lower_warning_threshold
+        )
+
+        # a band whose floor sits at or above its ceiling admits no
+        # healthy value, so EVERY reading fires. That is a model defect and the
+        # engine says so once, rather than emitting a finding per cycle forever
+        # and leaving the author to work out that the data is fine and the
+        # declaration is not. Declined rather than raised, for the reason the
+        # loader gives for every other malformed field: one bad indicator must
+        # cost that indicator and not the pass.
+        contradiction = _contradictory_band(
+            warning_threshold, critical_threshold, lower_warning, lower_critical)
+        if contradiction is not None:
+            return CheckOutcome(problems).declined(
+                Axiom.BOUNDEDNESS, entity, indicator.name,
+                NotEvaluatedReason.MISSING_CONFIG,
+                detail=contradiction,
+            )
 
         # 1. Check immediate threshold violations
         if critical_threshold is not None:
@@ -183,6 +260,7 @@ class BoundednessChecker:
                         'value': current,
                         'threshold': critical_threshold,
                         'threshold_type': 'critical',
+                        'bound': 'upper',   # see the warning arm below
                     },
                     confidence=1.0,
                 ))
@@ -213,9 +291,68 @@ class BoundednessChecker:
                         'value': current,
                         'threshold': warning_threshold,
                         'threshold_type': 'warning',
+                        # stated on every finding, including the two
+                        # that predate the floor. A consumer switching on
+                        # `threshold_type` alone has to know which names mean
+                        # which way; one field that says so directly is what
+                        # lets a report layer render the sentence without a
+                        # lookup table of ours.
+                        'bound': 'upper',
                     },
                     confidence=1.0,
                 ))
+
+        # 1b. the same comparison, pointing down.
+        #
+        # Deliberately AFTER the two arms above and without their early return.
+        # The upper-critical branch returns early so one breach does not
+        # double-fire as warning and critical; a floor breach and a ceiling
+        # breach on the same reading is not a double-fire, it is impossible —
+        # `_contradictory_band` has already refused the only declaration that
+        # could produce it. So the ordering here costs nothing and keeps the
+        # released upper-bound path byte-identical.
+        #
+        # `<=` mirrors the `>=` above. A value exactly ON the floor is a breach
+        # for the same reason a value exactly on the ceiling is: the threshold
+        # names the edge of acceptable, not the first unacceptable value.
+        if lower_critical is not None and current <= lower_critical:
+            problems.append(Problem.from_entity(
+                entity=entity,
+                problem_type=f'below_critical_threshold:{indicator.name}',
+                severity=Severity.CRITICAL,
+                reason=f"{indicator.name} is below critical threshold",
+                axiom=Axiom.BOUNDEDNESS,
+                source_layer=DetectionLayer.ONTOLOGY,
+                evidence={
+                    'indicator': indicator.name,
+                    'value': current,
+                    'threshold': lower_critical,
+                    'threshold_type': 'lower_critical',
+                    'bound': 'lower',
+                },
+                confidence=1.0,
+            ))
+            return apply_property_confidence(
+                entity, indicator.property_name, problems
+            )
+
+        if lower_warning is not None and current <= lower_warning:
+            problems.append(Problem.from_entity(
+                entity=entity,
+                problem_type=f'below_warning_threshold:{indicator.name}',
+                severity=Severity.WARNING,
+                reason=f"{indicator.name} is below warning threshold",
+                axiom=Axiom.BOUNDEDNESS,
+                source_layer=DetectionLayer.ONTOLOGY,
+                evidence={
+                    'indicator': indicator.name,
+                    'value': current,
+                    'threshold': lower_warning,
+                    'threshold_type': 'lower_warning',
+                    'bound': 'lower',
+                },
+                confidence=1.0,
+            ))
 
         # 2. Check trend toward limits (requires history)
         window = indicator.time_window or timedelta(hours=1)
@@ -263,6 +400,49 @@ class BoundednessChecker:
                             recommended_action=f"Expected to reach critical in {time_to_critical/60:.0f} minutes",
                         ))
 
+            # the projection arm, pointing down.
+            #
+            # Shipping the floor with only its threshold arm would give the two
+            # directions unequal capability: a rising quantity gets warned about
+            # before it arrives and a falling one only on arrival. That
+            # asymmetry is invisible from any call site and would be discovered
+            # the way this project keeps discovering them — by a consumer whose
+            # fan died between two clean reports.
+            #
+            # `current > lower_critical` rather than `>=`, matching the upper
+            # arm's `current < critical_threshold`: a value already at the floor
+            # has fired the threshold arm above and returned, so projecting
+            # toward a limit it has reached would be a second finding for one
+            # breach.
+            elif slope < -slope_minimum and r2 >= self.params.boundedness_trend_min_r2:
+                if lower_critical is not None and current > lower_critical:
+                    time_to_critical = (current - lower_critical) / (-slope)
+                    threshold_hours = self.params.boundedness_time_to_critical_hours * 3600
+
+                    if time_to_critical < threshold_hours:
+                        problems.append(Problem.from_entity(
+                            entity=entity,
+                            problem_type=f'approaching_floor:{indicator.name}',
+                            severity=Severity.HIGH,
+                            reason=f"{indicator.name} trending toward critical floor",
+                            axiom=Axiom.BOUNDEDNESS,
+                            source_layer=DetectionLayer.ONTOLOGY,
+                            evidence={
+                                'indicator': indicator.name,
+                                'value': current,
+                                'lower_critical_threshold': lower_critical,
+                                'slope': slope,
+                                'r2': r2,
+                                'time_to_critical_seconds': time_to_critical,
+                                'observations': len(values),
+                                'bound': 'lower',
+                            },
+                            confidence=r2,
+                            recommended_action=(
+                                f"Expected to reach the critical floor in "
+                                f"{time_to_critical/60:.0f} minutes"),
+                        ))
+
         # fire counting moved to the dispatch boundary
         # (reasoner._record_fires), so all eight axioms are counted
         # uniformly rather than three by hand.
@@ -290,16 +470,26 @@ class BoundednessChecker:
         # The threshold tests are `is not None` rather than truthiness, so a
         # legitimate threshold of 0.0 is honoured; that is why this condition
         # mirrors them exactly instead of using `not critical_threshold`.
-        if critical_threshold is None and warning_threshold is None:
+        #
+        # An internal ruling widened this from two thresholds to four. It had to be
+        # widened in the same change that added them: an indicator declaring
+        # only a floor would otherwise have fired a finding AND been declined
+        # as having no threshold in the same pass — the envelope contradicting
+        # itself about the evaluation it had just performed. This is the shape
+        # the project files under enumeration blindness, and it is the reason a
+        # check written against a closed set has to be revisited by whoever
+        # opens the set.
+        if (critical_threshold is None and warning_threshold is None
+                and lower_critical is None and lower_warning is None):
             return CheckOutcome(result).declined(
                 Axiom.BOUNDEDNESS, entity, indicator.name,
                 NotEvaluatedReason.NO_THRESHOLD,
                 detail=(
-                    "no warning or critical threshold configured; the trend "
-                    "arm projects toward the critical threshold, so more "
-                    "observations cannot make this indicator evaluable — "
-                    "declare a threshold, or drop BOUNDEDNESS from its "
-                    "`axioms:` list"),
+                    "no threshold configured; the trend arm projects toward "
+                    "the critical threshold, so more observations cannot make "
+                    "this indicator evaluable — declare `warning`/`critical` "
+                    "for a ceiling, `lower_warning`/`lower_critical` for a "
+                    "floor, or drop BOUNDEDNESS from its `axioms:` list"),
                 observations_count=len(values),
             )
         return result

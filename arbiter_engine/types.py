@@ -294,7 +294,13 @@ class AxiomParameters:
     connectivity_grace_period_seconds: float = 60.0
 
     # CONSISTENCY
-    # (CONSISTENCY uses universal rules, no tunable parameters)
+    # The universal rules (count >= 0, percentage 0-100, ratio 0-1) have nothing
+    # to tune. The cross-signal rule does: how far two readings that are
+    # DECLARED redundant may drift before their disagreement is a finding.
+    # Relative, and the same 5% the conservation loss margin uses — not because
+    # the two quantities are related but because a fallback nobody chose should
+    # at least be the one already in the file.
+    consistency_agreement_tolerance: float = 0.05
 
     # CONSERVATION
     conservation_loss_margin: float = 0.05      # 5% acceptable loss

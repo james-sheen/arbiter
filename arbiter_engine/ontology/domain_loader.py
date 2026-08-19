@@ -398,6 +398,8 @@ _FIELD_CONSUMERS: Dict[str, tuple] = {
     "transient_timeout": (Axiom.STABILITY,),
     "conservation_config": (Axiom.CONSERVATION,),
     "monotonicity_config": (Axiom.MONOTONICITY,),
+    "consistency_config": (Axiom.CONSISTENCY,),   #
+    "stability_config": (Axiom.STABILITY,),       #
     "role": (Axiom.CONSISTENCY, Axiom.RESPONSIVENESS),
     "direction": (Axiom.HOMEOSTASIS,),
     "target_type": (Axiom.CONNECTIVITY,),
@@ -405,6 +407,10 @@ _FIELD_CONSUMERS: Dict[str, tuple] = {
     "min_cardinality": (Axiom.CONNECTIVITY,),
     "max_cardinality": (Axiom.CONNECTIVITY,),
     "required_property": (Axiom.CONNECTIVITY,),
+    # see the note under `_SHARED_FIELDS`: the ceiling pair is shared,
+    # the floor pair is not.
+    "lower_warning_threshold": (Axiom.BOUNDEDNESS,),
+    "lower_critical_threshold": (Axiom.BOUNDEDNESS,),
 }
 
 #: Fields read by more than one axiom family, or by the loader itself, so
@@ -416,6 +422,11 @@ _SHARED_FIELDS = frozenset({
     "time_window", "warning_threshold", "critical_threshold",
     "violation_severity",
 })
+
+#: the floor pair is BOUNDEDNESS-only, unlike the ceiling pair above.
+#: `warning_threshold` / `critical_threshold` are shared because the traverser
+#: and the discovery router read them too; nothing outside BOUNDEDNESS reads a
+#: floor, so declaring one without BOUNDEDNESS is an unread field and says so.
 
 #: Every key an indicator block may legitimately carry.
 #:
@@ -453,7 +464,9 @@ _NON_AXIOM_KEYS = frozenset({"plausible_range"})
 
 _KNOWN_INDICATOR_KEYS = frozenset({
     "name", "type", "axioms", "window", "warning", "critical", "role",
+    "lower_warning", "lower_critical",
     "direction", "expect_variation", "conservation", "monotonicity",
+    "consistency", "stability",
     "normal", "transient", "bad", "timeout", "target_type", "relation_type",
     "min_cardinality", "max_cardinality", "required_property",
     "violation_severity",
@@ -464,12 +477,16 @@ _KNOWN_INDICATOR_KEYS = frozenset({
 _YAML_NAME = {
     "conservation_config": "conservation",
     "monotonicity_config": "monotonicity",
+    "consistency_config": "consistency",
+    "stability_config": "stability",
     "normal_states": "normal",
     "transient_states": "transient",
     "problematic_states": "bad",
     "transient_timeout": "timeout",
     "warning_threshold": "warning",
     "critical_threshold": "critical",
+    "lower_warning_threshold": "lower_warning",
+    "lower_critical_threshold": "lower_critical",
     "time_window": "window",
 }
 
@@ -653,6 +670,10 @@ def parse_indicator(
             relevant_axioms=_resolve_axioms(data.get("axioms")),
             warning_threshold=_resolve_threshold(data.get("warning")),
             critical_threshold=_resolve_threshold(data.get("critical")),
+            # the floor pair. Same resolver as the ceiling pair, so
+            # `lower_warning: 0` is a legitimate floor and not an absence.
+            lower_warning_threshold=_resolve_threshold(data.get("lower_warning")),
+            lower_critical_threshold=_resolve_threshold(data.get("lower_critical")),
             time_window=parse_duration(data.get("window", "1h")) or DEFAULT_WINDOW,
             direction=resolve_direction(data.get("direction"), name),
             normal_states=data.get("normal", []),
@@ -671,6 +692,14 @@ def parse_indicator(
             # package shipping the defect this CD exists to remove.
             conservation_config=data.get("conservation") or None,
             monotonicity_config=data.get("monotonicity") or None,
+            # the cross-signal block. Same shape as the two above and
+            # for the same reason: a list plus a tolerance does not fit a flat
+            # field beside `warning:`/`critical:`.
+            consistency_config=data.get("consistency") or None,
+            # the fourth nested block, for the opt-in slow-period
+            # oscillation detector. Nested for the same reason as the other
+            # three: several parameters that would collide as flat fields.
+            stability_config=data.get("stability") or None,
             # the declared role. Normalised here rather than at every
             # read site, and an unrecognised word is reported and dropped —
             # the same convention `_resolve_axioms` and `_resolve_severity`

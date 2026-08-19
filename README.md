@@ -45,7 +45,7 @@ ran and found nothing appears in neither. Without `evaluations_attempted`, the s
 invariants* has no honest value of N — and an envelope reporting a fabricated denominator is the
 exact failure the envelope exists to prevent.
 
-All eight axiom checkers emit declines (24 call sites). This is not a property of one checker that
+All eight axiom checkers emit declines (26 call sites). This is not a property of one checker that
 the others aspire to.
 
 ## The eight axioms
@@ -54,26 +54,30 @@ Declared per-indicator in a domain model, not in code:
 
 | Axiom | Asks |
 |---|---|
-| `BOUNDEDNESS` | does this stay under its ceiling? |
+| `BOUNDEDNESS` | does this stay inside its bounds? |
 | `STABILITY` | does it settle, or oscillate? |
 | `HOMEOSTASIS` | does it return to baseline after disturbance? |
 | `MONOTONICITY` | does it move only in the permitted direction? |
 | `CONSERVATION` | does what goes in come out? |
 | `CONNECTIVITY` | is the topology intact? |
-| `CONSISTENCY` | is this one value possible on its own terms? |
+| `CONSISTENCY` | is this value possible, and does it match its declared twin? |
 | `RESPONSIVENESS` | does it react within its deadline? |
 
-**`BOUNDEDNESS` is an upper bound only.** `warning:` and `critical:` are ceilings; there is no
-lower-bound key. A pair written as a floor — `warning: 2000, critical: 1750` for a fan that must not
-stop — loads without complaint and inverts the alarm, reporting a healthy reading as critical and a
-stopped one as clean. For a quantity where *lower* is worse, declare `HOMEOSTASIS` and let the
-baseline decide what too low means, or compute the shortfall in your adapter and give the engine a
-quantity that does have a ceiling. [`MODELING.md`](MODELING.md) gives the reasoning and both shapes.
+**`BOUNDEDNESS` takes a floor as well as a ceiling.** `warning:` and `critical:` are ceilings;
+`lower_warning:` and `lower_critical:` are floors, and declaring both pairs on one indicator gives
+you a band. A fan that must not stop declares `lower_critical: 1000` and gets back *speed_rpm is
+below critical threshold* with the reading it was given — no negated property, no translation layer.
+Whether you should declare a floor at all is a different question, and
+[`MODELING.md`](MODELING.md) answers it: transcribe one when a datasheet or a contract gives you the
+number, and reach for `HOMEOSTASIS` when nobody has.
 
-**`CONSISTENCY` reads one indicator, never two.** It range-checks a value against what its `role:`
-permits — a count is not negative, a percentage is within 0-100 — and it does **not** compare one
-indicator against another. To compare two readings, compute the difference in your adapter and give
-the engine that.
+**`CONSISTENCY` answers two separate questions.** By default it range-checks a value against what
+its `role:` permits — a count is not negative, a percentage is within 0-100 — and that rule reads
+one indicator and nothing else. Declaring `consistency: {agrees_with: [other_property]}` adds the
+second: two readings the model says are redundant have to match, within a `tolerance:` (relative) or
+`tolerance_absolute:`. Redundancy is declared because nothing about two numbers reveals that they
+measure the same thing. A named peer the entity does not carry is reported in `not_checked` rather
+than skipped.
 
 ```yaml
 - name: cpuUsageNanoCores
@@ -181,7 +185,9 @@ document tells them not to depend on.
 
 `examples/water_tank.yaml` is a deliberately synthetic two-tank water system that **declares all
 eight axioms in one file**, so it doubles as the schema reference. It is not one of the curated
-domain models — those are not published — and reading it is the fastest way to learn the shape.
+domain models — those are not published, and neither are the other two beside it — and reading it is
+the fastest way to learn the shape. `kubernetes_node.yaml` and `battery_pack.yaml` are the same kind
+of thing on domains where a floor and a band carry the weight.
 
 **Dependencies are two, and that was measured rather than assumed.** `numpy` and `pyyaml` are
 required. `scipy` and `rdflib` are extras (`[confidence]`, `[rdf]`) because they are reached only
@@ -258,8 +264,8 @@ and not part of the eleven.
 The engine is open. The knowledge and the operations are not.
 
 - **Domain models.** The engine reads them; the curated packs are not published. The mechanism is
-  the contribution — the models are the accumulated work. `examples/water_tank.yaml` is a synthetic
-  teaching model, deliberately not one of them.
+  the contribution — the models are the accumulated work. The three files in `examples/` are
+  synthetic teaching models, deliberately not among them.
 - **The operator half.** Clinic, planning, the Kubernetes executor, the introspection layer. These
   are welded to a running deployment and are not v0.1.
 - **Two lazy imports reach outside the cut, and they behave differently.** One root-cause wiring
@@ -272,7 +278,7 @@ The engine is open. The knowledge and the operations are not.
 
 ## Status
 
-**v0.1.** 58 Python files, 56 modules importing on the declared dependencies alone, 11 supported
+**v0.1.** 60 Python files, 58 modules importing on the declared dependencies alone, 11 supported
 names — **counted in this repository**, which is the package you are holding.
 
 That basis is stated because it is easy to get wrong in a way nobody notices. The build adds one
@@ -281,17 +287,53 @@ are holding — and this line published the smaller figure until 2026-08-12, whe
 falsify it with `find . -name '*.py' | wc -l`. A checkable false claim, in the Status section of a
 project whose subject is checkable claims. Count the artifact, never an earlier stage of it.
 
-The import figure carries the same hazard one layer down, and it depends on what you have installed. Sweeping the package where `scipy` happens to be present imports 57; on the declared dependencies alone it is the 56 above, because `propagation.lp_confidence` is the one module that needs `scipy` and it is a deep path outside the supported surface. Count the artifact **in the state the reader will have it**, not in the state the person measuring happens to be standing in — this line quoted the with-`scipy` figure until 2026-08-12, which no reader installing normally could reproduce.
+The import figure carries the same hazard one layer down, and it depends on what you have installed. Sweeping the package where `scipy` happens to be present imports 59; on the declared dependencies alone it is the 58 above, because `propagation.lp_confidence` is the one module that needs `scipy` and it is a deep path outside the supported surface. Count the artifact **in the state the reader will have it**, not in the state the person measuring happens to be standing in — this line quoted the with-`scipy` figure until 2026-08-12, which no reader installing normally could reproduce.
 
 Honest boundaries, stated because you would otherwise find them yourself:
 
 - **PREDICT is plumbed but unfed.** The traversal mode exists and nothing produces projected values
   outside a test. It is not a working forecast.
-- **One worked example ships, not a library of them.** Modelling a real system is your work.
+- **Three worked examples ship, not a library of them.** Modelling a real system is your work.
 - Stage I and Stage II of this project are **archived, not running**. Anything describing them as
   production is out of date.
 
+## How fast is it
+
+Measured on this project's development machine, so treat the shape of the curve as the claim and
+the absolute numbers as an illustration:
+
+| entities | evaluations | `check()` | per evaluation |
+|---:|---:|---:|---:|
+| 10 | 60 | 11 ms | 185 us |
+| 100 | 600 | 82 ms | 137 us |
+| 1000 | 6000 | 763 ms | 127 us |
+
+Four indicators per entity across five axioms, 40 observations per series, three runs per size,
+median reported. **It is linear in evaluations, and the per-evaluation cost does not degrade with
+scale** — that is the part worth knowing, and it is the part that does not depend on the machine.
+
+Re-derive it rather than trusting the table:
+
+```bash
+python3 -m arbiter_engine.scripts.benchmark_check --sizes 100,1000 --repeat 5
+```
+
+Session construction is excluded from those figures and reported separately by the script; feeding
+1000 entities costs roughly twice what checking them does, and a consumer holding a session across
+cycles pays it once.
+
 ## Documentation
+
+| File | Answers |
+|---|---|
+| [`MODELING.md`](MODELING.md) | how to write a domain model, and the rule that is easy to get wrong |
+| [`CHANGELOG.md`](CHANGELOG.md) | what changed, and which version numbers do not exist |
+| [`COMPATIBILITY.md`](COMPATIBILITY.md) | what a patch release may change, and what waits |
+| [`schema/envelope.schema.json`](schema/envelope.schema.json) | the response shape, machine-readable |
+
+Three worked models ship in `examples/`: `water_tank.yaml` declares all eight axioms and doubles as
+the schema reference, `kubernetes_node.yaml` is the smallest domain where a band matters, and
+`battery_pack.yaml` is one where nearly every bound is a floor somebody published.
 
 Evidence and technical write-ups live in `evidence/` — architecture, deployment runbook,
 fault-scenario catalogue, and the observation logs from the closed-loop alpha, including the

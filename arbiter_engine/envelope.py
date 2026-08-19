@@ -48,6 +48,28 @@ SOURCE_LIVE = "live"
 SOURCE_WARMING_UP = "warming_up"
 SOURCE_UNAVAILABLE = "unavailable"
 
+#: the envelope's own version, stamped in every ``meta``.
+#:
+#: DELIBERATELY NOT the package version. A consumer pinning `>=0.1.6,<0.2` is
+#: making a statement about the wire shape, and the package version moves for
+#: reasons that have nothing to do with it — a docstring fix, a new axiom
+#: parameter, a README. Tying them would make every patch release look like a
+#: contract change, which trains a reader to ignore the field.
+#:
+#: The number this starts at is 1 rather than 0, and that is a claim: the shape
+#: below has shipped in six releases and is what consumers already parse. What
+#: was missing was any way for them to KNOW which shape they had. The describe
+#: payload's nesting moved once between releases with no signal at all, and a
+#: downstream reader had to write a tolerant lookup that tried both locations —
+#: the cost of an unversioned contract, paid by the party least able to see it
+#: coming.
+#:
+#: MAJOR moves when a reader that worked stops working: a leg removed, a leg
+#: renamed, a field's meaning changed, a value relocated. Adding a key does NOT
+#: move it — every reader here is a lookup, and additive keys have been the
+#: normal way this envelope grows.
+ENVELOPE_SCHEMA_VERSION = 1
+
 
 @dataclass(frozen=True)
 class CheckedSummary:
@@ -105,7 +127,14 @@ class Envelope:
         return not self.not_checked
 
     def to_dict(self) -> Dict[str, Any]:
-        meta: Dict[str, Any] = {"source": self.source}
+        # `schema_version` first, and unconditional. A field that is
+        # present only sometimes cannot be used to branch on, which is the one
+        # thing a version field is for; and an `unavailable` envelope is
+        # exactly when a reader most needs to know what shape it is reading.
+        meta: Dict[str, Any] = {
+            "schema_version": ENVELOPE_SCHEMA_VERSION,
+            "source": self.source,
+        }
         if self.reason is not None:
             meta["reason"] = self.reason
         return {
