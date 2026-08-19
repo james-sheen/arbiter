@@ -300,11 +300,18 @@ class TestTheDescribePayloadLocations:
     def test_unreachable_declarations_is_under_model(self):
         assert "unreachable_declarations" in self._payload()["model"]
 
-    def test_the_top_level_keys_are_the_envelope_plus_the_two_reports(self):
+    def test_the_top_level_keys_are_the_envelope_plus_the_reports(self):
         """An equality assertion, not containment. Containment cannot see an
         extra key, and an envelope that grew a leg silently is the thing this
-        class exists to catch."""
+        class exists to catch.
+
+        It caught one: `unread_threshold_overrides` arrived here as a third
+        report of input that goes nowhere, and this test went red the moment it
+        did. That is the assertion working -- a payload key is a published
+        surface, and one appearing without anyone deciding to publish it is
+        exactly what containment would have waved through.
+        """
         assert set(self._payload()) == {
             "checked", "findings", "not_checked", "questions", "meta",
-            "model", "unconsumed_observations",
+            "model", "unconsumed_observations", "unread_threshold_overrides",
         }

@@ -24,6 +24,10 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from .clock import now_utc
+from arbiter_engine.axiom_thresholds import (
+    CD508_ENTITY_PROPERTY_KEY, OVERRIDE_CONSULTED_BY,
+    OVERRIDE_DECLARED_BUT_UNREACHABLE,
+)
 from arbiter_engine.envelope import (
     CheckedSummary, Envelope, build_envelope, unavailable_envelope,
 )
@@ -115,6 +119,98 @@ class EngineSession:
         signature. Reach for ``session.graph`` when you need the rest.
         """
         self.graph.add_relationship(source_id, relation_type, target_id)
+
+    def set_threshold_override(self, entity_id: str, indicator: str, axiom: str,
+                               warning: Any = None,
+                               critical: Any = None) -> None:
+        """Calibrate one axiom for one entity, instead of for its whole type.
+
+        This is a FEEDER rather than a new capability — the engine
+        has resolved per-entity overrides for a long time, and the only way to
+        set one was to know an undocumented sentinel property name and stamp a
+        dict keyed by tuples into ``Entity.properties``. That is a reasonable
+        interface for the simulator it was built for and not one a consumer can
+        find. This is the fourth feeder, for the fourth kind of input, and the
+        argument is the one that added the third: the session's job is to make
+        the ordinary case reachable without reading the internals.
+
+        **This does not override a declared threshold.** An indicator's
+        ``warning:`` and ``critical:`` are read straight off the model and no
+        override is consulted there. What this replaces is the axiom's
+        calibration parameter — see ``OVERRIDE_CONSULTED_BY`` for which
+        parameter each axiom actually reads. A caller who wants per-instance
+        declared bounds is asking for something the engine does not have, and
+        will be told so here rather than discovering it from a check that never
+        fires.
+
+        Deliberately does not raise on an unrecognised indicator or axiom. This
+        engine's answer to input it cannot use is to report it, not to refuse
+        it — the same ruling that keeps ``add_observations`` accepting any
+        property name. ``unread_threshold_overrides`` is where it surfaces.
+        """
+        entity = self.entities.get(entity_id)
+        if entity is None:
+            raise KeyError(
+                f"no entity {entity_id!r} in this session; add_entity first. "
+                f"An override is stored ON the entity, so there is nowhere to "
+                f"put this one."
+            )
+        # The checkers look up `indicator.property_name`, which differs from
+        # the declared name exactly when the model carries a `property_mapping`.
+        # Translating here means the caller uses the vocabulary their own model
+        # uses; keying on the declared name and silently missing was the trap.
+        key = self._override_key(entity.type, indicator)
+        table = entity.properties.setdefault(CD508_ENTITY_PROPERTY_KEY, {})
+        table[(key, str(axiom).upper())] = (warning, critical)
+
+    def _override_key(self, entity_type: str, indicator: str) -> str:
+        """The property name the checkers will look the override up under."""
+        for spec in (self.model.indicators.get(entity_type, [])
+                     if self.model is not None else []):
+            if spec.name == indicator:
+                return spec.property_name or spec.name
+        return indicator
+
+    def unread_threshold_overrides(self) -> List[Dict[str, Any]]:
+        """Overrides this session holds that no check will ever consult.
+
+        The mirror of ``unconsumed_observations``, for the input kind that had
+        no report either. An override is stored on an entity and read, if at
+        all, deep inside one axiom — so a wrong axiom name, an indicator the
+        model does not declare, or an axiom whose lookup sits on an unreachable
+        path all fail the same way: nothing happens, and nothing says so.
+
+        Reports the reason rather than a verdict. ``axiom_never_consults`` and
+        ``axiom_unreachable`` are properties of this build and would change if
+        the engine changed; ``undeclared_indicator`` is a property of the
+        caller's model. They are told apart because the remedies differ.
+        """
+        records: List[Dict[str, Any]] = []
+        for entity_id, entity in self.entities.items():
+            table = entity.properties.get(CD508_ENTITY_PROPERTY_KEY) or {}
+            declared = {
+                (s.property_name or s.name)
+                for s in ((self.model.indicators.get(entity.type, []))
+                          if self.model is not None else [])
+            }
+            for (key, axiom), bounds in table.items():
+                if axiom in OVERRIDE_DECLARED_BUT_UNREACHABLE:
+                    reason = "axiom_unreachable"
+                elif axiom not in OVERRIDE_CONSULTED_BY:
+                    reason = "axiom_never_consults"
+                elif self.model is not None and key not in declared:
+                    reason = "undeclared_indicator"
+                else:
+                    continue
+                records.append({
+                    "entity_id": entity_id,
+                    "entity_type": entity.type,
+                    "indicator": key,
+                    "axiom": axiom,
+                    "bounds": list(bounds),
+                    "reason": reason,
+                })
+        return records
 
     def unconsumed_observations(self) -> List[Dict[str, Any]]:
         """Series this session holds that no declared indicator will ever read.
@@ -255,6 +351,14 @@ def model_describe(session: EngineSession) -> Envelope:
     # fed and nothing reads it. Nesting a session fact under `model` would be
     # the same category error the envelope's own legs exist to avoid.
     payload["unconsumed_observations"] = session.unconsumed_observations()
+    # the third report of input that goes nowhere, beside the other
+    # two and in both tools, because that is where the observations report
+    # already lives and this is the same kind of fact. An override is stored on
+    # an entity and consulted, if ever, deep inside one axiom, so every way of
+    # getting it wrong fails identically: nothing happens and nothing says so.
+    # A feeder without this would have shipped the exact asymmetry that the
+    # observations report was added to close.
+    payload["unread_threshold_overrides"] = session.unread_threshold_overrides()
     return _WithPayload(envelope, payload)
 
 
@@ -441,6 +545,14 @@ def gaps(session: EngineSession,
     # record kinds into one leg.
     payload = envelope.to_dict()
     payload["unconsumed_observations"] = session.unconsumed_observations()
+    # the third report of input that goes nowhere, beside the other
+    # two and in both tools, because that is where the observations report
+    # already lives and this is the same kind of fact. An override is stored on
+    # an entity and consulted, if ever, deep inside one axiom, so every way of
+    # getting it wrong fails identically: nothing happens and nothing says so.
+    # A feeder without this would have shipped the exact asymmetry that the
+    # observations report was added to close.
+    payload["unread_threshold_overrides"] = session.unread_threshold_overrides()
     return _WithPayload(envelope, payload)
 
 
