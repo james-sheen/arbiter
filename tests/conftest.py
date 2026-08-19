@@ -2,11 +2,9 @@
 
 WHERE THIS RUNS, AND WHY IT IS ONE FILE AND NOT TWO
 ---------------------------------------------------
-These tests are source in this repository and a published artifact in the
-engine's. `build-engine.sh` copies them through the same rewrite it applies to
-the engine itself -- `arbiter_engine.X` becomes `arbiter_engine.X`
--- so the file below runs against the orchestrator's copy here and against the
-installed package there, unchanged.
+This suite is maintained in the tree the engine is cut from and shipped inside
+the package, and it is the SAME file in both places. The packaging step
+rewrites the import prefix; nothing else about it changes.
 
 That is the point rather than a convenience. A transform needs an oracle that
 spans it, and a suite that only ever runs on one side of a rewrite cannot tell
@@ -15,9 +13,12 @@ out of the closure, an import rewritten to a path that does not exist, a name
 the public surface stopped exporting -- fails here as an ordinary red test
 rather than as a bug report from a stranger.
 
-So: import through `arbiter_engine.<module>` and nothing else. A
-bare `from arbiter_engine import detection` has no dotted prefix for the
-rewrite to catch and would ship pointing at a package that is not there.
+Two consequences for anyone editing this file. Import each module by its full
+dotted path: a bare root-package import carries no prefix for the rewrite to
+find, and would arrive in the package pointing at something that is not there.
+And name neither package in prose -- a sentence contrasting the two comes out
+of the rewrite with both halves identical, which is exactly how an earlier
+version of this paragraph shipped saying nothing at all.
 
 WHAT IS DERIVED AND WHAT IS AUTHORED
 ------------------------------------

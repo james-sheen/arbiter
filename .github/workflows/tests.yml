@@ -38,9 +38,18 @@
 
 name: tests
 
+# NO BRANCH FILTER, and that is the fix rather than the shortcut. The first
+# version read `branches: [main]` and this repository publishes on `master`, so
+# the job was registered, valid, and unable to fire on a push -- zero runs,
+# nothing red, nothing to read. This file's own header argues that a job nobody
+# reads is worse than none; a job that cannot run is worse still, because it
+# looks like coverage from every angle except the one that counts.
+#
+# A branch name here would be a second copy of a fact that lives in the
+# publishing procedure, and the two would drift exactly once, silently. There
+# is one branch; matching every push cannot be wrong about which.
 on:
   push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
 
