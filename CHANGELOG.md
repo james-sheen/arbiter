@@ -20,6 +20,12 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+Nothing yet.
+
+---
+
+## [0.1.7] — 2026-08-19
+
 ### Added
 
 - **`lower_warning:` / `lower_critical:` on any numeric indicator.**
@@ -53,6 +59,13 @@ useful-looking document and the less trustworthy one.
 - **`meta.schema_version` in every envelope**, and a JSON Schema for the shape
   at `schema/envelope.schema.json`.
 - **This file, and `COMPATIBILITY.md`.**
+- **Two more worked models.** `examples/kubernetes_node.yaml` is the smallest
+  domain where a band matters; `examples/battery_pack.yaml` one where nearly
+  every bound is a floor somebody published. Both ship at the tree root and
+  under the package, as `water_tank.yaml` does.
+- **A scale benchmark**, `arbiter_engine.scripts.benchmark_check`. No public
+  number existed for `check()` latency, so a consumer sizing an integration had
+  to guess.
 
 ### Changed
 
@@ -63,6 +76,10 @@ useful-looking document and the less trustworthy one.
   by *a floor is a specification, not a guess*. The advice it was giving survives
   — do not invent a floor for a metric where nobody published one — but its
   mechanism was the engine's limitation rather than the modelling principle.
+- One test file in the sdist is renamed. Its name ended in an internal ticket
+  number, which should never have reached this repository; the tooling that
+  strips such references from file CONTENT reads bytes out of files and never
+  reads their names. No importable name changed.
 
 ### Fixed
 

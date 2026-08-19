@@ -21,6 +21,14 @@ not_evaluated         what was NOT evaluated, and why
 evaluations_attempted how many (axiom, entity, indicator) evaluations were tried
 ```
 
+**Every envelope carries `meta.schema_version`.** It names the WIRE SHAPE, not the package
+version, and it moves only when a reader that worked stops working — adding a key does not move it.
+[`COMPATIBILITY.md`](COMPATIBILITY.md) says what a patch release may change and what waits, and
+[`schema/envelope.schema.json`](schema/envelope.schema.json) is the shape machine-readable. The
+reason all three exist: the describe payload's nesting moved once between releases with no signal at
+all, and a consumer who had written against the earlier layout got `None` back from a lookup — which
+reads as *this engine does not support that* rather than *this moved*.
+
 `not_evaluated` entries carry a reason from a closed vocabulary of nine — `not_applicable`,
 `insufficient_samples`, `missing_property`, `no_current_value`, `missing_config`,
 `missing_entity_type`, `no_threshold`, `wrong_indicator_type`, `checker_error` — so a decline is
