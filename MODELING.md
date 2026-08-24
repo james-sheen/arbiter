@@ -52,6 +52,57 @@ An indicator carries a `name`, a `type`, a list of `axioms` it is expected to sa
 of their own — `conservation:` and `monotonicity:` appear below — and two of them read a declared
 `role:` rather than guessing the kind of quantity from the name.
 
+**Two declarations exist because a name cannot carry the fact, and both are places a derivation is
+tempting.** `consistency: {agrees_with: [...]}` says two readings are redundant and must match.
+Redundancy is a claim about the system, not an inference from naming: two channels of one part are
+the tempting pair and often the wrong one, because a temperature sensor exposing `Name` and `Name1`
+may be reporting its own die and an external diode, which differ by tens of degrees on a healthy
+board. Pair them and the engine reports disagreement between readings that were never supposed to
+agree — a false finding on every working machine. **If a rule can generate the pairs, it does not
+know the pairs.**
+
+**HOMEOSTASIS learns its normal from the window, which means a fault that lasts is eventually
+absorbed into it.** The baseline is a mean and spread over recent history, and that history contains
+the deviation — so as a fault persists the mean walks toward it, the spread widens, and the score
+falls until the axiom goes quiet on a fault that is still running. That is what a *rolling* baseline
+is, and it is the right default: a quantity that legitimately drifts must not be accused forever.
+
+**When you know where a quantity is supposed to sit, say so, and the check stops depending on
+history at all.** `homeostasis: {setpoint: 0, tolerance: 5}` compares against a number you wrote
+rather than one the engine inferred, so nothing about it moves when the reading does.
+`tolerance_critical` defaults to twice `tolerance`. A setpoint without a tolerance is refused rather
+than given one — how far is too far is a fact about your system, and an engine that guessed it would
+be deciding a domain question. This is also the way past the widest sample floor in the format: the
+learned path needs thirty observations inside a seven-day window, so a series sampled less often than
+roughly every six hours can never reach it, while a declared setpoint needs none.
+
+`homeostasis: {must_return_within: 15m}` asks the other question — *did this come back inside my
+deadline* — by building the baseline from samples older than that span. **Its limit is stated because
+it is easy to mistake for the fix**: it moves the absorption horizon out by the span rather than
+removing it, so a fault outlasting the deadline by long enough is absorbed again. Use it when you
+have a deadline and no target; use a setpoint when you have a target.
+
+**MONOTONICITY tolerates some backward movement, and the number is yours to set.** A counter
+declared `expected_direction: increasing` fires after **three** reversals inside the window, not
+after one — noise, retransmits and clock skew all produce a single backward step in series that are
+fine. Write `monotonicity: {reversal_tolerance: 1}` for a quantity where one rollback is a fault,
+and `{reset_tolerance: N}` for the separate count of drops-to-near-zero that `allow_reset` excuses
+individually. Both default to 3. **Below the tolerance the axiom is quiet, exactly as BOUNDEDNESS is
+quiet at 84 against a `warning:` of 85** — the difference that matters is that these are now numbers
+you declare rather than numbers the engine keeps to itself.
+
+**CONSERVATION needs both halves of the balance named, and it will not work either out.** Declare
+the pairing in the `conservation:` block: `input_property:` and `output_properties:`. An indicator
+listing CONSERVATION without that block is reported as an unreachable declaration when the model
+loads, and declines every cycle rather than passing quietly — it is a check the engine cannot run,
+not a check that found nothing. There is a separate one-word field, `flow: in` or `flow: out`, which
+tells the traversal kernel which side of a balance a quantity sits on when it walks a flow cycle
+through the topology; the kernel holds no indicator, so it cannot read the block. Declare `flow:` on
+both sides. Neither field is inferred from the property's name, and both used to be: the engine
+rewrote an `_in` marker to `_out` and balanced against whatever that produced, which in three
+shipped models named a property that did not exist. `bytes_in` and `bytes_out` balance;
+`bad_actor_input` and `line_input_status` do not; nothing in those names says which is which.
+
 **Telling a broken sensor from a real fault is a separate question, and this format answers it
 without a range.** A reading that never moves is a dead probe rather than a very steady system, and
 saying so is opt-in: declare `expect_variation: true` on the indicator and STABILITY in its

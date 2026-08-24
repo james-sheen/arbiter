@@ -36,18 +36,34 @@ domain:
 
       # CONSERVATION -- what flows in should leave or accumulate. The nested
       # block is what makes this configurable from YAML at all.
+      #
+      # `flow:` is the SECOND declaration, and the two answer different
+      # questions. `conservation:` tells the per-indicator checker which
+      # properties to sum against which. `flow:` tells the traversal kernel,
+      # which walks flow CYCLES through the topology and has no indicator in
+      # hand, which side of a balance a quantity sits on. That kernel used to
+      # answer it by reading the property NAME -- so `bad_actor_input` was an
+      # inflow -- and since it answers it only from here. Undeclared
+      # means the cycle balance is not computed and the omission is reported
+      # as a gap.
       - name: inflow_lps
         type: NUMERIC
         axioms: [CONSERVATION]
         window: 15m
+        flow: in
         conservation:
           input_property: inflow_lps
           output_properties: [outflow_lps]
           loss_margin: 0.05
 
+      # Note this side declares `flow:` and no axiom. It is named inside the
+      # block above, so the checker already reads it; what it needs to say
+      # for itself is which direction it points. Requiring an axiom here to
+      # accept that would be demanding a declaration the model does not mean.
       - name: outflow_lps
         type: NUMERIC
         axioms: []          # observation-only: recorded, never checked per cycle
+        flow: out
 
       # CONSISTENCY -- two questions, and this indicator asks both.
       #
@@ -161,6 +177,22 @@ domain:
       # concept to satisfy a checker is the wrong remedy, and the name is back.
       # `model_describe(s)` lists any declaration that cannot fire, so this is
       # answerable without running a cycle.
+      # HOMEOSTASIS here reads a DECLARED setpoint rather than a learned one,
+      # and this indicator is the clearest case for it: a control error is
+      # supposed to sit at zero, which is a fact about the controller and not
+      # something to be inferred from where the error has recently been.
+      #
+      # The learned baseline is still the default everywhere else, and it is
+      # what the axiom means. Its limit is that the baseline window CONTAINS
+      # the deviation, so a fault that persists is absorbed into its own
+      # reference and the score decays until the axiom falls silent — measured
+      # at roughly fifteen samples on a 60-second series. A declared setpoint
+      # cannot be absorbed, because nothing about a number the operator wrote
+      # moves when the reading does. See.
+      #
+      # `tolerance` is the warning band in the property's own units; critical
+      # defaults to twice it unless `tolerance_critical` says otherwise. A
+      # setpoint declared without a tolerance is refused rather than given one.
       - name: setpoint_error_pct
         type: NUMERIC
         role: latency
@@ -168,3 +200,6 @@ domain:
         warning: 5
         critical: 12
         window: 30m
+        homeostasis:
+          setpoint: 0
+          tolerance: 5

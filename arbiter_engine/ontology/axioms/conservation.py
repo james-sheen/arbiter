@@ -84,10 +84,11 @@ class ConservationChecker:
 
         conservation_config = getattr(indicator, 'conservation_config', None)
         if not conservation_config:
-            result = self._check_simple_conservation(entity, indicator, history)
+            result = self._check_undeclared_conservation(
+                entity, indicator, history)
             confirmed = apply_property_confidence(
                 entity, indicator.property_name, result)
-            # the helper seam. `_check_simple_conservation` returns a
+            # the helper seam. The helper returns a
             # CheckOutcome carrying its decline, but `apply_property_confidence`
             # returns a plain list, so the records were dropped here. Same shape
             # in STABILITY: a decline inside a helper is lost the moment the
@@ -147,7 +148,23 @@ class ConservationChecker:
 
         total_input = sum(v[1] for v in input_values if v[1] is not None)
         if total_input <= 0:
-            return problems
+            # this was a bare `return problems`: an empty list, no
+            # finding and no decline, which the envelope reports as a clean
+            # pass. Same shape as the exit twelve lines above, found
+            # while removing the name-inference path that shared it. The
+            # samples ARE here — the gate above passed — so this is not
+            # insufficient data; a deficit RATIO is simply undefined against a
+            # zero total, and saying so is the only honest answer.
+            return CheckOutcome(problems).declined(
+                Axiom.CONSERVATION, entity, indicator.name,
+                NotEvaluatedReason.NOT_APPLICABLE,
+                detail=(
+                    f"the {len(input_values)} in-window observations of "
+                    f"{input_prop} total {total_input:g}; a conservation "
+                    f"deficit is expressed as a fraction of the input and has "
+                    f"no value when there is no input to lose"),
+                observations_count=len(input_values),
+            )
 
         total_output = 0.0
         for out_prop in output_props:
@@ -181,19 +198,40 @@ class ConservationChecker:
 
         return apply_property_confidence(entity, indicator.property_name, problems)
 
-    def _check_simple_conservation(
+    def _check_undeclared_conservation(
         self,
         entity: Entity,
         indicator: IndicatorSpec,
         history: ObservationHistory,
     ) -> List[Problem]:
-        """
-        Simple conservation check: look for paired properties.
+        """CONSERVATION was declared and the balance was not. Decline, always.
 
-        If indicator name contains 'in' or 'received', look for
-        a corresponding 'out' or 'sent' property and check balance.
+        This used to guess the other half of the balance from the
+        indicator's NAME: an ``_in`` / ``_received`` / ``_requests`` / ``input_``
+        marker was rewritten to ``_out`` / ``_sent`` / ``_responses`` /
+        ``output_`` and the result treated as the outflow property. Reported
+        from outside as issue #9 against the sibling case — a die sensor and an
+        external diode share a suffix and not a thermal environment, and the
+        same is true of a balance: which quantities offset which is a fact
+        about the system, not about its vocabulary.
+
+        MEASURED BEFORE REMOVING, across the shipped domain packs. Nine
+        indicators reached this path with a marker matched, and **three of the
+        nine named a partner property that does not exist in their own model**.
+        An absent partner yields no observations, which fell into the
+        sample-count return below — a bare empty list, no finding and no
+        decline. So the guess was not merely unsound: a third of the time it
+        produced the silent clean pass this engine exists to make impossible.
+        The other six were correct by luck of an English naming convention, and
+        every one of them could have declared the block instead.
+
+        THE REMEDY IS THE DECLARATION, NOT A RENAME. `roles.py` states the same
+        rule for CONSISTENCY: *renaming a domain concept to satisfy a checker
+        is the wrong remedy; declaring what the concept IS, is the right one.*
+        The detail below names the block to write, and never a property the
+        engine picked.
         """
-        problems = []
+        problems: List[Problem] = []
 
         prop = indicator.property_name
         if not prop:
@@ -203,77 +241,18 @@ class ConservationChecker:
                 detail="the indicator declares no property_name",
             )
 
-        in_markers = ['_in', '_received', '_requests', 'input_']
-        out_suffixes = {
-            '_in': '_out', '_received': '_sent',
-            '_requests': '_responses', 'input_': 'output_',
-        }
-
-        matched_marker = None
-        for marker in in_markers:
-            if marker in prop:
-                matched_marker = marker
-                break
-
-        if not matched_marker:
-            # the terminus of the YAML-declared CONSERVATION path.
-            # With no `conservation:` block the checker falls back to guessing
-            # a paired property by name, and an indicator whose name carries
-            # none of the markers evaluates nothing at all. That is the common
-            # case, not the edge one — added the config block precisely
-            # so a domain need not rely on this.
-            return CheckOutcome(problems).declined(
-                Axiom.CONSERVATION, entity, indicator.name,
-                NotEvaluatedReason.MISSING_CONFIG,
-                detail=(
-                    "no conservation config, and the property name carries "
-                    "none of the flow markers (_in, _received, _requests, "
-                    "input_) the fallback matches on"),
-            )
-
-        out_prop = prop.replace(matched_marker, out_suffixes[matched_marker])
-        window = timedelta(seconds=self.params.conservation_window_seconds)
-
-        in_values = history.get_values(entity.id, prop, window)
-        out_values = history.get_values(entity.id, out_prop, window)
-
-        if (len(in_values) < self.params.conservation_min_samples or
-                len(out_values) < self.params.conservation_min_samples):
-            return problems
-
-        total_in = sum(v[1] for v in in_values if v[1] is not None)
-        total_out = sum(v[1] for v in out_values if v[1] is not None)
-
-        if total_in <= 0:
-            return problems
-
-        deficit_ratio = abs(total_in - total_out) / total_in
-        # simple-conservation path: no indicator-config layer, so
-        # precedence is just sentinel > global params.
-        margin = resolve_axiom_threshold(
-            entity, indicator.property_name, "CONSERVATION",
-            fallback=self.params.conservation_loss_margin,
-            bound="warn",
+        # the terminus of the YAML-declared CONSERVATION path, and
+        # since the only exit from it. An internal ruling added the config block
+        # precisely so a domain need not rely on a guess; this is what makes
+        # relying on one impossible.
+        return CheckOutcome(problems).declined(
+            Axiom.CONSERVATION, entity, indicator.name,
+            NotEvaluatedReason.MISSING_CONFIG,
+            detail=(
+                f"CONSERVATION is declared on {indicator.name} but the balance "
+                f"is not: add `conservation: {{input_property: ..., "
+                f"output_properties: [...]}}` naming the properties that "
+                f"offset each other. The engine no longer infers the pair from "
+                f"the property name"),
         )
 
-        if deficit_ratio > margin:
-            problems.append(Problem.from_entity(
-                entity=entity,
-                problem_type=f'conservation_violation:{indicator.name}',
-                severity=Severity.MEDIUM,
-                reason=f"{prop} vs {out_prop}: {deficit_ratio*100:.1f}% imbalance",
-                axiom=Axiom.CONSERVATION,
-                source_layer=DetectionLayer.ONTOLOGY,
-                evidence={
-                    'indicator': indicator.name,
-                    'input_property': prop,
-                    'output_property': out_prop,
-                    'total_input': total_in,
-                    'total_output': total_out,
-                    'deficit_ratio': deficit_ratio,
-                    'margin': margin,
-                },
-                confidence=min(1.0, deficit_ratio / margin),
-            ))
-
-        return problems

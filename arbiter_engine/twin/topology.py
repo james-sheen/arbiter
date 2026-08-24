@@ -62,6 +62,19 @@ class GapType(str, Enum):
     MISSING_PROPERTY = "missing_property"
     MISSING_THRESHOLD = "missing_threshold"
     MISSING_DYNAMICS = "missing_dynamics"
+    # the model does not say something the check needs, and no
+    # amount of looking at the data will supply it. Distinct from
+    # MISSING_PROPERTY, which says the telemetry is short of a value the model
+    # DID declare: that one is answered by feeding data, this one only by
+    # editing the model, and telling an operator to go find data that will not
+    # help is worse than saying nothing.
+    #
+    # A new member rather than the nearest existing one,: a closed
+    # enum missing a member does not raise, it reclassifies the case as the
+    # nearest member and reports it with confidence. `gap_type` is an open
+    # string in `schema/envelope.schema.json`, and COMPATIBILITY.md permits a
+    # patch release to add an enum member for exactly this reason.
+    MISSING_DECLARATION = "missing_declaration"
 
 
 class ResolutionStrategy(str, Enum):
@@ -149,6 +162,12 @@ class TopologyGap:
             GapType.MISSING_PROPERTY: "What is the value of '{location}'?",
             GapType.MISSING_THRESHOLD: "What is the normal range for '{location}'?",
             GapType.MISSING_DYNAMICS: "How fast does a change propagate through '{location}'?",
+            # the only template that asks for an edit to the model
+            # rather than for an observation. Every question above is
+            # answerable by looking harder at the system; this one is not, and
+            # phrasing it like the others would send an operator to the
+            # telemetry for something the telemetry does not contain.
+            GapType.MISSING_DECLARATION: "Which quantities on '{location}' balance against which, and in which direction?",
         }
         return templates.get(self.gap_type, self.description).format(
             location=self.location
@@ -188,6 +207,21 @@ class TwinNode:
     projected_values: Dict[str, ProjectedValue] = field(default_factory=dict)
     confidence: NodeConfidence = field(default_factory=NodeConfidence)
     gaps: List[TopologyGap] = field(default_factory=list)
+    #: property name -> ``"in"`` / ``"out"``, seeded by the builder
+    #: from every indicator on this entity's type that declares ``flow:``.
+    #:
+    #: Written by ``TwinBuilder._flow_directions_from_indicators`` and read by
+    #: ``TopologyTraverser._check_flow_balance``, which is the whole reason the
+    #: field exists: that check used to decide which of an entity's properties
+    #: were inflows by matching their NAMES against English tokens, and there
+    #: was no route from the model — which knows — to the traverser, which was
+    #: guessing. Empty means undeclared, and undeclared means no balance is
+    #: computed; on the check that consulted no declaration at all.
+    #:
+    #: Both writer and reader exist on purpose. An internal ruling removed a `TwinNode`
+    #: field that had neither, and the lesson from it is recorded here rather
+    #: than relearned.
+    flow_directions: Dict[str, str] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------

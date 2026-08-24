@@ -51,14 +51,24 @@ _SEVERITY_DECAY = {
 }
 
 
-# flow-direction markers for the structural CONSERVATION path.
-# Matched as underscore-delimited tokens, never as substrings.
+# flow-direction markers. demoted them: they no longer decide
+# anything, they only propose. Matched as underscore-delimited tokens, never as
+# substrings.
 _FLOW_IN_TOKENS: FrozenSet[str] = frozenset({'in', 'input', 'received'})
 _FLOW_OUT_TOKENS: FrozenSet[str] = frozenset({'out', 'output', 'sent'})
 
 
-def classify_flow_direction(prop_name: str) -> Optional[str]:
-    """Classify a property name as 'in', 'out', or None (neither).
+def suggest_flow_direction(prop_name: str) -> Optional[str]:
+    """PROPOSE 'in', 'out', or None for a property name. Never assert on it.
+
+     renamed this from ``classify_flow_direction`` and took its output
+    off the assertion path. The rename is the change: *classify* reads as a
+    verdict, and the verdict was wrong often enough to manufacture conservation
+    deficits out of nothing. Its only caller now writes candidates into a
+    :class:`TopologyGap` for a human to confirm or reject — the ``gaps()``
+    posture, reported and asserted by nobody. The balance itself is computed
+    from ``TwinNode.flow_directions``, which the builder seeds from the model's
+    declared ``flow:`` field.
 
     Matching is on underscore-delimited tokens. The previous form
     tested raw substring containment, which swept every property whose name
@@ -67,19 +77,19 @@ def classify_flow_direction(prop_name: str) -> Optional[str]:
     ``policy_intent``, ``root_cause_indicators``, ``seal_integrity``,
     ``wear_indicators``, ``sensor_invalid_read_rate``, ``freeze_instrument``
     and ``periodic_detection_interval``, plus ``days_outstanding`` and
-    ``load_generator_outage_simulation`` on the outflow side. None of those carry
-    flow, and summing them manufactures a conservation deficit from nothing.
+    ``load_generator_outage_simulation`` on the outflow side.
 
     Token matching rather than ``endswith`` is deliberate: the unit-suffixed
     ``flow_in_m3h`` / ``flow_out_m3h`` and the suffix-form ``voltage_output``
     are genuine flow properties in the shipped domains, and a suffix test
     would silently drop all three.
 
-    Known residual: a standalone ``in``/``input`` token inside a name that is
-    not a flow quantity still matches — ``engage_human_in_loop``,
-    ``bad_actor_input``, ``line_input_status``. Name-based inference cannot
-    resolve those; only a declaration can. See on why this path
-    consults no declaration at all.
+    THE RESIDUAL IS WHY THIS IS ONLY A SUGGESTION. A standalone ``in``/
+    ``input`` token inside a name that is not a flow quantity still matches —
+    ``engage_human_in_loop``, ``bad_actor_input``, ``line_input_status``. Two
+    rounds of narrowing did not reach them and a third would not either: the
+    information is not in the name. Only a declaration can resolve it, so a
+    declaration is what the balance now reads.
     """
     tokens = set(prop_name.lower().split('_'))
     if tokens & _FLOW_IN_TOKENS:
@@ -723,29 +733,54 @@ class TopologyTraverser:
             GapType.MISSING_PROPERTY: 0.6,
             GapType.MISSING_THRESHOLD: 0.4,
             GapType.MISSING_DYNAMICS: 0.2,
+            # between a missing edge and a missing property. It
+            # blocks a whole axiom family on the entity rather than one
+            # reading, and unlike every other member it cannot be cleared by
+            # collecting more data.
+            GapType.MISSING_DECLARATION: 0.7,
         }
         return hop_factor * probability * type_weight.get(gap.gap_type, 0.5)
 
     def _check_flow_balance(self, cycle_path: List[str]) -> List[Problem]:
-        """Verify conservation around a flow cycle."""
+        """Verify conservation around a flow cycle, from DECLARED directions.
+
+        This used to decide which of an entity's properties were
+        inflows by matching their names against English tokens, which is the
+        blind spot that an internal ruling recorded and that an internal ruling could only narrow. It now reads
+        ``TwinNode.flow_directions`` — seeded by the builder from the model's
+        declared ``flow:`` — and a node with no declaration yields a gap rather
+        than a balance.
+
+        The gap matters more than the silence it replaces. Dropping the check
+        quietly would leave an operator who wanted a balance with no way to
+        find out why they were not getting one; the gap names the candidate
+        properties a name scan would have offered, so confirming them is a
+        declaration to write rather than a search to run.
+        """
         problems: List[Problem] = []
         for node_id in cycle_path[:-1]:
             node = self.topology.get_node(node_id)
             if not node:
                 continue
             props = node.entity.properties
-            # token-matched, not substring-matched. bool is a
-            # subclass of int, so it is excluded explicitly: a flag named
-            # engage_human_in_loop would otherwise contribute 1 to inflow.
+            declared = getattr(node, 'flow_directions', None) or {}
+            if not declared:
+                self._report_undeclared_flow(node, node_id, props)
+                continue
+            # bool is a subclass of int, so it is excluded explicitly: a flag
+            # named engage_human_in_loop would otherwise contribute 1 to
+            # inflow. It no longer reaches here by name — but a model is free
+            # to declare `flow:` on a STATE indicator, and the sum must still
+            # refuse to add a boolean to a quantity.
             flow_in = sum(
                 v for k, v in props.items()
-                if classify_flow_direction(k) == 'in'
+                if declared.get(k) == 'in'
                 and isinstance(v, (int, float))
                 and not isinstance(v, bool)
             )
             flow_out = sum(
                 v for k, v in props.items()
-                if classify_flow_direction(k) == 'out'
+                if declared.get(k) == 'out'
                 and isinstance(v, (int, float))
                 and not isinstance(v, bool)
             )
@@ -788,6 +823,45 @@ class TopologyTraverser:
                         },
                     ))
         return problems
+
+    def _report_undeclared_flow(
+        self, node: TwinNode, node_id: str, props: Dict[str, Any],
+    ) -> None:
+        """The candidates surface for an undeclared flow balance.
+
+        Records ONE gap per node naming the properties whose names suggest a
+        direction. The suggestion is carried in the description and nowhere
+        else: nothing downstream reads it as a direction, which is the
+        difference between this and the path it replaces.
+
+        Idempotent on ``(gap_type, location)``. ``traverse`` reaches the same
+        node once per cycle it participates in, and `api.gaps` deduplicates on
+        that key anyway — but a list that grows without bound across a long
+        session is a leak whether or not its reader deduplicates.
+        """
+        location = f"{node_id}.flow"
+        if any(g.gap_type == GapType.MISSING_DECLARATION
+               and g.location == location for g in node.gaps):
+            return
+        candidates = sorted(
+            f"{k}={suggest_flow_direction(k)}"
+            for k, v in props.items()
+            if suggest_flow_direction(k) is not None
+            and isinstance(v, (int, float)) and not isinstance(v, bool)
+        )
+        detail = (f"; name-based candidates, none of them asserted: "
+                  f"{', '.join(candidates)}" if candidates else
+                  "; no property name even suggests a direction")
+        gap = TopologyGap(
+            gap_type=GapType.MISSING_DECLARATION,
+            location=location,
+            description=(
+                f"{node_id} is on a flow cycle and no indicator on its type "
+                f"declares flow:, so no balance was computed{detail}"),
+            suggested_strategy=ResolutionStrategy.HUMAN_PROVIDE,
+        )
+        node.gaps.append(gap)
+        self.topology.gaps.append(gap)
 
     @staticmethod
     def _decay_severity(base: Severity, hops: int) -> Severity:

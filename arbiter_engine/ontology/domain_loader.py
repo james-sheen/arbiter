@@ -397,6 +397,7 @@ _FIELD_CONSUMERS: Dict[str, tuple] = {
     "problematic_states": (Axiom.STABILITY,),
     "transient_timeout": (Axiom.STABILITY,),
     "conservation_config": (Axiom.CONSERVATION,),
+    "homeostasis_config": (Axiom.HOMEOSTASIS,),   #
     "monotonicity_config": (Axiom.MONOTONICITY,),
     "consistency_config": (Axiom.CONSISTENCY,),   #
     "stability_config": (Axiom.STABILITY,),       #
@@ -421,6 +422,23 @@ _SHARED_FIELDS = frozenset({
     "uri", "name", "property_name", "indicator_type", "relevant_axioms",
     "time_window", "warning_threshold", "critical_threshold",
     "violation_severity",
+    # `flow_direction` is here rather than mapped to CONSERVATION
+    # above, and the reason is the second sentence of this block's own
+    # docstring: declaring it says nothing about which axioms should be
+    # present. Its reader is the TOPOLOGY BUILDER, which seeds it onto every
+    # node it makes; the structural balance then runs on FLOW cycles in the
+    # graph, and no indicator's `axioms:` list gates it.
+    #
+    # Mapping it to CONSERVATION was tried first and is wrong in a way worth
+    # recording, because it looks right. A balance has two sides and only one
+    # of them carries the `conservation:` block — `water_tank.yaml` declares
+    # the block on `inflow_lps` and lists `outflow_lps` inside it, leaving the
+    # outflow indicator with `axioms: []` on purpose. Under the mapping, the
+    # outflow could not declare its direction without also declaring an axiom
+    # it does not want, which would then decline `missing_config` once per
+    # cycle forever. The engine would have been demanding a false declaration
+    # to accept a true one.
+    "flow_direction",
 })
 
 #: the floor pair is BOUNDEDNESS-only, unlike the ceiling pair above.
@@ -466,7 +484,7 @@ _KNOWN_INDICATOR_KEYS = frozenset({
     "name", "type", "axioms", "window", "warning", "critical", "role",
     "lower_warning", "lower_critical",
     "direction", "expect_variation", "conservation", "monotonicity",
-    "consistency", "stability",
+    "consistency", "stability", "flow", "homeostasis",
     "normal", "transient", "bad", "timeout", "target_type", "relation_type",
     "min_cardinality", "max_cardinality", "required_property",
     "violation_severity",
@@ -475,6 +493,8 @@ _KNOWN_INDICATOR_KEYS = frozenset({
 #: Where the YAML key differs from the dataclass attribute, so a remedy names
 #: what the author actually typed.
 _YAML_NAME = {
+    "flow_direction": "flow",
+    "homeostasis_config": "homeostasis",
     "conservation_config": "conservation",
     "monotonicity_config": "monotonicity",
     "consistency_config": "consistency",
@@ -603,6 +623,37 @@ def _resolve_role(raw: Any, indicator_name: str = "") -> Optional[str]:
     return resolved
 
 
+#: the two sides of a balance. A closed set of exactly two, because
+#: a balance has exactly two sides; anything else is a different axiom.
+FLOW_DIRECTIONS = frozenset({"in", "out"})
+
+
+def _resolve_flow_direction(raw: Any, indicator_name: str = "") -> Optional[str]:
+    """The declared `flow:` for an indicator, or None.
+
+    None means *undeclared*, and undeclared means this quantity is not summed
+    into either side of a structural balance. That is the safe default: the
+    path this replaces decided the same question by matching the indicator's
+    name against English tokens, and got `engage_human_in_loop` and
+    `bad_actor_input` on the inflow side of a conservation sum.
+
+    An unrecognised word is warned about and treated as absent, the convention
+    `_resolve_role` and `_resolve_expect_variation` already use. Coercing
+    `flow: inbound` to `"in"` by prefix would be the same inference one layer
+    down, and the author would believe they had declared something exact.
+    """
+    if raw is None or str(raw).strip() == "":
+        return None
+    word = str(raw).strip().lower()
+    if word in FLOW_DIRECTIONS:
+        return word
+    logger.warning(
+        "unknown flow %r on indicator %r — ignored; write one of %s",
+        raw, indicator_name, ", ".join(sorted(FLOW_DIRECTIONS)),
+    )
+    return None
+
+
 #: The words YAML authors actually write for a boolean, beyond what the parser
 #: already turns into `True`/`False`. Quoted values arrive here as strings.
 _TRUE = {"true", "yes", "y", "on", "1"}
@@ -700,6 +751,10 @@ def parse_indicator(
             # oscillation detector. Nested for the same reason as the other
             # three: several parameters that would collide as flat fields.
             stability_config=data.get("stability") or None,
+            # the fifth nested block. Carries `must_return_within`,
+            # a duration, which cannot be a flat field beside `warning:`
+            # without reading as a threshold on the value rather than on time.
+            homeostasis_config=data.get("homeostasis") or None,
             # the declared role. Normalised here rather than at every
             # read site, and an unrecognised word is reported and dropped —
             # the same convention `_resolve_axioms` and `_resolve_severity`
@@ -713,6 +768,11 @@ def parse_indicator(
             # `bool("yes")` logic somewhere downstream.
             expect_variation=_resolve_expect_variation(
                 data.get("expect_variation"), name),
+            # Same convention again: normalised here, unrecognised
+            # values reported and dropped. Which side of a balance a quantity
+            # sits on is a domain fact, and the path this feeds used to read it
+            # off the indicator's name.
+            flow_direction=_resolve_flow_direction(data.get("flow"), name),
             # what the AUTHOR typed, which the values cannot say.
             declared_keys=frozenset(data.keys()) if isinstance(data, dict)
             else frozenset(),

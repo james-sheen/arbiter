@@ -111,7 +111,15 @@ class TopologyBuilder:
             axiom_states = self._axiom_states_from_yaml(
                 entity.type, indicators_by_type
             )
-            node = TwinNode(entity=entity, axiom_states=axiom_states)
+            node = TwinNode(
+                entity=entity,
+                axiom_states=axiom_states,
+                # seeded on BOTH builder paths. Seeding one is the
+                # shape: a leg that is structurally unable to
+                # perform rather than merely under-performing.
+                flow_directions=self._flow_directions_from_indicators(
+                    entity.type, indicators_by_type),
+            )
             topology.add_node(node)
 
         # Build alias map for raw/qualified ID resolution
@@ -173,7 +181,12 @@ class TopologyBuilder:
                 if indicators_by_type else {}
             )
             topology.add_node(
-                TwinNode(entity=entity, axiom_states=axiom_states))
+                TwinNode(
+                    entity=entity,
+                    axiom_states=axiom_states,
+                    flow_directions=self._flow_directions_from_indicators(
+                        entity.type, indicators_by_type),
+                ))
         aliases = self._build_id_alias_map(entities)
         for source_id, edge_tuples in graph.edges.items():
             resolved_source = self._resolve_id(source_id, aliases)
@@ -224,6 +237,48 @@ class TopologyBuilder:
             warning = getattr(ind, 'warning_threshold', None)
             critical = getattr(ind, 'critical_threshold', None)
         return name, axioms, warning, critical
+
+    def _flow_directions_from_indicators(
+        self,
+        entity_type: str,
+        indicators_by_type: Optional[Dict[str, List]],
+    ) -> Dict[str, str]:
+        """declared `flow:` per property, for the structural balance.
+
+        Both indicator shapes again, for the reason `_read_indicator` gives:
+        YAML mappings carry ``flow``, typed ``IndicatorSpec`` objects carry
+        ``flow_direction``, and reading only one of them is the quiet failure.
+
+        **The indicator's `axioms:` list is deliberately not consulted.** A
+        balance has two sides and only one of them carries the
+        ``conservation:`` block: ``water_tank.yaml`` declares the block on
+        ``inflow_lps`` and names ``outflow_lps`` inside it, leaving the outflow
+        indicator with ``axioms: []`` on purpose. Requiring CONSERVATION here
+        would mean the outflow could not state its direction without also
+        declaring an axiom it does not want — demanding a false declaration in
+        order to accept a true one. See `_SHARED_FIELDS` in the loader.
+
+        This still closes half of the structural check consulted no
+        declaration at all, and now the directions it sums are declared ones.
+        """
+        out: Dict[str, str] = {}
+        for ind in (indicators_by_type or {}).get(entity_type, []) or []:
+            name, _, _, _ = self._read_indicator(ind)
+            if not name:
+                continue
+            if hasattr(ind, 'get'):
+                raw = ind.get('flow')
+            else:
+                raw = getattr(ind, 'flow_direction', None)
+            if raw is None:
+                continue
+            word = str(raw).strip().lower()
+            # The loader already refused anything outside the pair; a raw dict
+            # reaching the YAML builder path has not been through it, so the
+            # same closed set is applied here rather than trusted from upstream.
+            if word in ('in', 'out'):
+                out[name] = word
+        return out
 
     def _axiom_states_from_yaml(
         self,

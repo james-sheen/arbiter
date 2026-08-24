@@ -172,6 +172,24 @@ def has_cross_signal_rule(indicator: Any) -> bool:
     return bool(peers)
 
 
+def has_balance_rule(indicator: Any) -> bool:
+    """does this indicator declare what balances against what?
+
+    CONSERVATION had a second way in until with no ``conservation:``
+    block the checker rewrote a marker in the property NAME — ``_in`` to
+    ``_out``, ``_requests`` to ``_responses`` — and balanced against whatever
+    that produced. Removing that made the pair statically decidable, which is
+    the only reason this predicate can exist at all: before, an undeclared
+    CONSERVATION *might* evaluate, so nothing could say in advance that it
+    would not.
+    """
+    config = getattr(indicator, "conservation_config", None)
+    if not isinstance(config, dict):
+        return False
+    return bool(config.get("input_property")) and bool(
+        config.get("output_properties"))
+
+
 def applies(axiom: Axiom, indicator: Any) -> Tuple[bool, FrozenSet[str], str]:
     """Does ``axiom`` have a universal rule for ``indicator``?
 
@@ -187,7 +205,22 @@ def applies(axiom: Axiom, indicator: Any) -> Tuple[bool, FrozenSet[str], str]:
     fire, while firing. A false entry in the honesty leg is worse than a
     missing capability — it is the capability we have, denied in the report a
     reader trusts to be exhaustive.
+
+    CONSERVATION is the MIRROR of that case, and it is the first
+    entry here that subtracts rather than adds. It is not role-gated, so it
+    reached the `not_role_gated` line above and was reported as reachable; with
+    the name fallback gone, `axioms: [CONSERVATION]` and no `conservation:`
+    block can never evaluate under any input, which is exactly what
+    `unreachable_declarations` exists to say. Three shipped domain packs were
+    in that state on the day this landed — and two of them named a partner
+    property that did not exist in their own model, so they had been reporting
+    a clean pass rather than a check.
+
+    Note this reports a MODELLING gap and refuses nothing: an over-declared
+    model is not a broken one, and the loader still loads it.
     """
+    if axiom is Axiom.CONSERVATION and not has_balance_rule(indicator):
+        return False, frozenset(), "no_balance_declared"
     wanted = AXIOM_ROLES.get(axiom)
     if wanted is None:
         return True, frozenset(), "not_role_gated"
@@ -207,6 +240,21 @@ def explain_absence(axiom: Axiom, indicator: Any) -> str:
     the remedy. Renaming a domain concept to satisfy a checker is the wrong
     remedy; declaring what the concept IS, is the right one.
     """
+    # CONSERVATION is not role-gated, so every sentence below is the
+    # wrong one for it: `wanted` would be the empty list and the remedy would
+    # read *declare one of [] as `role:`*. The remedy here is a block, and it
+    # names the block rather than a property the engine picked out of a name.
+    if axiom is Axiom.CONSERVATION and not has_balance_rule(indicator):
+        config = getattr(indicator, "conservation_config", None)
+        if isinstance(config, dict) and config:
+            missing = ("input_property" if not config.get("input_property")
+                       else "output_properties")
+            return (f"the conservation block declares no {missing}; a balance "
+                    f"needs both an input and at least one output to compare")
+        return ("no conservation block is declared, so there is nothing to "
+                "balance against; declare `conservation: {input_property: "
+                "..., output_properties: [...]}` naming the properties that "
+                "offset each other")
     wanted = sorted(AXIOM_ROLES.get(axiom, frozenset()))
     roles, source = roles_for(indicator)
     # CONSISTENCY has a second way in, so a decline that names only

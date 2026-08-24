@@ -19,7 +19,12 @@ Parameters:
 - min_samples = 3: observations before the axiom is evaluated at all
   (the derived floor; see AXIOM_MINIMUMS)
 - window_size = 20: how far back to look once it is
-- reversal_threshold = 3: reversals before alert
+- reversal_threshold = 3: reversals before alert. An internal ruling made this the
+  DEFAULT rather than the rule — `monotonicity: {reversal_tolerance: N}` and
+  `{reset_tolerance: N}` override it per indicator. It was a global engine
+  number no model could state, so a counter declared as forward-only carried a
+  silent allowance of two backward moves; one rollback produced no finding and
+  no decline.
 - rate_warning = 0.1: rate of change warning
 - rate_critical = 0.5: rate of change critical
 - rate_min_span_seconds: optional per-indicator floor on the time the window
@@ -57,6 +62,33 @@ from ...axiom_thresholds import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _positive_int(raw, fallback: int, key: str, indicator) -> int:
+    """A declared tolerance, or the default if it is unusable.
+
+    Reported and dropped rather than coerced, the convention `_resolve_role`
+    and `_resolve_expect_variation` already use in the loader. `int("2")` would
+    quietly accept a string; `int(0.5)` would quietly accept a float and floor
+    it to a tolerance of 0, turning every backward move into a finding on a
+    model whose author wrote something they thought meant *half*.
+
+    Zero and negatives are refused for the same reason: `reversal_tolerance: 0`
+    reads as *no reversals allowed*, which is what `1` means here, and a
+    counter that fires on `reversal_count >= 0` fires on every clean series
+    forever. An author writing 0 has made a fencepost error, and the safe
+    answer is the default plus a warning, not the reading that makes the axiom
+    scream.
+    """
+    if raw is None:
+        return fallback
+    if isinstance(raw, bool) or not isinstance(raw, int) or raw < 1:
+        logger.warning(
+            "unusable %s %r on indicator %r — ignored, using %d; write a "
+            "whole number of 1 or more",
+            key, raw, getattr(indicator, "name", "?"), fallback)
+        return fallback
+    return raw
 
 
 def _robust_slope(samples) -> Optional[float]:
@@ -132,6 +164,9 @@ class MonotonicityChecker:
           - allow_reset: whether counter resets are legitimate
           - rate_warning: rate threshold for warning
           - rate_critical: rate threshold for critical
+          - reversal_tolerance: backward moves allowed before firing (default 3). Declare 1 to fire on a single rollback.
+          - reset_tolerance: excused resets allowed before the storm arm fires
+            (default 3)
         """
         problems = []
 
@@ -180,6 +215,27 @@ class MonotonicityChecker:
         rate_warning_fallback = self.params.monotonicity_rate_warning
         rate_critical_fallback = self.params.monotonicity_rate_critical
 
+        # how many reversals, and how many resets, this counter is
+        # allowed before the axiom says anything. Declarable since 0.1.8;
+        # `self.params` is the default and is unchanged at 3, so no model
+        # written before this behaves differently.
+        #
+        # WHY IT HAD TO BECOME DECLARABLE. It was a global engine default of 3,
+        # so an indicator declaring `expected_direction: increasing` had a
+        # silent allowance of TWO backward moves — and unlike every other
+        # tolerance in this format (`warning`, `critical`, `tolerance`,
+        # `loss_margin`, the floor pair) no model could state it, no document
+        # named it, and no envelope mentioned it. BOUNDEDNESS is correctly
+        # quiet at 84 against a declared 85; the difference is that somebody
+        # declared the 85.
+        #
+        # A single rollback of a cumulative counter produced no finding AND no
+        # decline. Measured on 0.1.7 before this landed: one reversal 0/0, two
+        # reversals 0/0, three reversals 1/0, identical under both `allow_reset`
+        # settings.
+        reversal_tolerance = self.params.monotonicity_reversal_threshold
+        reset_tolerance = self.params.monotonicity_reversal_threshold
+
         if mono_config:
             expected_dir = mono_config.get('expected_direction', 'increasing')
             allow_reset = mono_config.get('allow_reset', True)
@@ -189,6 +245,19 @@ class MonotonicityChecker:
             rate_critical_fallback = mono_config.get(
                 'rate_critical', self.params.monotonicity_rate_critical
             )
+            # Two keys rather than one, because they count different events and
+            # sharing a number is what hid the second. A reset is a drop to
+            # near zero that `allow_reset` excuses individually; a reversal is
+            # any other backward move. An internal ruling added the reset-storm arm on the
+            # SAME global default, so it carried the identical defect one arm
+            # over — fixing only the reversal side would have been fixing the
+            # instance and leaving the class.
+            reversal_tolerance = _positive_int(
+                mono_config.get('reversal_tolerance'), reversal_tolerance,
+                'reversal_tolerance', indicator)
+            reset_tolerance = _positive_int(
+                mono_config.get('reset_tolerance'), reset_tolerance,
+                'reset_tolerance', indicator)
 
         # resolve per-entity override before falling back to
         # the existing mono_config-aware default. Precedence:
@@ -203,7 +272,8 @@ class MonotonicityChecker:
         )
 
         problems.extend(self._check_reversals(
-            entity, indicator, recent, expected_dir, allow_reset
+            entity, indicator, recent, expected_dir, allow_reset,
+            reversal_tolerance, reset_tolerance,
         ))
 
         problems.extend(self._check_rate(
@@ -219,8 +289,19 @@ class MonotonicityChecker:
         values: list,
         expected_direction: str,
         allow_reset: bool,
+        reversal_tolerance: Optional[int] = None,
+        reset_tolerance: Optional[int] = None,
     ) -> List[Problem]:
-        """Check for unexpected direction reversals."""
+        """Check for unexpected direction reversals.
+
+        the two tolerances arrive as arguments so the DECLARED value
+        reaches the comparison. They default to the global params for callers
+        that predate the field; `check` above always passes both.
+        """
+        if reversal_tolerance is None:
+            reversal_tolerance = self.params.monotonicity_reversal_threshold
+        if reset_tolerance is None:
+            reset_tolerance = self.params.monotonicity_reversal_threshold
         problems = []
         reversal_count = 0
         # count the drops `allow_reset` excuses, rather than only
@@ -252,7 +333,7 @@ class MonotonicityChecker:
                         continue
                     reversal_count += 1
 
-        if reversal_count >= self.params.monotonicity_reversal_threshold:
+        if reversal_count >= reversal_tolerance:
             problems.append(Problem.from_entity(
                 entity=entity,
                 problem_type=f'monotonicity_reversal:{indicator.name}',
@@ -267,13 +348,13 @@ class MonotonicityChecker:
                     'indicator': indicator.name,
                     'expected_direction': expected_direction,
                     'reversal_count': reversal_count,
-                    'threshold': self.params.monotonicity_reversal_threshold,
+                    'threshold': reversal_tolerance,
                     'window_size': len(values),
                     'recent_values': [v[1] for v in values[-5:]],
                 },
                 confidence=min(
                     1.0,
-                    reversal_count / self.params.monotonicity_reversal_threshold
+                    reversal_count / reversal_tolerance
                 ),
             ))
 
@@ -291,7 +372,7 @@ class MonotonicityChecker:
         # `monotonicity_reversal`: the two mean different things to an
         # operator. One says the metric went the wrong way; this says the
         # metric keeps restarting, which is a liveness symptom.
-        if reset_count >= self.params.monotonicity_reversal_threshold:
+        if reset_count >= reset_tolerance:
             problems.append(Problem.from_entity(
                 entity=entity,
                 problem_type=f'monotonicity_reset_storm:{indicator.name}',
@@ -307,13 +388,13 @@ class MonotonicityChecker:
                     'indicator': indicator.name,
                     'expected_direction': expected_direction,
                     'reset_count': reset_count,
-                    'threshold': self.params.monotonicity_reversal_threshold,
+                    'threshold': reset_tolerance,
                     'window_size': len(values),
                     'recent_values': [v[1] for v in values[-5:]],
                 },
                 confidence=min(
                     1.0,
-                    reset_count / self.params.monotonicity_reversal_threshold
+                    reset_count / reset_tolerance
                 ),
             ))
 

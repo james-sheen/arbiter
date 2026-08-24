@@ -29,6 +29,12 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 from ...clock import as_naive_utc, now_utc
+# `must_return_within` is a duration in the same vocabulary as
+# every `window:` in the format. Borrowed rather than re-parsed: a second
+# duration parser would accept a slightly different set of spellings and
+# the difference would only ever surface as a model that loads here and
+# not there.
+from ..domain_loader import parse_duration
 from ...interfaces import (
     Entity,
     Problem,
@@ -85,6 +91,130 @@ class HomeostasisChecker:
             del self._baseline_cache[k]
         return len(keys_to_remove)
 
+    def _check_against_setpoint(self, entity, indicator, current):
+        """score against a DECLARED target instead of a learned one.
+
+        Returns ``(problems, handled)``. ``handled`` is False when the model
+        declares no setpoint, and the caller falls through to the statistical
+        path unchanged — so nothing written before this behaves differently.
+
+        `tolerance` is the WARNING band in the property's own units, not a
+        multiple of anything. `tolerance_critical` defaults to twice it, which
+        is a default and not a rule: a model that wants the two bands closer
+        together says so.
+
+        A setpoint with no tolerance is refused rather than given one. The
+        engine has no basis for guessing how far is too far, and a tolerance
+        invented here would be the engine deciding a domain question — which is
+        the whole class and each removed from a
+        different axiom.
+        """
+        config = getattr(indicator, "homeostasis_config", None)
+        if not isinstance(config, dict) or config.get("setpoint") is None:
+            return [], False
+
+        try:
+            setpoint = float(config["setpoint"])
+            tolerance = float(config["tolerance"])
+        except (KeyError, TypeError, ValueError):
+            logger.warning(
+                "indicator %r declares a setpoint the checker cannot use "
+                "(setpoint=%r, tolerance=%r) — falling back to the learned "
+                "baseline; both must be numbers and `tolerance` is required",
+                getattr(indicator, "name", "?"),
+                config.get("setpoint"), config.get("tolerance"))
+            return [], False
+        if tolerance <= 0:
+            logger.warning(
+                "indicator %r declares tolerance %r; a band must be positive "
+                "— falling back to the learned baseline",
+                getattr(indicator, "name", "?"), tolerance)
+            return [], False
+
+        critical_band = config.get("tolerance_critical")
+        try:
+            critical_band = (float(critical_band) if critical_band is not None
+                             else tolerance * 2.0)
+        except (TypeError, ValueError):
+            critical_band = tolerance * 2.0
+
+        delta = current - setpoint
+        gate = getattr(indicator, "direction", "BIDIRECTIONAL") or "BIDIRECTIONAL"
+        if gate == "UPPER":
+            over_warning, over_critical = delta > tolerance, delta > critical_band
+        elif gate == "LOWER":
+            over_warning, over_critical = delta < -tolerance, delta < -critical_band
+        else:
+            over_warning = abs(delta) > tolerance
+            over_critical = abs(delta) > critical_band
+
+        if not over_warning:
+            return [], True
+
+        severity = Severity.CRITICAL if over_critical else Severity.WARNING
+        where = "above" if delta > 0 else "below"
+        band = critical_band if over_critical else tolerance
+        return [Problem.from_entity(
+            entity=entity,
+            problem_type=f'homeostasis_setpoint:{indicator.name}',
+            severity=severity,
+            reason=(f"{indicator.name} is {abs(delta):.4g} {where} its declared "
+                    f"setpoint of {setpoint:.4g}, outside the {band:.4g} band"),
+            axiom=Axiom.HOMEOSTASIS,
+            source_layer=DetectionLayer.ONTOLOGY,
+            evidence={
+                'indicator': indicator.name,
+                'value': current,
+                'setpoint': setpoint,
+                'deviation': delta,
+                'tolerance': tolerance,
+                'tolerance_critical': critical_band,
+                # Named so a reader can tell this from the statistical arm
+                # without matching on `problem_type`, which is domain
+                # vocabulary.
+                'reference': 'declared',
+            },
+        )], True
+
+    def _baseline_slice(self, indicator, value_history):
+        """which samples the baseline is built from, and which are not.
+
+        Returns ``(reference, excluded)``. Undeclared, the reference is the
+        whole window and nothing is excluded — today's behaviour, byte for
+        byte, which is why no model written before this changes.
+
+        With ``homeostasis: {must_return_within: <duration>}`` the most recent
+        span is held OUT of the reference, so the current value is scored
+        against where the quantity used to sit rather than against a mean that
+        has already walked toward it.
+
+        ``(None,...)`` means the exclusion left too little to work with, which
+        the caller reports as a decline. Scoring against the recent samples
+        anyway would answer a different question in the same words, and the
+        caller has no way to tell that happened.
+        """
+        config = getattr(indicator, "homeostasis_config", None)
+        if not isinstance(config, dict):
+            return value_history, []
+        raw = config.get("must_return_within")
+        if raw is None:
+            return value_history, []
+
+        span = parse_duration(raw)
+        if span is None or span.total_seconds() <= 0:
+            logger.warning(
+                "unusable must_return_within %r on indicator %r — ignored; "
+                "write a duration such as 15m or PT15M",
+                raw, getattr(indicator, "name", "?"))
+            return value_history, []
+
+        cutoff = as_naive_utc(now_utc()) - span
+        reference = [(t, v) for t, v in value_history if t <= cutoff]
+        excluded = [(t, v) for t, v in value_history if t > cutoff]
+        if len(reference) < self.params.homeostasis_min_samples:
+            return None, excluded
+        return reference, excluded
+
     def check(
         self,
         entity: Entity,
@@ -135,6 +265,30 @@ class HomeostasisChecker:
                     f"but its value is not: {current!r}"),
             )
 
+        # the DECLARED setpoint path, and the only one absorption
+        # cannot defeat.
+        #
+        # Every other shape considered scores against a reference derived from
+        # the series itself, so a fault that outlives the reference is
+        # eventually absorbed into it. Measured: excluding the most recent span
+        # (`must_return_within`) moves that horizon out by the span and does not
+        # remove it — a tank held off-baseline fires one sample past the
+        # deadline and is silent again fifteen samples later.
+        #
+        # A number the operator wrote cannot walk. If the model knows where the
+        # quantity is supposed to sit, that is the reference, and the check
+        # holds for as long as the fault does.
+        #
+        # It also needs NO history, which is the second thing it fixes: the
+        # 30-sample floor below is the widest of the eight axioms, so a model
+        # that knows its own target no longer waits for a baseline it could
+        # have declared.
+        setpoint_problems, setpoint_handled = self._check_against_setpoint(
+            entity, indicator, current)
+        if setpoint_handled:
+            return apply_property_confidence(
+                entity, indicator.property_name, setpoint_problems)
+
         # Get historical values for baseline
         baseline_window = timedelta(days=self.params.homeostasis_baseline_days)
         value_history = history.get_values(
@@ -161,13 +315,62 @@ class HomeostasisChecker:
                 **ctx,
             )
 
-        # Calculate baseline statistics
-        historical_values = [v for _, v in value_history]
+        # which samples the baseline is built from.
+        #
+        # By default: all of them, which is what a ROLLING baseline means and
+        # is correct for a quantity that legitimately drifts. Its consequence
+        # is that a persistent deviation is absorbed into its own reference —
+        # the mean walks toward the fault and the spread inflates, so the score
+        # decays on both terms and the axiom falls silent on a fault that is
+        # still running.
+        #
+        # With `must_return_within` declared, the baseline is built from
+        # samples OLDER than that span. A value that has not come back is then
+        # still measured against where it used to be, which is the question the
+        # operator asked by declaring a return deadline.
+        reference, excluded = self._baseline_slice(indicator, value_history)
+        if reference is None:
+            # Declared, but there is no history older than the span. Saying so
+            # beats scoring against the recent samples anyway, which would
+            # answer a different question in the same words.
+            return CheckOutcome(problems).declined(
+                Axiom.HOMEOSTASIS, entity, indicator.name,
+                NotEvaluatedReason.INSUFFICIENT_SAMPLES,
+                detail=(
+                    f"must_return_within excludes the most recent samples from "
+                    f"the baseline and nothing older remains inside the "
+                    f"{self.params.homeostasis_baseline_days}-day window"),
+                observations_count=len(value_history),
+                required_count=self.params.homeostasis_min_samples,
+            )
+
+        historical_values = [v for _, v in reference]
         mean = np.mean(historical_values)
         std = np.std(historical_values)
 
         if std == 0:
-            return problems  # No variance, can't detect anomaly
+            # this was a bare `return problems`: an empty list, no
+            # finding and no decline, which the envelope reports as a clean
+            # pass. Third instance of the shape after and the
+            # zero-input exit, and found the same way — by reading the function
+            # around the defect being fixed rather than only the defect.
+            #
+            # A z-score is (value - mean) / std and is undefined at zero
+            # spread. That is not insufficient data: the samples are here and
+            # the gate above passed. Whether a motionless series is itself a
+            # fault is STABILITY's question, declared via `expect_variation`.
+            return CheckOutcome(problems).declined(
+                Axiom.HOMEOSTASIS, entity, indicator.name,
+                NotEvaluatedReason.NOT_APPLICABLE,
+                detail=(
+                    f"the {len(historical_values)} baseline observations of "
+                    f"{indicator.property_name} are all {historical_values[0]!r}, "
+                    f"so their spread is zero and a deviation cannot be "
+                    f"expressed in standard deviations; declare "
+                    f"`expect_variation: true` with STABILITY to have a "
+                    f"motionless series reported as a fault in its own right"),
+                observations_count=len(historical_values),
+            )
 
         # Z-score anomaly detection
         z_score = (current - mean) / std

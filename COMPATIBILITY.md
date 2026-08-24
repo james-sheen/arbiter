@@ -56,6 +56,22 @@ The schema itself is at [`schema/envelope.schema.json`](schema/envelope.schema.j
   the one that will surprise people, and it is deliberate: an engine whose
   product is *did you look* cannot treat closing a blind spot as a breaking
   change, or the blind spots become permanent.
+- **Make a check DECLINE where it previously answered from a guess**, when the
+  guess was unsound. Every such change is listed in the changelog, with the
+  measurement behind it. Added 2026-08-24, because the rule above did not cover
+  the case and the case arrived: CONSERVATION was pairing properties by
+  rewriting a marker in their names, and a third of the models that reached
+  that path were being balanced against a property they do not declare.
+
+  This bullet is the same sentence as the one above it, pointing the other way.
+  Both say the engine's product is *did you look*, and a wrong answer fails that
+  test exactly as a missing one does — a consumer who acts on a finding derived
+  from a guessed pairing is worse off than one told the model is incomplete. The
+  cost is real and is stated rather than argued away: a model relying on the
+  guess loses the check until it declares what balances what, and the decline
+  names the declaration to write. **What a patch release may NOT do is go quiet
+  — a check withdrawn without a decline is indistinguishable from one that
+  passed**, and that is the outcome this whole document exists to prevent.
 
 ## What waits for a MAJOR release
 

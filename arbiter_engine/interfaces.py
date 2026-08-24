@@ -830,6 +830,31 @@ class IndicatorSpec:
     conservation_config: Optional[Dict[str, Any]] = None
     monotonicity_config: Optional[Dict[str, Any]] = None
 
+    # which side of a balance this quantity sits on: ``"in"`` or
+    # ``"out"``. The same move that an internal ruling made for `role:`, one axiom over.
+    #
+    # The structural CONSERVATION path in ``twin/traverser.py`` summed an
+    # entity's properties into an inflow total and an outflow total by matching
+    # their NAMES against English tokens — `in`, `input`, `received` against
+    # `out`, `output`, `sent`. narrowed that from substring to token
+    # matching after it swept `material_integrity`, `policy_intent` and six
+    # others into the inflow total, and its own docstring named the residual it
+    # could not fix: `engage_human_in_loop`, `bad_actor_input` and
+    # `line_input_status` still match, and *name-based inference cannot resolve
+    # those; only a declaration can*. This is that declaration.
+    #
+    # DECLARED, not inferred, for the reason `role` and `expect_variation`
+    # give: which quantities balance against which is a DOMAIN fact. A die
+    # sensor and an external diode share a suffix and not a thermal
+    # environment; `bytes_in` and `bytes_out` balance and `cash_in` and
+    # `line_input_status` do not, and no amount of reading the names says so.
+    #
+    # ``None`` means undeclared, and undeclared means the balance is not
+    # computed — the candidates a name scan would have offered are reported as
+    # a topology gap instead, which is the ``gaps()`` posture: surfaced, and
+    # asserted by nobody.
+    flow_direction: Optional[str] = None
+
     # the third nested block, and it exists for the same reason the
     # other two do: what it carries is a LIST plus a tolerance, which cannot be
     # spelled as flat fields without colliding with the threshold pair.
@@ -862,6 +887,30 @@ class IndicatorSpec:
     # periodic. Undeclared means no check, so nothing written before this
     # changes behaviour.
     stability_config: Optional[Dict[str, Any]] = None
+
+    # the fifth nested block, and the one that answers a question
+    # about TIME rather than about a value.
+    #
+    # HOMEOSTASIS scores the current reading against a mean and standard
+    # deviation taken over the whole baseline window — **including the
+    # deviation itself**. So a fault that persists walks the mean toward it and
+    # inflates the spread, and the score decays on both terms at once. Measured
+    # on 0.1.7: a tank 30 points off its baseline fired at 5.4 sigma after two
+    # samples, 2.4 after ten, and **nothing at all from about fifteen** — no
+    # finding and no decline. The longer the fault ran, the quieter the engine
+    # got.
+    #
+    # A rolling baseline is not a bug; it is what the axiom MEANS, and a
+    # quantity that legitimately drifts must not be accused forever. What was
+    # missing is any way to ask the other question. `must_return_within: <dur>`
+    # is that question: build the baseline from samples OLDER than that span,
+    # so a value which has not come back is still measured against where it
+    # used to be.
+    #
+    # Undeclared means today's behaviour exactly, which is why this is a
+    # declaration and not a new default. See
+    # the internal notes.
+    homeostasis_config: Optional[Dict[str, Any]] = None
 
     # what KIND of quantity this indicator measures — one of
     # latency / count / percentage / ratio. RESPONSIVENESS and CONSISTENCY used

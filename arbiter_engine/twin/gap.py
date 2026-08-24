@@ -7,6 +7,7 @@ Maps to the confidence gates from ConfidenceGatedDetector:
   MISSING_PROPERTY -> indicator_min (0.7)
   MISSING_THRESHOLD-> indicator_min (0.7)
   MISSING_DYNAMICS -> relaxed (0.5)
+  MISSING_DECLARATION -> not auto-resolvable (1.0)
 """
 
 import logging
@@ -35,6 +36,17 @@ GAP_CONFIDENCE_THRESHOLDS: Dict[GapType, float] = {
     GapType.MISSING_PROPERTY: 0.7,
     GapType.MISSING_THRESHOLD: 0.7,
     GapType.MISSING_DYNAMICS: 0.5,
+    # the highest threshold in the table, and deliberately so.
+    # `resolve` gates the auto and LLM tiers on `confidence >= threshold` and
+    # gates the HUMAN tier on nothing, so 1.0 says: an inferring tier may
+    # settle this only by claiming certainty, and a human may settle it
+    # outright. The pipeline needs no special case; the number carries it.
+    #
+    # That asymmetry is the point of the member. The gap says *the model does
+    # not declare which quantities balance against which*, and an inferred
+    # answer would be the name-guessing that an internal ruling removed, wearing a confidence
+    # score instead of a suffix table.
+    GapType.MISSING_DECLARATION: 1.0,
 }
 
 

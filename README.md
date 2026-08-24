@@ -87,6 +87,18 @@ second: two readings the model says are redundant have to match, within a `toler
 measure the same thing. A named peer the entity does not carry is reported in `not_checked` rather
 than skipped.
 
+**Redundancy is a claim about the system, not an inference from naming — and populating `agrees_with`
+from a naming convention is the way this check fails.** Two channels of one part are the tempting
+pair and often the wrong one: a temperature sensor exposing `Name` and `Name1` may be reporting its
+own die and an external diode, which differ by tens of degrees on a healthy board. Pair them and the
+engine will faithfully report disagreement between two readings that were never supposed to agree —
+a false finding on every working machine, produced by a configuration rather than by a fault. The
+same is true of consecutive record numbers, matching suffixes, and anything else derivable from a
+string: **if a rule can generate the pairs, it does not know the pairs.** They have to come from
+someone who knows the system, and they should be versioned and pinned like any other declaration.
+This is not hypothetical — it was reported by an integrator who caught the suffix rule in review
+before it shipped.
+
 ```yaml
 - name: cpuUsageNanoCores
   type: NUMERIC
@@ -312,23 +324,47 @@ the absolute numbers as an illustration:
 
 | entities | evaluations | `check()` | per evaluation |
 |---:|---:|---:|---:|
-| 10 | 60 | 11 ms | 185 us |
-| 100 | 600 | 82 ms | 137 us |
-| 1000 | 6000 | 763 ms | 127 us |
+| 10 | 60 | 12 ms | 198 us |
+| 100 | 600 | 86 ms | 143 us |
+| 1000 | 6000 | 831 ms | 139 us |
 
-Four indicators per entity across five axioms, 40 observations per series, three runs per size,
+Four indicators per entity across five axioms, 40 observations per series, five runs per size,
 median reported. **It is linear in evaluations, and the per-evaluation cost does not degrade with
 scale** — that is the part worth knowing, and it is the part that does not depend on the machine.
 
-Re-derive it rather than trusting the table:
+Getting a model and its data in is excluded from that table, and it is three costs on two axes.
+**Feeding entities scales with the entities:**
+
+| entities | feed | per entity |
+|---:|---:|---:|
+| 10 | 15 ms | 1535 us |
+| 100 | 146 ms | 1463 us |
+| 1000 | 1546 ms | 1546 us |
+
+**Loading a model scales with the model, and the parse in front of it is the larger cost:**
+
+| indicators | invariants | `yaml.safe_load()` | `load_model()` |
+|---:|---:|---:|---:|
+| 4 | 8 | 4 ms | 0.20 ms |
+| 40 | 80 | 38 ms | 1.23 ms |
+| 180 | 360 | 164 ms | 4.77 ms |
+| 360 | 720 | 327 ms | 11.61 ms |
+
+Three things follow, and the third is the one that saves anybody time. The feed is paid for whatever
+data is added, so a consumer re-feeding every cycle pays it every cycle. `load_model()` is flat in
+the entity count, so a session held across cycles pays it once — but it is *not* flat in the model,
+and quoting it from a four-indicator fixture is how it gets called negligible. And **`load_model()`
+takes a mapping, not a file**: at 180 indicators the YAML parse in front of it costs about thirty
+times the load, so a consumer paying a quarter-second to get a generated model in is mostly paying
+PyYAML. Cache the parsed mapping rather than only the session, and use `yaml.CSafeLoader` where
+libyaml is installed — same result, several times faster.
+
+Re-derive it rather than trusting the tables. The two axes are separate arguments, because they are
+separate questions:
 
 ```bash
-python3 -m arbiter_engine.scripts.benchmark_check --sizes 100,1000 --repeat 5
+python3 -m arbiter_engine.scripts.benchmark_check --sizes 10,100,1000 --model-sizes 4,40,180,360 --repeat 5
 ```
-
-Session construction is excluded from those figures and reported separately by the script; feeding
-1000 entities costs roughly twice what checking them does, and a consumer holding a session across
-cycles pays it once.
 
 ## Documentation
 

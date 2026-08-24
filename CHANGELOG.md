@@ -20,7 +20,119 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **`homeostasis: {setpoint: N, tolerance: N}` on any numeric indicator.**
+  Scores against a declared target instead of a learned baseline, with
+  `tolerance_critical` defaulting to twice `tolerance`. A setpoint without a
+  tolerance is refused and falls back — how far is too far is a fact about your
+  system, not one the engine may invent.
+
+  **Why it exists.** The learned baseline is a mean and spread over a window
+  that *contains* the deviation, so a fault that persists walks the mean toward
+  itself and inflates the spread; the score decays on both terms and the axiom
+  goes quiet on a fault still running. Measured against the shipped example: a
+  tank 30 points off its baseline fired at 5.4 sigma after two samples, 2.4
+  after ten, and **nothing from about fifteen — no finding and no decline**. A
+  declared target cannot be absorbed, and still fires at 240.
+
+  **It also needs no history**, which removes the widest sample floor in the
+  format: the learned path wants thirty observations inside a seven-day window,
+  so a series sampled less often than roughly every six hours could never reach
+  it.
+
+- **`homeostasis: {must_return_within: <duration>}`**, which builds the baseline
+  from samples older than that span — *did this come back inside my deadline*.
+  **Its limit is documented rather than hidden**: it moves the absorption
+  horizon out by the span, it does not remove it. Use it when you have a
+  deadline and no target.
+
+- **`monotonicity: {reversal_tolerance: N}` and `{reset_tolerance: N}`.** How
+  many backward moves, and how many excused counter resets, before the axiom
+  says anything. Both default to 3 — the value that was already in force —
+  so nothing already written changes.
+
+  **Why it exists.** That 3 was a global engine number: no model could state it,
+  no document named it, and no envelope mentioned it, so an indicator declared
+  `expected_direction: increasing` carried a silent allowance of **two backward
+  moves**. A single counter rollback produced no finding and no decline.
+  BOUNDEDNESS is correctly quiet at 84 against a declared `warning: 85`; the
+  difference is that somebody declared the 85. Declare `reversal_tolerance: 1`
+  for a counter where one rollback is a fault.
+
+- **`flow: in` / `flow: out` on any numeric indicator.** Tells the traversal
+  kernel which side of a balance a quantity sits on when it walks a flow cycle
+  through the topology. The kernel holds no indicator spec, so it cannot read
+  the `conservation:` block; before this it read the property NAME instead.
+  Undeclared means the cycle balance is not computed, and the omission is
+  reported as a `missing_declaration` gap naming the properties a name scan
+  would have offered — surfaced, and asserted by nobody.
+- **`missing_declaration` in `gaps[].gap_type`.** The model does not say
+  something a check needs, and no amount of collecting data will supply it.
+  Distinct from `missing_property`, which is answered by feeding the value.
+
+### Changed
+
+- **CONSERVATION no longer infers the other half of a balance from the property
+  name.** An indicator declaring CONSERVATION with no `conservation:` block used
+  to have an `_in` / `_received` / `_requests` / `input_` marker in its name
+  rewritten to `_out` / `_sent` / `_responses` / `output_`, and was balanced
+  against whatever property that produced. It now declines `missing_config` and
+  names the block to write.
+
+  **This makes a check stop firing, so here is the measurement behind it.**
+  Across the shipped domain packs, nine indicators reached that path and
+  **three of the nine named a partner property that does not exist in their own
+  model** — no observations, so the balance fell into a bare return with no
+  finding and no decline. A third of the time the inference produced the silent
+  clean pass this engine exists to make impossible; the rest were correct by
+  luck of an English naming convention. A model that wants the check declares
+  the pairing, which every affected model could already have done.
+
+- **`model_describe` reports CONSERVATION-without-a-block under
+  `unreachable_declarations`.** It could not before: while the name fallback
+  existed the pair *might* evaluate, so nothing could say in advance that it
+  would not. An author now learns at load time rather than at cycle 1.
+
+- **A conservation input total of zero declines instead of passing.** Same shape
+  as the exit above it, found in the same function: the samples are present and
+  a deficit ratio is undefined against a zero total, which is `not_applicable`
+  and not a clean bill of health.
+
+- **A HOMEOSTASIS baseline with zero spread declines instead of passing.** Third
+  instance of that same shape, found the same way — by reading the function
+  around the defect being fixed. A z-score is undefined when every baseline
+  observation is identical; that is `not_applicable`, and whether a motionless
+  series is itself a fault remains STABILITY's question via
+  `expect_variation`.
+
+- **The benchmark has a second axis, and the cost table has three rows of
+  numbers instead of one.** Reported from outside as issue #8: *"How fast is
+  it"* measured `check()` only, and a consumer's wall clock was dominated by
+  getting the model in. Session construction was one `build` figure mixing a
+  cost that is flat in the entity count with one that is linear; worse, loading
+  scales with the size of the MODEL, an axis the benchmark did not have at all.
+  `--model-sizes` adds it. On the development machine `load_model()` runs
+  0.20 ms at 4 indicators and 11.6 ms at 360.
+
+  **The parse is now measured beside the load, and it is the larger cost by
+  more than an order of magnitude.** `load_model()` takes a mapping, so a
+  consumer holding a YAML file pays `yaml.safe_load` first — at 180 indicators
+  that is 164 ms against the load's 4.8 ms. Cache the parsed mapping rather than
+  only the session, and use `yaml.CSafeLoader` where libyaml is installed: same
+  result, 8.9x faster on this machine.
+
+### Documentation
+
+- **`agrees_with` now says redundancy is a claim about the system, not an
+  inference from naming.** Reported from outside as issue #9 by an integrator
+  who caught the trap in review: a part exposing `Name` and `Name1` may be
+  reporting its own die and an external diode, which differ by tens of degrees
+  on a healthy board. Pairing them by suffix makes the engine faithfully report
+  disagreement between readings that were never supposed to agree — a false
+  finding on every working machine, produced by a configuration rather than a
+  fault. In the README beside the field, and in `MODELING.md`. **If a rule can
+  generate the pairs, it does not know the pairs.**
 
 ---
 

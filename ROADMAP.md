@@ -16,9 +16,17 @@ Detection, planning, and action loops closed end-to-end. Multi-tenant load shapi
 
 This section read *"Next — open the engine. The current work is extracting..."* until 2026-08-11, describing as forthcoming the thing a reader had already cloned. Corrected against the rule at the top of this file — *milestones that have passed are marked as such rather than left reading as forthcoming* — which this file stated and then broke. A roadmap is read by people deciding whether the project is alive; one that calls a shipped thing upcoming answers that question wrongly in both directions at once.
 
+## Published to an index — landed August 2026
+
+`arbiter-engine` installs from PyPI with `pip install arbiter-engine`, and three worked domain models ship in `examples/`.
+
+Until 2026-08-24 this file carried both of these under a *Next* heading — it denied the package was on any index, and it counted the examples at one. Both were false when they were read: the package had been on the index since 0.1.0, and the third example shipped alongside it. The corrections are dated rather than made quietly, because this is the second time this file has described a shipped thing as forthcoming — the section above records the first — and the pattern matters more than either instance.
+
+A checkable false claim, in the status document of a project whose subject is checkable claims. It survived because the release-day checks that hold `README.md` and `CITATION.cff` to the artifact did not reach this file. They do now, and the check is a plain absence test — which is why the two retired sentences are described above rather than quoted. A quoted correction and the mistake it corrects are the same string to a checker, and a project that files this defect class cannot also be the one whose tripwire fires on its own erratum.
+
 ## Next — no date
 
-Not on a package index yet, and the domain-model library is one worked example rather than a set. Both are named here without a date, for the reason the section below gives.
+Cross-time drift for a single unit, now that ingestion carries timestamps; a characterization of what MONOTONICITY does and does not catch, before any scenario asserts a verdict it has not demonstrated; and declared spatial topology, carried by `relationship_types` when its day comes.
 
 No date is given here. Earlier versions of this file named a General Availability window that arrived without the milestone, which is the failure this section is written to avoid — a roadmap that promises a quarter and then quietly keeps promising it says less than one that names the work and no date.
 

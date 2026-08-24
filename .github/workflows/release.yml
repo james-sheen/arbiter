@@ -1,0 +1,78 @@
+# Turns a pushed tag into a GitHub Release, from the CHANGELOG section it names.
+#
+# WHY THIS EXISTS. A tag notifies nobody. A Release notifies watchers, appears
+# in the sidebar and in the repository's Atom feed, and gives each version a
+# page that can be linked to. Six tags sat here with zero Releases for weeks
+# because the step was manual and manual steps get skipped — so the six were
+# backfilled by hand once, and this exists so that is the only time.
+#
+# THE GUARD IS THE POINT, not the convenience. A tag whose version has no
+# CHANGELOG section turns this job RED, which kills two failure shapes at once:
+# *tagged but never released*, and *released with an empty note*. Publishing a
+# blank release page would be worse than publishing nothing, because a blank
+# page reads as *this version had no changes* rather than as *nobody wrote them
+# down*.
+#
+# THE NOTES COME FROM COMMAND SUBSTITUTION, NOT A PIPELINE. A sibling
+# repository's canary sat red forever because a step piped into something that
+# exited 5 under `pipefail`, and the exit code of a pipeline is its LAST
+# command's. There is no pipeline here for that to bite.
+#
+# KNOWN LIMIT, stated rather than discovered later: `gh release create` marks
+# the new release as Latest by default, which is right for forward-only tagging
+# and wrong for a backport. If a patch to an older line is ever tagged after a
+# newer one, the Latest badge will follow the push order rather than the version
+# order, and this job will need `--latest=false` on that path.
+
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Tags, so `--verify-tag` has the ref to verify against. The default
+          # depth of 1 fetches no tags, which is the shape that has bitten this
+          # repository's workflows before.
+          fetch-depth: 0
+
+      - name: Create the GitHub Release from the CHANGELOG section
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          NOTES="$(awk -v v="$V" '
+            $0 ~ "^## \\[" v "\\]" {on=1; next}
+            on && /^## \[/ {exit}
+            on && /^---$/  {next}
+            on {print}
+          ' CHANGELOG.md)"
+
+          if [ -z "$NOTES" ]; then
+            echo "::error::CHANGELOG.md has no section for $V — the tag and the changelog disagree"
+            exit 1
+          fi
+
+          # Every note carries a way back to the full record. Some sections are
+          # deliberately thin and refer to a neighbouring version; that reads
+          # fine in a changelog and dangles on a release page read on its own.
+          #
+          # Built with printf rather than a multi-line string literal: inside a
+          # YAML block scalar the continuation lines carry the block's
+          # indentation, and that indentation would end up inside the published
+          # note as leading spaces on every line.
+          FOOTER="$(printf '\n\n---\n\nFull changelog for this version: https://github.com/%s/blob/%s/CHANGELOG.md' \
+            "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME")"
+
+          gh release create "$GITHUB_REF_NAME" \
+            --verify-tag \
+            --title "$GITHUB_REF_NAME" \
+            --notes "${NOTES}${FOOTER}"
