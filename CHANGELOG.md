@@ -20,6 +20,12 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+Nothing yet.
+
+---
+
+## [0.1.8] — 2026-08-24
+
 ### Added
 
 - **`homeostasis: {setpoint: N, tolerance: N}` on any numeric indicator.**
