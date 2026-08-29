@@ -50,14 +50,20 @@ CD508_ENTITY_PROPERTY_KEY = "__cd508_axiom_thresholds__"
 # the reporter did not pin. What measuring the CURRENT tree found instead is
 # two facts that matter more, and neither is visible by reading a call site.
 #
-# FIRST: an override reaches four of the eight axioms. Six checkers call the
-# resolver, and two of those calls sit on paths nothing invokes -- so setting
-# an override for them is silent and always has been.
+# FIRST: an override reaches FIVE of the eight axioms. Six checkers call the
+# resolver, and ONE of those calls sits on a path nothing invokes -- so setting
+# an override for that one is silent and always has been.
+#
+# corrected this from four/two on 2026-08-28. RESPONSIVENESS was filed
+# as unreachable and is not: `check_io_pair` runs, fires, and honours the
+# override, on any session given I/O relationships through the public
+# `session.reasoner.set_io_relationships(...)`. Undocumented is not
+# unreachable, and this table claimed the second.
 #
 # SECOND, and this is the one a consumer needs: **an override never touches a
 # declared threshold.** The `warning:` and `critical:` an indicator declares in
 # its domain model are read straight off the spec, on a path with no override
-# lookup at all. What the four reachable axioms override is their CALIBRATION
+# lookup at all. What the five reachable axioms override is their CALIBRATION
 # parameter -- how oscillation is scored, how fast a counter may fall, how much
 # loss a balance tolerates, how many deviations count as drift. Those are
 # genuinely useful and they are not what "per-entity thresholds" sounds like.
@@ -66,10 +72,28 @@ CD508_ENTITY_PROPERTY_KEY = "__cd508_axiom_thresholds__"
 # `warning`/`critical` (hundreds of sensors, each with its own vendor limits)
 # still cannot express it, and models an entity type per sensor instead.
 #
-# Every row below was established by running the engine both ways -- with the
+# Every row below is established by running the engine both ways -- with the
 # override absent and present -- and watching the verdict move or not. The
 # table is documentation; `tests/test_threshold_overrides.py` is the oracle,
 # and it re-derives every row against the engine rather than trusting this.
+#
+# AND IT WAS DRIVEN, WHICH IS WHY IS WORTH READING. The unreachable
+# rows had a both-ways test of their own -- run with the override, run
+# without, assert the verdict does NOT move -- and RESPONSIVENESS passed it
+# for months while the engine honoured its override.
+#
+# The scenario was the predicate. This axiom carries TWO override-relevant
+# paths: a declared `warning:`/`critical:` on latency, and
+# `correlation_drop_threshold` on the I/O pair. The row's scenario fired the
+# first, where an override correctly does nothing -- because no DECLARED
+# bound is overridable in any axiom -- so the test confirmed *unreachable*
+# by exercising the one path on which that answer is right for another
+# reason entirely. A wrong scenario that yields the claimed answer reads
+# exactly like a confirmation.
+#
+# The remedy is in the scenario, not the assertion: the row now supplies two
+# entities and an I/O relationship, and puts the override on the OUTPUT
+# entity, which is the side the resolver reads.
 
 #: Axioms whose firing decision consults an override, and the parameter it
 #: replaces. Reaching these is proven, both directions, per axiom.
@@ -78,6 +102,11 @@ OVERRIDE_CONSULTED_BY = {
     "MONOTONICITY": "rate_warning / rate_critical — how fast a counter may move",
     "CONSERVATION": "loss_margin — how much imbalance a flow may lose",
     "HOMEOSTASIS": "z_warning / z_critical — deviations from baseline",
+    "RESPONSIVENESS": (
+        "correlation_drop_threshold — how far an I/O correlation may fall; "
+        "read off the OUTPUT entity, and only on a session given I/O "
+        "relationships"
+    ),
 }
 
 #: Axioms that CALL the resolver on a path the engine's own entry points never
@@ -87,10 +116,6 @@ OVERRIDE_DECLARED_BUT_UNREACHABLE = {
         "the call is inside `check_capacity_ratio`, a used/limit method that "
         "nothing in the package invokes — only its own tests do, which is why "
         "it reads as covered"
-    ),
-    "RESPONSIVENESS": (
-        "the call is inside `check_io_pair`, which needs input/output "
-        "relationships; nothing on the session's surface supplies them"
     ),
 }
 

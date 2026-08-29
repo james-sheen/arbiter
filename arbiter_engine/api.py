@@ -41,11 +41,11 @@ from arbiter_engine.ontology.axioms.roles import (
 from arbiter_engine.ontology.domain_loader import load_domain
 from arbiter_engine.ontology.reasoner import UnifiedAxiomReasoner
 
-#: An internal ruling withheld `projected` until an internal ruling fed it. An internal ruling landed
-#: 2026-08-04 (`TopologyTraverser.project_values`), so the mode is now
-#: offered — and `traverse` below projects before traversing, because
-#: offering the mode without running the producer would reinstate the
-#: exact inertness that an internal ruling removed.
+#: `projected` was withheld while nothing produced projected values, and
+#: has been offered since 2026-08-04, when `TopologyTraverser.project_values`
+#: landed. `traverse` below projects BEFORE traversing, because offering
+#: the mode without running the producer would reinstate exactly the
+#: inertness that landing the producer removed.
 SUPPORTED_VALUE_MODES = ("current", "hypothetical", "projected")
 
 

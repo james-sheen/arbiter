@@ -744,9 +744,10 @@ class TopologyTraverser:
     def _check_flow_balance(self, cycle_path: List[str]) -> List[Problem]:
         """Verify conservation around a flow cycle, from DECLARED directions.
 
-        This used to decide which of an entity's properties were
-        inflows by matching their names against English tokens, which is the
-        blind spot that an internal ruling recorded and that an internal ruling could only narrow. It now reads
+        This used to decide which of an entity's properties were inflows by
+        matching their names against English tokens. That blind spot was
+        recorded once and then narrowed twice before it was removed, because
+        the information is not in the names. It now reads
         ``TwinNode.flow_directions`` — seeded by the builder from the model's
         declared ``flow:`` — and a node with no declaration yields a gap rather
         than a balance.

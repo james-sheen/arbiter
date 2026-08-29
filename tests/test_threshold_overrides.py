@@ -34,17 +34,32 @@ from arbiter_engine.axiom_thresholds import (
     OVERRIDE_NOT_CONSULTED,
 )
 from arbiter_engine.ontology import axioms as axioms_pkg
-from arbiter_engine.types import Axiom
+from arbiter_engine.types import Axiom, IORelationship
 
 
 ENTITY, ETYPE = "Unit/x", "Unit"
+OUT_ENTITY, OUT_ETYPE = "Sink/out", "Sink"
 
 
-def _session(indicators, properties, series=(), extra_entities=()):
+def _session(indicators, properties, series=(), extra_entities=(),
+             sink_indicators=None, sink=None, io=None):
+    """Build a one-entity session, or a two-entity one when the scenario
+    needs a pair.
+
+    RESPONSIVENESS's override is read on the I/O-pair path, off
+    the OUTPUT entity -- so a single-entity scenario cannot reach it, and
+    for months nothing did. The declared `warning:`/`critical:` this
+    axiom also carries are NOT overridable, like every declared bound, so
+    a scenario that fires those looks like a fair test and exercises the
+    wrong path.
+    """
     session = EngineSession()
+    declared = {ETYPE: indicators}
+    if sink_indicators:
+        declared[OUT_ETYPE] = sink_indicators
     session.load_model({"domain": {
         "id": "override", "name": "override", "entity_types": [ETYPE, "Sink"],
-        "relationship_types": ["feeds"], "indicators": {ETYPE: indicators}}})
+        "relationship_types": ["feeds"], "indicators": declared}})
     session.add_entity(ENTITY, ETYPE, properties=dict(properties))
     # CONNECTIVITY declines `missing_entity_type` rather than firing when no
     # entity of the target type exists -- correctly, since a cardinality it
@@ -55,6 +70,12 @@ def _session(indicators, properties, series=(), extra_entities=()):
         session.add_entity(entity_id, entity_type)
     for name, values in series:
         session.add_observations(ENTITY, name, values)
+    if sink:
+        session.add_entity(OUT_ENTITY, OUT_ETYPE, properties=dict(sink["properties"]))
+        for name, values in sink.get("series", ()):
+            session.add_observations(OUT_ENTITY, name, values)
+    if io:
+        session.reasoner.set_io_relationships([IORelationship(**kw) for kw in io])
     return session
 
 
@@ -108,13 +129,27 @@ SCENARIOS = {
         series=(),
         silence=dict(warning=1e9, critical=1e9),
     ),
+    # The I/O-PAIR path, not the declared-threshold one. This axiom
+    # carries both, and only the pair path consults an override: a scenario
+    # firing `response_time_critical` off declared `warning:`/`critical:`
+    # cannot move, because a DECLARED bound is not overridable in any axiom.
+    # The pair needs two entities and an I/O relationship, which is why this
+    # row is the only one carrying `sink` and `io`, and why the override goes
+    # on the OUTPUT entity -- the resolver reads it off that side.
     "RESPONSIVENESS": dict(
         indicators=[{"name": "v", "type": "NUMERIC", "role": "latency",
-                     "axioms": ["RESPONSIVENESS"], "warning": 5, "critical": 12,
-                     "window": "30m"}],
-        properties={"v": 10_000.0},
-        series=(),
-        silence=dict(warning=1e9, critical=1e9),
+                     "axioms": ["RESPONSIVENESS"], "window": "30m"}],
+        properties={"v": 100.0},
+        series=(("v", [10.0 * i for i in range(1, 15)]),),
+        sink_indicators=[{"name": "v", "type": "NUMERIC", "role": "latency",
+                          "axioms": ["RESPONSIVENESS"], "window": "30m"}],
+        sink=dict(properties={"v": 50.0},
+                  series=(("v", [50.0 + (i % 2) for i in range(14)]),)),
+        io=[dict(input_entity_type=ETYPE, output_entity_type=OUT_ETYPE,
+                 input_property="v", output_property="v",
+                 correlation=0.95, lag_seconds=1.0)],
+        override_on=OUT_ENTITY,
+        silence=dict(warning=0.99),
     ),
     "CONSISTENCY": dict(
         indicators=[{"name": "v", "type": "NUMERIC", "role": "percentage",
@@ -140,10 +175,13 @@ SCENARIOS = {
 def _run(axiom, with_override):
     spec = SCENARIOS[axiom]
     session = _session(spec["indicators"], spec["properties"], spec["series"],
-                       spec.get("extra_entities", ()))
+                       spec.get("extra_entities", ()),
+                       sink_indicators=spec.get("sink_indicators"),
+                       sink=spec.get("sink"), io=spec.get("io"))
     if with_override:
         session.set_threshold_override(
-            ENTITY, spec.get("indicator", "v"), axiom, **spec["silence"])
+            spec.get("override_on", ENTITY), spec.get("indicator", "v"),
+            axiom, **spec["silence"])
     return _fired(session)
 
 

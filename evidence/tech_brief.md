@@ -15,7 +15,7 @@ eight axiom checkers are in `arbiter_engine`; the rest — the decision engine,
 the action planner and dispatcher, the posterior estimator, the goal-alignment
 monitor, the field-agent collectors and the RBAC surface — are **not published**.
 
-That split is the same one the repository README states: the engine is open, the
+That split is the project's own, not this document's: the engine is open, the
 knowledge and the operations are not. It is stated concretely here because a
 reader holding only the engine would otherwise have to discover it by looking for
 a class that is not there.

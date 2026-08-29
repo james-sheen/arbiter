@@ -34,7 +34,7 @@ No date is given here. Earlier versions of this file named a General Availabilit
 
 The public-facing API surface is pre-1.0 and continues to evolve; breaking changes can land in any release. Long-term API stability is not yet committed.
 
-Historical benchmark figures (95.8% technical accuracy, under-15s P95) belong to the **Stage I OpenBMC reference vertical, measured 2025**. Stage I is archived and not running, so those numbers are history and are not claims about the current engine. See `README.md`.
+Historical benchmark figures (95.8% technical accuracy, under-15s P95) belong to the **Stage I OpenBMC reference vertical, measured 2025**. Stage I is archived and not running, so those numbers are history and are not claims about the current engine. `README.md` states the same archived status.
 
 ## Public participation
 
