@@ -4,16 +4,19 @@ Composes multi-source observations (Redis Streams + InMemory + TimescaleDB
 + document pipeline) into per-entity source-lineage aggregations for the
  ProductionObservation pipeline.
 
-separation-of-concerns: wire-up is stateless across
+Separation of concerns: wire-up is stateless across
 wire_observation_sources_for_entity() calls; tracks per-entity source-id
 set for dashboard accessor entry point. Defensive: gate off →
 wire-up no-op; ProductionObservation pipeline operates on raw per-source
 records (hybrid emit gates per-source via record_observation).
 
-an established pattern env-gate `DT_OBSERVATION_SOURCE_WIRING_ENABLED`.
+Default-off env-gate `DT_OBSERVATION_SOURCE_WIRING_ENABLED`.
 
-the established pattern wire-up-as-standalone-module discipline — over-saturated reference
-architecture (beyond the established pattern threshold).
+The wire-up-as-standalone-module discipline (fifth instance, after
+ io_lag_wiring + mcts_reranker_wiring +
+degradation_wiring + axiom_composition_wiring +
+observation_source_wiring) — over-saturated reference
+architecture, one instance beyond the promotion threshold.
 
 Domain-agnostic: entity_id + source_id scalars opaque; no per-domain
 dispatch.
@@ -98,8 +101,7 @@ def get_source_count_for_entity(entity_id: str) -> Optional[int]:
 def get_observation_source_wired_entity_count() -> int:
     """Aggregate count of source-wired entities.
 
-    Dashboard-data defensive-accessor entry point + Pattern
-    171. Returns 0 when gate off.
+    Dashboard-data defensive-accessor entry point. Returns 0 when gate off.
     """
     if not DT_OBSERVATION_SOURCE_WIRING_ENABLED:
         return 0

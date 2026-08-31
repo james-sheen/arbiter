@@ -27,7 +27,12 @@ legitimately clear would be precisely that.
 
 import pytest
 
+import logging
+
+import yaml
+
 from arbiter_engine.api import check
+from arbiter_engine.ontology.domain_loader import load_domain
 from arbiter_engine.types import (
     AXIOM_MINIMUMS, Axiom, NotEvaluatedReason,
 )
@@ -196,6 +201,66 @@ class TestMalformedConfigDeclinesRatherThanCrashes:
         assert (findings_for(envelope, "BOUNDEDNESS")
                 or declines_for(envelope, "BOUNDEDNESS")), (
             "BOUNDEDNESS with no bounds declared was silent")
+
+
+class TestOneConditionHasOneRemedy:
+    """The printed warning and the structured report must name the SAME fix.
+
+    A model declaring CONSERVATION without a `conservation:` block cannot
+    evaluate under any input, and the engine says so twice in one process: as
+    `unreachable_declarations()[*]["remedy"]`, and as a warning the loader
+    prints at load time. They disagreed. The warning applied one blanket
+    remedy -- *declare a `role:` on the indicator* -- to every unreachable
+    pair, and a `role:` does nothing for CONSERVATION; the missing block is
+    what does. A reader who saw both surfaces was told two different things
+    about one condition, and the printed one was wrong.
+
+    Pinned as AGREEMENT and not as a literal, so the remedy wording can be
+    improved in its one home without this going red for an improvement.
+    """
+
+    @staticmethod
+    def _load_unreachable(tmp_path):
+        """A pair that is unreachable for a reason `role:` cannot fix."""
+        path = tmp_path / "unreachable.yaml"
+        path.write_text(yaml.safe_dump({
+            "id": "d", "name": "d", "entity_types": ["T"],
+            "relationship_types": [], "aliases": [],
+            "indicators": {"T": [{"name": "flow_in",
+                                  "axioms": ["CONSERVATION"]}]},
+        }), encoding="utf-8")
+        return load_domain(str(path))
+
+    def test_the_condition_is_reachable_by_this_fixture(self, tmp_path):
+        """Both assertions below iterate the unreachable pairs, and an empty
+        list satisfies either of them without proving anything."""
+        model = self._load_unreachable(tmp_path)
+        pairs = model.unreachable_declarations()
+        assert len(pairs) == 1, (
+            f"the fixture is supposed to declare exactly one unreachable "
+            f"pair; it produced {pairs}")
+        assert pairs[0]["axiom"] == "CONSERVATION", pairs[0]
+
+    def test_the_warning_carries_the_remedy_the_report_computed(
+            self, tmp_path, caplog):
+        with caplog.at_level(logging.WARNING):
+            model = self._load_unreachable(tmp_path)
+        printed = caplog.text
+        assert printed.strip(), "the loader said nothing about an unreachable pair"
+        for pair in model.unreachable_declarations():
+            assert pair["remedy"] in printed, (
+                f"the report says the fix for {pair['indicator']}/"
+                f"{pair['axiom']} is {pair['remedy']!r}; the warning printed "
+                f"something else:\n{printed}")
+
+    def test_the_warning_does_not_prescribe_a_role_for_conservation(
+            self, tmp_path, caplog):
+        """The specific wrong answer, named. A `role:` is a real remedy for
+        other pairs, so this asserts it is not applied to the one it cannot
+        fix rather than banning the word."""
+        with caplog.at_level(logging.WARNING):
+            self._load_unreachable(tmp_path)
+        assert "declare a `role:`" not in caplog.text, caplog.text
 
 
 class TestTheEnvelopeSaysWhenItCheckedNothing:

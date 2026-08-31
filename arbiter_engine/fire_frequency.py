@@ -5,7 +5,7 @@ v1 instrumentation; this module lands the dedicated v2 tracker with:
 
 - Per-(axiom, domain, indicator) granularity (the earlier mixin
   tracked (domain) only; this tracker adds the axiom + indicator
-  dimensions the state_api spec called for).
+  dimensions the reflection-layer spec called for).
 - Deque-based exact rolling-window counting (no day-bucket
   approximation; sliding window of arbitrary length).
 - The cadence WARN on suspiciously high fire rates.
@@ -165,7 +165,7 @@ class FireFrequencyTracker:
         """Return ``{axiom: {domain: total_count}}`` aggregated over indicators.
 
         Sibling to ``FireCounterMixin.get_fire_counts_by_domain``;
-        provides the same surface so reflection state_api can swap to
+        provides the same surface so the reflection layer can swap to
         this tracker without changing the API contract.
         """
         now = as_naive_utc(now) if now else now_utc()

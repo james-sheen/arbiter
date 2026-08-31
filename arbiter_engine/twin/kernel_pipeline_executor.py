@@ -8,7 +8,7 @@ HYPOTHESIZE → OPTIMIZE workflows in one /traverse-pipeline call.
 Per Lever 1+4 cross-cut: kernel parameter-
 space extension (pipeline field) + NL-translator depth (NLPipelineTranslator).
 
-the established pattern design-center reuse — kernel mode composition is the canonical
+The kernel-as-atom design centre — kernel mode composition is the canonical
 kernel-amplification move.
 """
 
@@ -35,7 +35,7 @@ KNOWN_KERNEL_MODES: tuple = (
 PIPELINE_MAX_STEPS: int = 16
 
 # (Track-A A-5): per-step honesty markers — the same vocabulary the
-# the established pattern envelopes speak one layer up. "unavailable" means the step ran
+# bootstrap-aware envelopes speak one layer up. "unavailable" means the step ran
 # but had no substrate/topology to consult; "no findings" (live + zero
 # counts) stays distinguishable from "not looking".
 STEP_SOURCE_LIVE: str = "live"
@@ -421,7 +421,7 @@ class KernelPipelineExecutor:
         }
 
     def emit(self, request: PipelineRequest, result: PipelineResult) -> int:
-        """The established pattern callsite-wire to production substrate."""
+        """Callsite-wire to the production substrate."""
         try:
             from arbiter_engine.twin.pipeline_production import (
                 record_production_pipeline,
@@ -443,7 +443,7 @@ class KernelPipelineExecutor:
 
 
 # ---------------------------------------------------------------------------
-# NLPipelineTranslator — the established pattern LOAD-BEARING promotion
+# NLPipelineTranslator, on the canonical-invariant shape,
 # per the follow-up. Mirrors NLHypothesisTranslator
 # discipline applied to pipeline-mode NL parsing.
 # ---------------------------------------------------------------------------
@@ -466,8 +466,9 @@ class NLPipelineTranslationResult:
 
 
 class NLPipelineTranslator:
-    """3-tier NL → PipelineRequest translator LOAD-BEARING reference-architecture-of-reference-architectures-of-
-    reference-architectures promotion (6 prior + this 7th).
+    """3-tier NL → PipelineRequest translator per the canonical-invariant
+    shape: rule or template first, an LLM fallback behind it, and a human
+    escape hatch behind that.
 
     Mirrors NLHypothesisTranslator discipline applied to multi-
     mode pipeline composition. Per Lever 4.
@@ -555,11 +556,11 @@ class NLPipelineTranslator:
         )
 
 
-# Anthropic + OpenAI tool-use schema
+# Anthropic + OpenAI tool-use schema.
 PIPELINE_COMPOSE_TOOL_DEF: Dict[str, Any] = {
     "name": "pipeline_compose",
     "description": (
-        'Submit multi-mode kernel pipeline via NL → typed PipelineRequest. an established pattern promotion.  Lever 4. 4 canonical modes: TRAVERSE + DISCOVER + HYPOTHESIZE + OPTIMIZE.'
+        'Submit multi-mode kernel pipeline via NL → typed PipelineRequest. the canonical-invariant shape.  Lever 4. 4 canonical modes: TRAVERSE + DISCOVER + HYPOTHESIZE + OPTIMIZE.'
     ),
     "input_schema": {
         "type": "object",

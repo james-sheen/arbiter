@@ -31,7 +31,7 @@ scrape_configs:
 
 ---
 
-## 2. The `/dt-*` Pattern-169 endpoints — what they actually return
+## 2. The `/dt-*` bootstrap-aware endpoints — what they actually return
 
 Each `/dt-<axis>` endpoint returns a bootstrap-aware JSON envelope that never 5xxs. The `source` field is one of:
 ```

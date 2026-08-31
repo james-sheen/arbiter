@@ -9,7 +9,7 @@ this is the kernel-amplification axis sibling to (4th DT-mode DISCOVER
 externalization). Schema decided at Flavor D hybrid frozen-typed +
 NL-overlay.
 
-the established pattern design-center (traversal-kernel-as-atom codification) cited as
+The kernel-as-atom design centre (traversal-kernel-as-atom codification) cited as
 the canonical kernel-amplification methodology.
 """
 
@@ -296,12 +296,12 @@ class HypothesisGenerator:
                 )
         return out
 
-    # ----- emit() — the established pattern callsite-wire to production substrate -----
+    # ----- emit() — callsite-wire to production substrate -----
 
     def emit(self, hypothesis: TopologyHypothesis) -> TopologyHypothesis:
-        """Record the hypothesis to the established pattern production substrate.
+        """Record the hypothesis to the production substrate.
 
-        Defensive import — production module may not be present (the established pattern
+        Defensive import — production module may not be present (the
         bootstrap-aware contract). Returns the hypothesis unchanged so callers
         can chain.
         """
@@ -328,8 +328,7 @@ class HypothesisGenerator:
 
 
 # ---------------------------------------------------------------------------
-# (Round-57 P3): NLHypothesisTranslator — the established pattern
-# LOAD-BEARING reference-architecture-of-reference-architectures implementation
+# NLHypothesisTranslator, on the canonical-invariant shape,
 # Decision Flavor D hybrid POST /hypothesize/test + auto-traversal.
 #
 # Mirrors NLTraversalTranslator3Tier discipline applied to
@@ -338,7 +337,7 @@ class HypothesisGenerator:
 # Tier 2 — LLM-ambiguity-resolution candidate-presentation (2-3 picks)
 # Tier 3 — operator-confirmation (cross-tenant OR HIGH+/CRITICAL severity)
 #
-# Per Lever 4 + the established pattern promotion.
+# Per the kernel-as-atom design centre, Lever 4.
 # ---------------------------------------------------------------------------
 
 
@@ -352,7 +351,8 @@ KNOWN_VERDICTS: tuple = (VERDICT_CONFIRM, VERDICT_REFUTE, VERDICT_ABSTAIN)
 class VerdictRequest:
     """Frozen-typed verdict body Decision concrete shape.
 
-    Hash-stable identity for downstream posterior-update pipelines per established pattern LOAD-BEARING promotion.
+    Hash-stable identity for downstream posterior-update pipelines per
+    the canonical-invariant shape.
     """
 
     hypothesis_id: str
@@ -402,8 +402,8 @@ def classify_escalation_tier_per_cd1291(
 class NLHypothesisTranslator:
     """ (Round-57 P3): 3-tier escalation NL → VerdictRequest translator.
 
-    the established pattern LOAD-BEARING reference-architecture-of-reference-
-    architectures implementation Decision Flavor D (rule/template
+    The canonical-invariant shape
+    — rule or template, LLM fallback, human escape hatch — implemented Decision Flavor D (rule/template
     + LLM-fallback + human escape-hatch family — HTN/STRIPS/LLM +
      LLMClient fallback + NarrationInterface audit gate +
      LLMCounterfactual + NLTraversalTranslator + this 6th).
@@ -509,7 +509,7 @@ HYPOTHESIZE_TEST_TOOL_DEF: Dict[str, Any] = {
     "description": (
         "Submit partner verdict on a generated TopologyHypothesis per "
         "Flavor D hybrid typed POST + auto-traversal evidence. Returns posterior "
-        "confidence delta. an established pattern."
+        "confidence delta."
     ),
     "input_schema": {
         "type": "object",

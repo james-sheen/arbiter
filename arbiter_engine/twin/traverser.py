@@ -320,9 +320,9 @@ class TopologyTraverser:
         result.traversal_time_ms = (time.monotonic() - start_time) * 1000
         self.topology.last_traversal_at = now_utc()
 
-        # the established pattern native 6th sub-cluster callsite-wire.
-        # Defensive: substrate-unavailable / gate-off → no-op silently.
-        # the established pattern bootstrap-aware preserves kernel contract.
+        # The callsite-wire. Defensive: substrate-unavailable or gate-off
+        # means a silent no-op, so the bootstrap-aware contract preserves the
+        # kernel contract.
         try:
             from arbiter_engine.twin.traverser_production import (
                 record_production_traversal,
@@ -892,7 +892,7 @@ class NLTraversalTranslator:
     Until those follow-up CDs land, this class is rule-based only; LLM
     delegation is NOT yet active.
 
-    Substrate-discovery surface for partners: GET /nl-query the established pattern
+    Substrate-discovery surface for partners: the GET /nl-query
     endpoint enumerates the 7 keyword-pattern set + 3-direction +
     3-value-mode vocabularies + decision-doc cross-link.
     """
@@ -969,7 +969,7 @@ class NLTraversalTranslator:
 
         Returns None when (a) rule-based unmapped + env-gate off, OR
         (b) rule-based unmapped + LLM call fails, OR (c) audit-faithfulness
-        gate fails on LLM output. an established pattern env-gate.
+        gate fails on LLM output. A default-off env-gate.
         """
         rule_based = self.translate(question, entity_ids=entity_ids)
         if rule_based is not None:
@@ -1138,7 +1138,7 @@ class NLTraversalTranslator:
 #: 3-tier escalation decision
 # ---------------------------------------------------------------------------
 
-# the established pattern canonical-invariant (promotion).
+# The canonical-invariant shape (promotion).
 # Tier 1 = rule-based or LLM-tool-use auto-translate.
 # Tier 2 = LLM-ambiguity-resolution (present 2-3 candidate TraversalRequests).
 # Tier 3 = operator-confirmation (cross-tenant OR HIGH+ severity OR overrides).
@@ -1243,7 +1243,7 @@ class NLTraversalTranslator3Tier:
     rule-based + LLM-fallback shape; this class adds tier-classification +
     candidate presentation + operator-confirmation discriminated outcomes.
 
-    the established pattern canonical-invariant (rule/template + LLM-fallback
+    The canonical-invariant shape (rule/template + LLM-fallback
     + human escape-hatch family — HTN/STRIPS/LLM + LLMClient
     fallback chain + NarrationInterface audit gate +
     LLMCounterfactual + this 5th).
@@ -1272,7 +1272,7 @@ class NLTraversalTranslator3Tier:
         - Tier 3: tier3_pending_confirmation populated + tier3_reason +
           tier3_summary (operator confirms before execute)
 
-        the established pattern canonical-invariant.
+        The canonical-invariant shape.
         """
         rule_based = self.base.translate(nl_text, entity_ids=entity_ids)
 

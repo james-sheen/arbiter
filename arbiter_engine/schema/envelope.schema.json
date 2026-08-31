@@ -120,8 +120,12 @@
           "type": "integer",
           "minimum": 1
         },
+        "engine_version": {
+          "description": "The version of the installed `arbiter-engine` distribution that produced this envelope, or null when the engine runs from a source tree with no distribution installed. Additive and NOT required, so an envelope from an engine predating this key still validates.",
+          "type": ["string", "null"]
+        },
         "source": {
-          "description": "the established pattern vocabulary, inherited rather than invented. `unavailable` carries a `reason` and is never an empty success.",
+          "description": "Where the judgment came from: `live` is a real evaluation, `warming_up` is an engine that has not yet seen enough to judge, and `unavailable` means no evaluation happened at all. `unavailable` carries a `reason` and is never an empty success.",
           "type": "string",
           "enum": ["live", "warming_up", "unavailable"]
         },

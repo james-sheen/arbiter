@@ -120,7 +120,7 @@ REST surface (FastAPI-based; OpenAPI auto-generated at `/openapi.json`):
 - `POST /api/v1/approvals/{recommendation_id}` — multi-step operator approval flow
 - `GET /api/v1/audit` — RBAC-gated audit log retrieval
 - `GET /dashboard-data` — operator real-time view backing data
-- `GET /endpoints` — substrate endpoint inventory (44+ the established pattern endpoints in-tree; 59 instances live on the demo deployment as of 2026-06-21)
+- `GET /endpoints` — substrate endpoint inventory (44+ bootstrap-aware endpoints in-tree; 59 instances live on the demo deployment as of 2026-06-21)
 - `POST /agents/register` — WebSocket Field Agent registration (Tier C control-plane partners)
 
 WebSocket surface:
@@ -143,7 +143,7 @@ The substrate is designed to fail loud, not silent. Specifically:
 - Cache eviction emits sample-capped WARN logs — operators see activity without log-bombing
 - Wire-protocol drift between Field Agent and Core surfaces reconciliation envelopes (no silent message-loss)
 
-The 8 cognitive-depth pillars (Explains / Plans / Reasons / Negotiates / Wonders / Self-audits / Designs / Forgets) each surface their own audit gates — every LLM-generated narrative passes a 3-heuristic mechanical audit (validity / no-hallucination / coverage) before reaching operator review. the established pattern (substrate-API-discovery-before-test) gives us 215 consecutive first-run-green pin tests across the cognitive-depth substrate.
+The 8 cognitive-depth pillars (Explains / Plans / Reasons / Negotiates / Wonders / Self-audits / Designs / Forgets) each surface their own audit gates — every LLM-generated narrative passes a 3-heuristic mechanical audit (validity / no-hallucination / coverage) before reaching operator review. Discovering a substrate's API before writing tests against it gives us 215 consecutive first-run-green pin tests across the cognitive-depth substrate.
 
 ### Cascade-recovery evidence (Alpha-1 closure 2026-06-13)
 

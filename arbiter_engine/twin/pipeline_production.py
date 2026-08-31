@@ -1,10 +1,10 @@
-"""ProductionPipeline substrate sibling — the established pattern
-native 5th-landing callsite-wire substrate.
+"""ProductionPipeline substrate sibling: the 5th native
+landing of the callsite-wire shape.
 
 Sequel to (load-bearing →
  reference architecture).
 
-an established pattern env-gates. an established pattern.
+Default-off env-gates, on the sibling-within-existing-module discipline.
 
 Domain-agnostic: pipeline_id + tenant_id opaque scalars. Per
  Lever 1+4 cross-cut — substrate-callsite-wire
@@ -118,7 +118,7 @@ def record_production_pipeline(
     severity: Optional[str] = None,
     observed_at: Optional[datetime] = None,
 ):
-    """An established pattern native 5th-landing."""
+    """On the sibling-within-existing-module discipline."""
     if not DT_PRODUCTION_PIPELINE_ENABLED:
         return None
     derived_severity = severity_tier_for_pipeline_per_cd1317(total_steps, failed_steps)
@@ -154,7 +154,7 @@ def get_production_pipelines():
 
 
 def get_production_pipeline_count() -> int:
-    """Dashboard-data accessor (the established pattern)."""
+    """Dashboard-data accessor."""
     if not DT_PRODUCTION_PIPELINE_ENABLED:
         return 0
     with _PRODUCTION_PIPELINE_LOCK:

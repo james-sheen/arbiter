@@ -474,8 +474,7 @@ def uniform_threshold_perturbation_strategy(
 # — real axiom-threshold perturbation v2 substrate
 # ============================================================
 
-# Per substrate-only scope (the established pattern sub-split of full
-#): 3 pure-helper functions ship today — deepcopy_snapshot()
+# Per substrate-only scope (a sub-split of the full scope): 3 pure-helper functions ship today — deepcopy_snapshot()
 # + extract_axiom_thresholds_from_domain_config() +
 # make_real_perturbation_simulation_step_v2() — composing the
 # substrate that v2 perturbation needs. The runtime LayeredDetector
@@ -837,7 +836,7 @@ async def make_layered_detector_runtime_callable_async(
 #
 # Architectural choice: option (b) scope #1 — snapshot
 # entity-property mutation under a sentinel key
-# ``__cd508_axiom_thresholds__``. Rationale:
+# ``__axiom_threshold_overrides__``. Rationale:
 # - Preserves AxiomParameters dataclass shape (option (a) would require
 # N-field schema extension; high-surface change rippling through every
 # axiom checker that reads global params).
@@ -849,12 +848,18 @@ async def make_layered_detector_runtime_callable_async(
 # ``axiom_thresholds`` namespace (which downstream might use for
 # non-perturbation purposes).
 #
-# the established pattern substrate scope: ships the injector helper + factory.
-# Axiom-checker-level integration (each axiom reads from the sentinel
-# key before falling back to AxiomParameters) deferred to.
-# Until an internal ruling lands, the override is set on entities but NOT consumed —
-# operators wire a custom LayeredDetector that pre-reads the sentinel
-# at detect_all time OR the work updates each axiom checker.
+# this block said the injector's write was NOT consumed. It is.
+# The paragraph described the state on the day shipped the helper and
+# the factory and left the checker-side read to; the integration has
+# since landed, moved the resolver to `arbiter_engine/axiom_thresholds.py`,
+# and five of the eight checkers consult it. MEASURED, not read: injecting
+# `{("T", "cpu", "STABILITY"): (0.42, 0.99)}` writes the sentinel key and
+# `resolve_axiom_threshold(entity, "cpu", "STABILITY", fallback=0.1)` returns
+# 0.42. The stale claim is corrected here rather than deleted, because a
+# reader who found the old sentence needs to know it was wrong and when.
+#
+# The scope it belongs to is the resolver's own table, which is derived and
+# tested there -- naming a count here would be a second copy of it.
 # ===========================================================================
 
 
@@ -864,7 +869,7 @@ async def make_layered_detector_runtime_callable_async(
 # predictor could not be removed from the engine extraction without taking the
 # checkers with it. Re-exported so existing import sites keep working.
 from ..axiom_thresholds import (  # noqa: E402,F401
-    CD508_ENTITY_PROPERTY_KEY,
+    AXIOM_THRESHOLD_OVERRIDES_KEY,
     resolve_axiom_threshold,
 )
 
@@ -878,7 +883,7 @@ def inject_thresholds_via_entity_properties(
     """ (option b) — canonical threshold_injector.
 
     Mutates ``snapshot_copy.nodes[id].entity.properties`` in place, adding
-    or updating the ``__cd508_axiom_thresholds__`` sentinel key with a
+    or updating the ``__axiom_threshold_overrides__`` sentinel key with a
     per-(indicator, axiom) → (warn, critical) dict. Only entities whose
     entity-type appears in ``perturbed_thresholds`` are touched.
 
@@ -954,7 +959,7 @@ def inject_thresholds_via_entity_properties(
         # pre-population) is REPLACED, not merged — per-sample isolation
         # contract requires the dict to reflect only THIS sample's
         # perturbed values.
-        props[CD508_ENTITY_PROPERTY_KEY] = dict(by_entity_type[node_etype])
+        props[AXIOM_THRESHOLD_OVERRIDES_KEY] = dict(by_entity_type[node_etype])
 
 
 def make_entity_properties_threshold_injector() -> Callable[
@@ -985,7 +990,7 @@ def make_entity_properties_threshold_injector() -> Callable[
 #
 # Each axiom-checker that integrates override (scope items
 # #1/#2/#3) calls this helper at every threshold read-site. Precedence:
-# 1. entity.properties["__cd508_axiom_thresholds__"][(indicator, axiom)]
+# 1. entity.properties["__axiom_threshold_overrides__"][(indicator, axiom)]
 # — per-sample perturbed override from injector
 # 2. axiom_param_value — global AxiomParameters fallback
 #
@@ -993,7 +998,7 @@ def make_entity_properties_threshold_injector() -> Callable[
 # they want via the `bound` arg: "warn" / "critical" / "both" (returns the
 # full tuple for callers that need both).
 #
-# the established pattern substrate scope for this helper ships as the SHARED
+# Substrate-only scope: this helper ships as the SHARED
 # entry point that all 3 axiom-checkers will use. Per-checker integration
 # (read-site changes in ConstraintEngine / UnifiedAxiomReasoner /
 # StatisticalAnomalyDetector) ships in as a multi-file rollout.

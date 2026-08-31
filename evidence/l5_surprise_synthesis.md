@@ -78,7 +78,7 @@ Across the 10-day Alpha, the substrate produced **16 cumulative L5 surprises** i
 
 **Surprise #8 (Day-5)** — *Instrumentation-design-flaws producing vacuous non-events *. A specific fault scenario was found to produce no events because its test stimulus was never applied. Pattern N had momentarily been promoted to load-bearing on the basis of an unapplied stimulus's vacuous non-event; the promotion was revoked and Pattern N stabilized at proven until Day-7's clean evidence justified META reference-architecture promotion.
 
-**Partner takeaway**: a chaos test substrate is only as good as its instrumentation discipline. The Alpha surfaced three instances of phantom instrumentation in 10 days; partner deployments should treat their own chaos / load / fault drivers with the same skepticism. Arbiter's substrate-callsite-gap pattern (the established pattern reference architecture) captures the broader pattern: substrate wired but callsite doesn't iterate. Same shape applies to test instruments.
+**Partner takeaway**: a chaos test substrate is only as good as its instrumentation discipline. The Alpha surfaced three instances of phantom instrumentation in 10 days; partner deployments should treat their own chaos / load / fault drivers with the same skepticism. Arbiter's substrate-callsite-gap pattern captures the broader pattern: substrate wired but callsite doesn't iterate. Same shape applies to test instruments.
 
 ---
 
@@ -154,7 +154,7 @@ Day-9 prediction "if HOMEOSTASIS reappears → 502 cascade re-emerged" was falsi
 
 Pattern N's promotion from candidate to load-bearing was prematurely declared Day-2 on vacuous-non-event evidence. Promotion was revoked + Pattern stabilized at proven until clean Day-7 evidence justified META reference-architecture status.
 
-The 4/4 admin endpoint probe returning 404 (Day-6) misdiagnosed the executor as "not wired"; review Round 5 source-grounding 2026-06-13 caught this 5 days later — the actual executor at `proxy/main.py:8763` existed; only the dispatcher's HTTP transport from agentless Core was missing. Codified in the methodology notes memo. ~7× scope correction on Phase 0.
+The 4/4 admin endpoint probe returning 404 (Day-6) misdiagnosed the executor as "not wired"; review Round 5 source-grounding 2026-06-13 caught this 5 days later — the actual executor at `proxy/main.py:8763` existed; only the dispatcher's HTTP transport from agentless Core was missing. Codified in the methodology notes memo as a first instance. ~7× scope correction on Phase 0.
 
 ### Open-world DT viability
 

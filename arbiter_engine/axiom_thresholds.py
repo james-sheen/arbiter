@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 #: Entity-property key carrying per-entity threshold overrides. The value is a
 #: dict of ``(indicator, axiom) -> (warn, critical)``. Named with the sentinel
 #: dunder shape so it cannot collide with a real domain property.
-CD508_ENTITY_PROPERTY_KEY = "__cd508_axiom_thresholds__"
+AXIOM_THRESHOLD_OVERRIDES_KEY = "__axiom_threshold_overrides__"
 
 # =====================================================================
 # WHAT AN OVERRIDE ACTUALLY REACHES —, measured rather than read
@@ -142,7 +142,7 @@ def resolve_axiom_threshold(
 
     Args:
         entity: Detection Entity (real or test fixture). Read via
-            ``entity.properties.get(CD508_ENTITY_PROPERTY_KEY, {})``.
+            ``entity.properties.get(AXIOM_THRESHOLD_OVERRIDES_KEY, {})``.
         indicator: Indicator name, e.g. ``"cpu"``.
         axiom: Axiom name, e.g. ``"BOUNDEDNESS"``.
         fallback: Returned when no override applies. Typically a scalar from
@@ -172,7 +172,7 @@ def resolve_axiom_threshold(
     if not props:
         return fallback
 
-    override_dict = props.get(CD508_ENTITY_PROPERTY_KEY)
+    override_dict = props.get(AXIOM_THRESHOLD_OVERRIDES_KEY)
     if not override_dict or not isinstance(override_dict, dict):
         return fallback
 

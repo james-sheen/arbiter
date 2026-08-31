@@ -1,9 +1,8 @@
-"""ProductionHypothesis substrate sibling — the established pattern
-native 3rd-landing callsite-wire substrate.
+"""ProductionHypothesis substrate sibling: the 3rd native
+landing of the callsite-wire shape.
 
-**the established pattern native 3rd-landing** (sequel to 1st-native +
-  2nd-native). is the third axis built ground-up with
-native 6-CD shape including S-Nf callsite-wire sub-cluster.
+The third axis built ground-up with this shape rather than backfilled
+into it.
 
 Substrate sibling alongside `arbiter_engine/twin/hypothesis_generator.py`
 (HypothesisGenerator + TopologyHypothesis). Independent ring;
@@ -19,16 +18,14 @@ confidence IS in [0,1] frozen schema). Severity-tier mapping
 (computed not stored): confidence < 0.25 -> LOW; 0.25-0.5 -> MEDIUM;
 0.5-0.75 -> HIGH; >= 0.75 -> CRITICAL.
 
-3-level cascade safety preserved Why #5 + Why #5 +
- Why #5 (tenant + META-AXIS privacy + META-META-AXIS
-evidence-pack + traversal at MEDIUM-floor compounded — extends to
-hypothesis at kernel-amplification level).
+Three-level cascade safety is preserved: tenant, then privacy, then
+evidence-pack, then traversal, compounded at the MEDIUM floor and extended
+to hypothesis at kernel-amplification level.
 
-an established pattern env-gates decision shape
+Default-off env-gates decision shape
 (DT_PRODUCTION_HYPOTHESIS_ENABLED + DT_PRODUCTION_HYPOTHESIS_SEVERITY_FLOOR).
 
-the established pattern sibling-within-existing-module discipline
-(subsequently 19th + 18th).
+The sibling-within-existing-module discipline.
 
 Domain-agnostic: hypothesis_id + hypothesis_type opaque scalars; no
 per-domain dispatch. Composes with Lever 2
@@ -47,7 +44,7 @@ from ..clock import as_naive_utc, now_utc
 from typing import Dict, List, Optional
 
 
-# ---------- an established pattern env-gates ----------
+# ---------- default-off env-gates ----------
 
 def _env_bool_cd1293(name: str, default: bool = False) -> bool:
     raw = os.environ.get(name, "1" if default else "0").strip().lower()
@@ -155,7 +152,7 @@ _PRODUCTION_HYPOTHESES: List["ProductionHypothesis"] = []
 _PRODUCTION_HYPOTHESIS_LOCK = threading.RLock()
 
 
-# ---------- 5 public functions per an established pattern ----------
+# ---------- 5 public functions ----------
 
 def record_production_hypothesis(
     hypothesis_id: str,
@@ -212,7 +209,7 @@ def get_production_hypotheses():
 
 def get_production_hypothesis_count() -> int:
     """Aggregate count for dashboard-data defensive-accessor
-    (Round-56 P2; the established pattern candidate). Returns 0 when gate off."""
+    (Round-56 P2). Returns 0 when gate off."""
     if not DT_PRODUCTION_HYPOTHESIS_ENABLED:
         return 0
     with _PRODUCTION_HYPOTHESIS_LOCK:

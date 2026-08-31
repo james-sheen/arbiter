@@ -25,7 +25,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from .clock import as_naive_utc, now_utc
 from arbiter_engine.axiom_thresholds import (
-    CD508_ENTITY_PROPERTY_KEY, OVERRIDE_CONSULTED_BY,
+    AXIOM_THRESHOLD_OVERRIDES_KEY, OVERRIDE_CONSULTED_BY,
     OVERRIDE_DECLARED_BUT_UNREACHABLE,
 )
 from arbiter_engine.envelope import (
@@ -206,7 +206,7 @@ class EngineSession:
         # Translating here means the caller uses the vocabulary their own model
         # uses; keying on the declared name and silently missing was the trap.
         key = self._override_key(entity.type, indicator)
-        table = entity.properties.setdefault(CD508_ENTITY_PROPERTY_KEY, {})
+        table = entity.properties.setdefault(AXIOM_THRESHOLD_OVERRIDES_KEY, {})
         table[(key, str(axiom).upper())] = (warning, critical)
 
     def _override_key(self, entity_type: str, indicator: str) -> str:
@@ -233,7 +233,7 @@ class EngineSession:
         """
         records: List[Dict[str, Any]] = []
         for entity_id, entity in self.entities.items():
-            table = entity.properties.get(CD508_ENTITY_PROPERTY_KEY) or {}
+            table = entity.properties.get(AXIOM_THRESHOLD_OVERRIDES_KEY) or {}
             declared = {
                 (s.property_name or s.name)
                 for s in ((self.model.indicators.get(entity.type, []))

@@ -349,11 +349,10 @@ class TemporalPropagationChecker:
 # ============================================================
 # ProductionTemporalEdge production-readiness substrate.
 #
-# an established pattern sibling-within-existing-module shape (after
-# + the 5 prior in-place
-# production-readiness extensions). Adds per-temporal-edge production
-# recording + 5 production-readiness public functions + the established pattern
-# 66th + env-gates hybrid emit-policy decision
+# The sibling-within-existing-module shape, after five prior in-place
+# production-readiness extensions. Adds per-temporal-edge production
+# recording + 5 production-readiness public functions + default-off
+# env-gates hybrid emit-policy decision
 # (severity-floor gating + 3-value enum emit-policy).
 #
 # Domain-agnostic: src_entity_id + dst_entity_id + time_lag_seconds scalars
@@ -378,7 +377,7 @@ DT_PRODUCTION_TEMPORAL_RING_CAP: int = int(
     _os_cd1121.environ.get("DT_PRODUCTION_TEMPORAL_RING_CAP", "10000")
 )
 
-# Per decision — an established pattern env-gate (3-value enum)
+# Per decision — a default-off env-gate (3-value enum)
 PRODUCTION_TEMPORAL_EMIT_POLICY_HYBRID: str = "hybrid"
 PRODUCTION_TEMPORAL_EMIT_POLICY_FULL_EMIT: str = "full_emit"
 PRODUCTION_TEMPORAL_EMIT_POLICY_SUPPRESSED: str = "suppressed"
@@ -389,7 +388,7 @@ KNOWN_PRODUCTION_TEMPORAL_EMIT_POLICIES = frozenset([
 ])
 DEFAULT_PRODUCTION_TEMPORAL_EMIT_POLICY: str = PRODUCTION_TEMPORAL_EMIT_POLICY_HYBRID
 
-# Per decision — an established pattern env-gate (4-value enum)
+# Per decision — a default-off env-gate (4-value enum)
 PRODUCTION_TEMPORAL_SEVERITY_LOW: str = "LOW"
 PRODUCTION_TEMPORAL_SEVERITY_MEDIUM: str = "MEDIUM"
 PRODUCTION_TEMPORAL_SEVERITY_HIGH: str = "HIGH"
@@ -549,8 +548,7 @@ def get_production_temporal_edges(
 def get_production_temporal_edge_count(cluster_id: Optional[str] = None) -> int:
     """Aggregate count of recorded production temporal-edge records.
 
-    Dashboard-data defensive-accessor entry point + Pattern
-    171. Returns 0 when gate off.
+    Dashboard-data defensive-accessor entry point. Returns 0 when gate off.
 
     optional ``cluster_id`` filter. None = aggregate count;
     string value returns count of edges stamped with that cluster_id.

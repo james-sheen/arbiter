@@ -1,10 +1,8 @@
-"""ProductionOptimization substrate sibling — the established pattern
-native 4th-landing callsite-wire substrate.
+"""ProductionOptimization substrate sibling: the 4th native
+landing of the callsite-wire shape.
 
-**the established pattern native 4th-landing** (sequel to 1st-native +
-  2nd-native + 3rd-native). is the fourth
-axis built ground-up with native shape including S-Nf callsite-wire sub-
-cluster — pattern shape now reference-architecture (load-bearing).
+The fourth axis built ground-up with this shape rather than backfilled
+into it.
 
 Substrate sibling alongside `arbiter_engine/twin/topology_optimizer.py`
 (TopologyOptimizer). Independent ring; optimizer preserved
@@ -15,13 +13,12 @@ invocation. Each record captures: (request_id, pareto_front_size,
 max_objective_value, max_constraint_satisfaction, tenant_id,
 observed_at).
 
-3-level cascade safety preserved +
-Why #5 chain.
+Three-level cascade safety is preserved along the same chain as its
+siblings.
 
-an established pattern env-gates decision shape.
+Default-off env-gates decision shape.
 
-the established pattern sibling-within-existing-module discipline
-(subsequently 20th).
+The sibling-within-existing-module discipline.
 
 Domain-agnostic: request_id + tenant_id opaque scalars; no per-domain
 dispatch. Composes with Lever 1 (kernel
@@ -40,7 +37,7 @@ from ..clock import as_naive_utc, now_utc
 from typing import Dict, List, Optional
 
 
-# ---------- an established pattern env-gates ----------
+# ---------- default-off env-gates ----------
 
 def _env_bool_cd1304(name: str, default: bool = False) -> bool:
     raw = os.environ.get(name, "1" if default else "0").strip().lower()
@@ -150,7 +147,7 @@ _PRODUCTION_OPTIMIZATIONS: List["ProductionOptimization"] = []
 _PRODUCTION_OPTIMIZATION_LOCK = threading.RLock()
 
 
-# ---------- 5 public functions per an established pattern ----------
+# ---------- 5 public functions ----------
 
 def record_production_optimization(
     request_id: str,
@@ -209,7 +206,7 @@ def get_production_optimizations():
 
 def get_production_optimization_count() -> int:
     """Aggregate count for dashboard-data defensive-accessor
-    (Round-57 P2; the established pattern candidate). Returns 0 when gate off."""
+    (Round-57 P2). Returns 0 when gate off."""
     if not DT_PRODUCTION_OPTIMIZATION_ENABLED:
         return 0
     with _PRODUCTION_OPTIMIZATION_LOCK:

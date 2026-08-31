@@ -23,8 +23,7 @@ where it routes as the fourth residual source
   not-looking silence. Per the three-silences discipline (dt.md 8.5) it is
   recorded, never graded, and never emitted.
 
-Gate-off semantics follow the PlanOutcomeRecorder precedent (the established pattern,
-``DT_PREDICT_VS_MIRROR_ENABLED`` default OFF): the module-level singleton
+Gate-off semantics follow the PlanOutcomeRecorder precedent (``DT_PREDICT_VS_MIRROR_ENABLED`` default OFF): the module-level singleton
 record/grade paths are no-ops with zero memory accumulation; the
 ``PredictionLedger`` class itself is a pure library. Ring cap via
 ``DT_PREDICTION_LEDGER_RING_CAP`` (default 1000). Value-level predictions
@@ -57,7 +56,7 @@ _HIGH_PROBABILITY: float = 0.5
 
 
 def predict_vs_mirror_enabled() -> bool:
-    """The established pattern gate — default OFF."""
+    """The gate — default OFF."""
     return os.environ.get(
         "DT_PREDICT_VS_MIRROR_ENABLED", ""
     ).strip().lower() in ("1", "true", "yes")
@@ -521,7 +520,7 @@ def record_traversal_impacts(
     impacts: Optional[Iterable[Any]],
     traversal_id: Optional[str] = None,
 ) -> List[str]:
-    """Gated recording callsite (the established pattern wire): no-op while OFF —
+    """Gated recording callsite: no-op while OFF —
     zero memory accumulation in disabled deployments."""
     if not predict_vs_mirror_enabled():
         return []

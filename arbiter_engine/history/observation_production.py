@@ -4,16 +4,16 @@ Production-readiness substrate for the observation foundation modules at
 a module held from this package (Redis Streams consumer) +
 arbiter_engine/history/observation.py (InMemoryObservationHistory).
 
-sibling-within-package precedent:
+Per the sibling-within-package precedent:
 history/ dir hosts observation.py + readiness.py sibling modules with no
 single shared parent module suitable for sibling extension. ships
 substrate at new standalone module sibling-within-package (parent =
 `arbiter_engine/history/`, sibling to `observation.py` + `readiness.py`) rather
-than mutate any individual foundation module. an established pattern
-sibling-substrate-at-axis-parent-level variant.
+than mutate any individual foundation module: a sibling substrate at
+axis-parent level rather than single-module level.
 
 Adds per-observation production recording + 5 production-readiness public
-functions + an established pattern env-gate. Composes hybrid
+functions + a default-off env-gate. Composes the hybrid
 emit-policy decision (source-health-transition OR freshness_age >
 threshold gate) + attestation severity floor +
 NaturalCategoryDispatcher (emit_policy axis dispatch via existing 9th
@@ -118,7 +118,7 @@ _LAST_INGEST_AT: Optional[datetime] = None
 # caller (`InMemoryObservationHistory.add`), and that is not the answer, it is
 # the funnel everything passes through.
 #
-# So: tag the real caller at runtime and count. Default OFF (the established pattern) —
+# So: tag the real caller at runtime and count. Default OFF —
 # frame inspection on every ingest is not something to leave on by accident.
 # ---------------------------------------------------------------------------
 DT_INGEST_CALLER_TAG_ENABLED: bool = (
@@ -303,8 +303,7 @@ def get_observations(cluster_id: Optional[str] = None) -> List[ProductionObserva
 def get_observation_count(cluster_id: Optional[str] = None) -> int:
     """Aggregate count of recorded production observation records.
 
-    Dashboard-data defensive-accessor entry point + Pattern
-    171. Returns 0 when gate off.
+    Dashboard-data defensive-accessor entry point. Returns 0 when gate off.
 
     optional ``cluster_id`` filter. None = aggregate count;
     string value returns count of observations stamped with that cluster_id.

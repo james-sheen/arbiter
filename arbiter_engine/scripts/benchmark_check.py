@@ -37,6 +37,7 @@ order of magnitude better and mean nothing.
 from __future__ import annotations
 
 import argparse
+import os
 import logging
 import statistics
 import sys
@@ -297,5 +298,42 @@ def main(argv=None) -> int:
     return 0
 
 
+def _run() -> int:
+    """`| head` is an ordinary thing to do to a table.
+
+    This script prints a report and a reader that stops reading has said
+    something about itself, not about the measurement.
+
+    **There are two failure modes here, not one, and the first version of this
+    guard caught only the louder one.** Output long enough to fill the pipe
+    buffer raises out of `print`, which the `except` below catches. Output short
+    enough to sit in the buffer raises nowhere: `main()` returns cleanly and the
+    interpreter flushes on the way out, printing `Exception ignored` and a
+    `BrokenPipeError` over a benchmark that had in fact completed, then exiting
+    `120`. This table is short, so the untouched mode was the one it actually
+    hits — measured by closing a reader against the built package, after the
+    docstring above already claimed the fix.
+
+    The flush is therefore INSIDE the `try`, which is the whole repair: it moves
+    the failure to somewhere an `except` can reach. Then absorb it, point the
+    descriptor at nowhere so the interpreter's final flush cannot raise again,
+    and exit with the conventional broken-pipe status rather than pretending the
+    whole table was delivered.
+
+    Same family as the audit tool's closed-reader fix, whose own docstring names
+    both modes; only one of them had been carried across.
+    """
+    try:
+        status = main()
+        sys.stdout.flush()
+        return status
+    except BrokenPipeError:
+        try:
+            os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        except OSError:                                   # pragma: no cover
+            pass
+        return 128 + 13
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(_run())

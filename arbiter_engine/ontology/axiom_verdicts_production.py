@@ -8,17 +8,19 @@ Per sibling-within-module precedent: axioms/ dir hosts 8
 sibling checker modules with no single shared parent module suitable for
 sibling extension. ships substrate at new standalone module
 (parent = `arbiter_engine/ontology/`, sibling to `axioms/` package) rather
-than mutate any individual checker. the established pattern sibling-substrate
+than mutate any individual checker. The sibling-substrate
 discipline preserved (substrate sibling at axis-parent level rather than
 single-module level).
 
 Adds per-verdict production recording + 5 production-readiness public
-functions + an established pattern env-gate. Composes hybrid
+functions + a default-off env-gate. Composes the hybrid
 emit-policy decision (transition OR confidence_threshold gate) +
 attestation severity floor + NaturalCategoryDispatcher
 (emit_policy axis dispatch via existing 9th canonical axis added; no new axis).
 
-the established pattern sibling-substrate-within-existing-module variant.
+A sibling substrate within an existing module, at axis-parent level rather
+than single-module level — which is what distinguishes it from the variant
+that extends single modules.
 
 Domain-agnostic: axiom_name + entity_id + verdict + confidence scalars
 opaque; no per-domain dispatch.
@@ -127,8 +129,7 @@ _PRODUCTION_LAST_VERDICT: Dict[tuple, str] = {}  # (entity_id, axiom_name) -> ve
 # ContextVar. This is minimal-invasive Layer-3 stamping without rewriting
 # the detector contract.
 #
-# substrate-callsite-gap discipline (post-promotion to
-# reference architecture): the substrate-side ContextVar +
+# Per the substrate-callsite-gap discipline: the substrate-side ContextVar +
 # the caller-side `with cluster_scope(cluster_id):` block together form
 # the bridge between substrate-emission and cluster-aware caller context.
 _CURRENT_CLUSTER_ID: ContextVar[Optional[str]] = ContextVar(
@@ -171,7 +172,7 @@ def _resolve_cluster_id(explicit: Optional[str]) -> Optional[str]:
 def _wire_composition_for_entity(entity_id: str) -> None:
     """feed an entity's full per-axiom verdict snapshot to the
     axiom-composition wiring at the recording callsite (was callsite-less —
-    the established pattern substrate-callsite gap, review Part 66 / ARCHITECTURE Part 65.3).
+    the substrate-callsite gap).
 
     Reads the wire-up gate dynamically so it stays byte-identical when
     ``DT_AXIOM_COMPOSITION_WIRING_ENABLED`` is OFF (default): early-return, no
@@ -254,7 +255,7 @@ def record_axiom_verdict(
                 : len(_PRODUCTION_VERDICTS) - DT_AXIOM_VERDICT_PRODUCTION_RING_CAP
             ]
     # land the previously-callsite-less axiom-composition wire so
-    # composition_wired_count can be nonzero. Self-gated on the established pattern
+    # composition_wired_count can be nonzero. Self-gated on
     # DT_AXIOM_COMPOSITION_WIRING_ENABLED (default OFF -> no-op, byte-identical).
     _wire_composition_for_entity(entity_id)
     return record
@@ -295,8 +296,7 @@ def get_axiom_verdicts(
 def get_axiom_verdict_count(cluster_id: Optional[str] = None) -> int:
     """Aggregate count of recorded production axiom-verdict records.
 
-    Dashboard-data defensive-accessor entry point + Pattern
-    171. Returns 0 when gate off.
+    Dashboard-data defensive-accessor entry point. Returns 0 when gate off.
 
     optional ``cluster_id`` filter. None = aggregate count;
     string value returns count of verdicts stamped with that cluster_id.

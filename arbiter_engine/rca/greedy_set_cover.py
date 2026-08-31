@@ -92,8 +92,7 @@ def greedy_set_cover(
 # evidence_collector and report_generator foundation modules) at
 # production-readiness shape hybrid
 # emit-policy decision. Adds per-candidate production recording + 5
-# production-readiness public methods + an established pattern
-# env-gate. Composes attestation severity floor +
+# production-readiness public methods + a default-off env-gate. Composes attestation severity floor +
 # NaturalCategoryDispatcher (emit_policy axis dispatch via existing 9th
 # canonical axis added) + emit-policy.
 
@@ -242,8 +241,7 @@ def get_rca_candidates(
 def get_rca_candidate_count(cluster_id: Optional[str] = None) -> int:
     """Aggregate count of recorded production RCA candidates.
 
-    Dashboard-data defensive-accessor entry point + Pattern
-    171. Returns 0 when gate off.
+    Dashboard-data defensive-accessor entry point. Returns 0 when gate off.
 
     optional ``cluster_id`` filter. None = aggregate count;
     string value returns count of candidates stamped with that cluster_id.

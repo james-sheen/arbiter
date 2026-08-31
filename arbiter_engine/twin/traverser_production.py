@@ -1,10 +1,8 @@
-"""ProductionTraversal substrate sibling — the established pattern
-native 6th sub-cluster callsite-wire substrate.
+"""ProductionTraversal substrate sibling: the sixth native landing of the
+sub-cluster callsite-wire shape.
 
-**the established pattern native 2nd-landing** (sequel to 1st-native;
-were retroactively backfilled..1250 5-CD + 1
-callsite-add). is the second axis built ground-up with native 6-CD
-shape including S-Nf callsite-wire sub-cluster.
+The second axis built ground-up with this shape rather than backfilled
+into it.
 
 Substrate sibling alongside `arbiter_engine/twin/traverser.py` foundation
 (TopologyTraverser kernel + NLTraversalTranslator). Independent ring;
@@ -20,22 +18,19 @@ clamped to [0, 1] — single-node-zero-gap = LOW; deep-multi-gap = CRITICAL.
 Severity-tier mapping (computed not stored): severity < 0.25 → LOW;
 0.25-0.5 → MEDIUM; 0.5-0.75 → HIGH; >= 0.75 → CRITICAL.
 
-3-level cascade safety preserved Why #5 + Why #5
-(tenant + META-AXIS privacy + META-META-AXIS evidence-pack at
-MEDIUM-floor compounded — extends to traversal at kernel level).
+Three-level cascade safety is preserved: tenant, then privacy, then
+evidence-pack, compounded at the MEDIUM floor and extended to traversal at
+kernel level.
 
-an established pattern env-gates (just taking
-117th + 118th for NLTranslator gates).
+Default-off env-gates.
 
-the established pattern NaturalCategoryDispatcher via 4-value
+The NaturalCategoryDispatcher, via 4-value
 severity-floor enum.
 
-the established pattern sibling-within-existing-module discipline
-(subsequently 18th + 17th).
+The sibling-within-existing-module discipline.
 
 Domain-agnostic: start_node + direction + value_mode opaque scalars; no
-per-domain dispatch. Composes with Pattern
-509 candidate — substrate-callsite-wire IS the per-traversal-emit hook.
+per-domain dispatch. Composes with the kernel-as-atom design centre — substrate-callsite-wire IS the per-traversal-emit hook.
 """
 
 from __future__ import annotations
@@ -50,7 +45,7 @@ from ..clock import as_naive_utc, now_utc
 from typing import Dict, List, Optional
 
 
-# ---------- an established pattern env-gates ----------
+# ---------- default-off env-gates ----------
 
 def _env_bool_cd1282(name: str, default: bool = False) -> bool:
     raw = os.environ.get(name, "1" if default else "0").strip().lower()
@@ -182,7 +177,7 @@ _PRODUCTION_TRAVERSALS: List["ProductionTraversal"] = []
 _PRODUCTION_TRAVERSAL_LOCK = threading.RLock()
 
 
-# ---------- 5 public functions per an established pattern ----------
+# ---------- 5 public functions ----------
 
 
 def record_production_traversal(
@@ -254,7 +249,7 @@ def get_production_traversals():
 
 def get_production_traversal_count() -> int:
     """Aggregate count for dashboard-data defensive-accessor
-    (Round-55 P2; the established pattern candidate). Returns 0 when gate off."""
+    (Round-55 P2). Returns 0 when gate off."""
     if not DT_PRODUCTION_TRAVERSAL_ENABLED:
         return 0
     with _PRODUCTION_TRAVERSAL_LOCK:

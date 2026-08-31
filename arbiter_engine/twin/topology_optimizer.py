@@ -8,7 +8,7 @@ Per /round-eval Part 4.C criterion #7 + Lever 1
 amplification axis sibling to (DISCOVER 4th-mode) + (HYPOTHESIZE
 5th-mode). Schema decided at Flavor D hybrid frozen-typed + NL-overlay.
 
-the established pattern design-center reuse — kernel mode-extension is the canonical
+The kernel-as-atom design centre — kernel mode-extension is the canonical
 kernel-amplification move.
 """
 
@@ -256,12 +256,12 @@ class TopologyOptimizer:
                 front.append(candidate)
         return front
 
-    # ----- emit() — the established pattern callsite-wire to production substrate -----
+    # ----- emit() — callsite-wire to production substrate -----
 
     def emit(self, request: OptimizationRequest, plans: List[ActionPlanPoint]) -> int:
-        """Record the optimization invocation to the established pattern production substrate.
+        """Record the optimization invocation to the production substrate.
 
-        Defensive import — production module may not be present (the established pattern
+        Defensive import — production module may not be present (the
         bootstrap-aware contract). Returns count of plans recorded.
         """
         try:
@@ -285,8 +285,7 @@ class TopologyOptimizer:
 
 
 # ---------------------------------------------------------------------------
-# NLOptimizationTranslator — the established pattern LOAD-BEARING
-# completion (sibling to NLPipelineTranslator).
+# NLOptimizationTranslator — on the canonical-invariant shape.
 # ---------------------------------------------------------------------------
 
 
@@ -306,7 +305,8 @@ class NLOptimizationTranslationResult:
 
 
 class NLOptimizationTranslator:
-    """3-tier NL → OptimizationRequest translator LOAD-BEARING completion (sibling to NLPipelineTranslator).
+    """3-tier NL → OptimizationRequest translator, on the canonical-invariant
+    shape.
 
     Per Lever 4 applied to optimization
     objective + constraints NL parsing.
@@ -398,8 +398,7 @@ OPTIMIZE_COMPOSE_TOOL_DEF: Dict[str, Any] = {
     "name": "optimize_compose",
     "description": (
         "Submit optimization request via NL → typed OptimizationRequest. "
-        "an established pattern completion (sibling to "
-        "NLPipelineTranslator).  "
+        "On the canonical-invariant shape.  "
         "Lever 4. Direction-detection + 3-operator constraint mapping."
     ),
     "input_schema": {

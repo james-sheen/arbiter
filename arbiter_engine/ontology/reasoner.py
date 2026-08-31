@@ -92,7 +92,7 @@ def _record_fires(
     preserved gap, not a new one.
 
     Instrumentation must never break detection: any failure is swallowed with
-    a debug line, per established pattern bootstrap-aware shape used elsewhere in
+    a debug line, per the bootstrap-aware shape used elsewhere in
     this method.
     """
     if not problems:
@@ -543,7 +543,7 @@ class UnifiedAxiomReasoner(OntologyReasonerInterface):
             # verdict confidence). `record_axiom_verdict` internally checks
             # DT_AXIOM_VERDICT_PRODUCTION_ENABLED gate; hybrid emit-policy fires
             # on verdict-transition OR confidence >= threshold. Defensive
-            # try/except bootstrap-aware.
+            # try/except, bootstrap-aware.
             try:
                 from arbiter_engine.ontology.axiom_verdicts_production import (
                     record_axiom_verdict,
@@ -819,23 +819,19 @@ class UnifiedAxiomReasoner(OntologyReasonerInterface):
 
 # ============================================================
 # ProductionPrediction production-readiness
-# substrate sibling (the established pattern sibling-within-existing-module
-# — over-saturated reference architecture; precedents
-# +
-#).
+# substrate sibling, on the sibling-within-existing-module shape.
 #
-# 5-field frozen dataclass + 5 public functions + an established pattern
-# env-gate DT_PRODUCTION_PREDICTION_ENABLED +
-# (CENTENARY MILESTONE) DT_PRODUCTION_PREDICTION_SEVERITY_FLOOR + ring-cap
-# eviction. Foundation UnifiedAxiomReasoner class above preserved
-# unchanged in-place extension discipline.
+# 5-field frozen dataclass + 5 public functions + the default-off env-gates
+# DT_PRODUCTION_PREDICTION_ENABLED and DT_PRODUCTION_PREDICTION_SEVERITY_FLOOR
+# + ring-cap eviction. Foundation UnifiedAxiomReasoner class above preserved
+# unchanged, per the in-place extension discipline.
 #
 # Hybrid default-on emit-policy decision (15-precedent
-# uniform-knob discipline; the established pattern axis-closure shape).
+# uniform-knob discipline; the axis-closure shape).
 #
 # Domain-agnostic: entity_id + axiom_engine + prediction_severity scalars
 # opaque; no per-domain dispatch. Composes emit-policy decision +
-# attestation severity floor + the established pattern NaturalCategoryDispatcher
+# attestation severity floor + the NaturalCategoryDispatcher
 # (severity axis = 1 of 8 canonical axes; no new axis). EU AI Act
 # Article 16 (risk-management system requires prediction-attestation on
 # every AI prediction) + SOC2 audit-trail completeness compliance addressed
@@ -861,7 +857,7 @@ DT_PRODUCTION_PREDICTION_RING_CAP: int = int(
     _os_cd1213.environ.get("DT_PRODUCTION_PREDICTION_RING_CAP", "10000")
 )
 
-# Per decision — an established pattern env-gate (3-value enum)
+# Per decision — a default-off env-gate (3-value enum)
 PRODUCTION_PREDICTION_EMIT_POLICY_HYBRID: str = "hybrid"
 PRODUCTION_PREDICTION_EMIT_POLICY_FULL_EMIT: str = "full_emit"
 PRODUCTION_PREDICTION_EMIT_POLICY_SUPPRESSED: str = "suppressed"
@@ -874,7 +870,7 @@ DEFAULT_PRODUCTION_PREDICTION_EMIT_POLICY: str = (
     PRODUCTION_PREDICTION_EMIT_POLICY_HYBRID
 )
 
-# Per decision — an established pattern env-gate
+# Per decision — a default-off env-gate
 # (CENTENARY MILESTONE — 4-value enum)
 PRODUCTION_PREDICTION_SEVERITY_LOW: str = "LOW"
 PRODUCTION_PREDICTION_SEVERITY_MEDIUM: str = "MEDIUM"

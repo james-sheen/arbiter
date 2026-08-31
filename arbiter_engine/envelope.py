@@ -25,7 +25,7 @@ which had to be added — findings and declines were countable,
     different and the ``meta.source`` field says which.
 
 **Envelope vocabulary is inherited, not invented.** ``source`` takes the same
-three values the established pattern established across ~50 endpoint modules —
+three values established across ~50 endpoint modules —
 ``live`` / ``warming_up`` / ``unavailable`` — with ``reason`` populated
 whenever it is not ``live``. Diverging here would be the vocabulary-drift
 that an internal ruling decided against, in the newest public surface.
@@ -38,12 +38,13 @@ engine did.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import lru_cache
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from .interfaces import DetectionResult, Problem
 from .types import NotEvaluated
 
-#: the established pattern envelope vocabulary, reused verbatim.
+#: The bootstrap-aware envelope vocabulary, reused verbatim.
 SOURCE_LIVE = "live"
 SOURCE_WARMING_UP = "warming_up"
 SOURCE_UNAVAILABLE = "unavailable"
@@ -69,6 +70,36 @@ SOURCE_UNAVAILABLE = "unavailable"
 #: move it — every reader here is a lookup, and additive keys have been the
 #: normal way this envelope grows.
 ENVELOPE_SCHEMA_VERSION = 1
+
+
+#: The distribution name, which is not the package name. `arbiter_engine` is
+#: what you import; `arbiter-engine` is what the index serves.
+_ENGINE_DISTRIBUTION = "arbiter-engine"
+
+
+@lru_cache(maxsize=1)
+def engine_version() -> Optional[str]:
+    """which engine judged, read from installed metadata.
+
+    Every other claim this family publishes names its producer, and the
+    envelope carrying the judgment did not. A consumer holding two envelopes
+    that disagree could not tell whether they came from the same engine.
+
+    READ, not restated. A literal here would be a second copy of the number
+    in `pyproject.toml`, and a version written twice drifts -- this project
+    has paid for that more than once. `None` is the honest answer when the
+    engine runs from a source tree with no distribution installed: the
+    envelope says it does not know rather than inventing a version, and the
+    key is always present so a reader can branch on it.
+    """
+    try:
+        from importlib.metadata import PackageNotFoundError, version
+    except ImportError:                                   # pragma: no cover
+        return None
+    try:
+        return version(_ENGINE_DISTRIBUTION)
+    except PackageNotFoundError:
+        return None
 
 
 @dataclass(frozen=True)
@@ -133,6 +164,7 @@ class Envelope:
         # exactly when a reader most needs to know what shape it is reading.
         meta: Dict[str, Any] = {
             "schema_version": ENVELOPE_SCHEMA_VERSION,
+            "engine_version": engine_version(),
             "source": self.source,
         }
         if self.reason is not None:
@@ -271,7 +303,7 @@ def build_envelope(
 
 
 def unavailable_envelope(reason: str) -> Envelope:
-    """The established pattern's bootstrap-aware fallback: a tool whose substrate is not
+    """The bootstrap-aware fallback: a tool whose substrate is not
     up answers with an envelope naming the reason, never an error and never a
     misleading empty success."""
     return Envelope(

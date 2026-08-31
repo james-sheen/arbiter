@@ -20,7 +20,70 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- Every envelope's `meta` now carries `engine_version`: the version of the
+  installed `arbiter-engine` distribution that produced it. It is **read from
+  installed metadata, not written down** — a version literal here would be a
+  second copy of the one in `pyproject.toml`, and a number written twice drifts.
+  It is `null` when the engine runs from a source tree with no distribution
+  installed: the envelope says it does not know rather than inventing a version,
+  and the key is always present so a reader can branch on it.
+
+  `schema/envelope.schema.json` gains the key as **optional**, and
+  `schema_version` does **not** move. An envelope from an engine predating this
+  key still validates, and a reader that ignores the key still works — which is
+  the condition that revision number exists to signal.
+
+- `BRIDGES.md`: how to write the program that feeds this engine, derived from the
+  reasons it refuses to answer. The two worked implementations it points at are
+  by this author, and it says so.
+
+### Changed — BREAKING
+
+- The module-level constant `CD508_ENTITY_PROPERTY_KEY` in `axiom_thresholds` is
+  renamed to `AXIOM_THRESHOLD_OVERRIDES_KEY`, and the property key it holds
+  changes from `__cd508_axiom_thresholds__` to `__axiom_threshold_overrides__`.
+  **Both spellings are gone; there is no alias.** The old name cited a private
+  tracker record, which is the one claim on this surface a reader could not
+  check.
+
+  Neither was on the supported eleven-name API, and no released consumer imports
+  either — but a deep import of the constant, or code typing the old property key
+  into `Entity.properties` directly, will break. **Use
+  `EngineSession.set_threshold_override(entity_id, indicator, axiom, warning=…,
+  critical=…)`**, which is the documented way to set a per-entity override and has
+  been since 0.1.8.
+
+### Fixed
+
+- The load-time warning for `(indicator, axiom)` pairs that cannot evaluate under
+  any input printed one blanket remedy — *declare a `role:` on the indicator* —
+  for every pair. A `role:` does nothing for CONSERVATION, where the missing
+  `conservation:` block is the fix. `unreachable_declarations()` had the right
+  remedy per pair the whole time, so the two surfaces disagreed about one
+  condition in a single process and the printed one was wrong. The warning now
+  prints what the report computed.
+
+- Piping `python3 -m arbiter_engine.scripts.benchmark_check` into a reader that
+  stops early printed `Exception ignored` and a traceback over a benchmark that
+  had in fact completed. It now exits with the conventional broken-pipe status.
+
+- Comments and docstrings throughout this package cited an internal record by
+  number. The step that removes those citations replaced each one with a stock
+  phrase, which left sentences no reader could parse — *the established pattern
+  native 2nd-landing*, and sixty more like it — and in three module docstrings
+  the citation had been the grammatical SUBJECT, so removing it left a sentence
+  opening on its own verb. That shape is described rather than quoted here: the
+  check that now catches it cannot tell an erratum from the mistake it corrects.
+  Every one of them now names the thing rather than the record.
+  The description of `meta.source` in the published schema was the same defect
+  in the one document a consumer validates against.
+
+- Eight of those citations were not replaced at all and shipped intact,
+  including one section heading in `evidence/`. The rule that removes them
+  reads a single line, so a citation wrapped across two lines, or written with
+  a hyphen, went straight through it.
 
 ---
 

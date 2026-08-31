@@ -53,7 +53,7 @@ ran and found nothing appears in neither. Without `evaluations_attempted`, the s
 invariants* has no honest value of N — and an envelope reporting a fabricated denominator is the
 exact failure the envelope exists to prevent.
 
-All eight axiom checkers emit declines (26 call sites). This is not a property of one checker that
+All eight axiom checkers emit declines (29 call sites). This is not a property of one checker that
 the others aspire to.
 
 ## The eight axioms
@@ -205,7 +205,8 @@ document tells them not to depend on.
 
 `examples/water_tank.yaml` is a deliberately synthetic two-tank water system that **declares all
 eight axioms in one file**, so it doubles as the schema reference. It is not one of the curated
-domain models — those are not published, and neither are the other two beside it — and reading it is
+domain models, which are not published — and neither `kubernetes_node.yaml` nor `battery_pack.yaml`
+is one of those either, though all three ship here — and reading it is
 the fastest way to learn the shape. `kubernetes_node.yaml` and `battery_pack.yaml` are the same kind
 of thing on domains where a floor and a band carry the weight.
 
@@ -371,6 +372,7 @@ python3 -m arbiter_engine.scripts.benchmark_check --sizes 10,100,1000 --model-si
 | File | Answers |
 |---|---|
 | [`MODELING.md`](MODELING.md) | how to write a domain model, and the rule that is easy to get wrong |
+| [`BRIDGES.md`](BRIDGES.md) | how to write the program that feeds one, starting from the reasons this engine refuses to answer |
 | [`CHANGELOG.md`](CHANGELOG.md) | what changed, and which version numbers do not exist |
 | [`COMPATIBILITY.md`](COMPATIBILITY.md) | what a patch release may change, and what waits |
 | [`schema/envelope.schema.json`](schema/envelope.schema.json) | the response shape, machine-readable |
@@ -378,6 +380,11 @@ python3 -m arbiter_engine.scripts.benchmark_check --sizes 10,100,1000 --model-si
 Three worked models ship in `examples/`: `water_tank.yaml` declares all eight axioms and doubles as
 the schema reference, `kubernetes_node.yaml` is the smallest domain where a band matters, and
 `battery_pack.yaml` is one where nearly every bound is a floor somebody published.
+
+**Built on this engine**: [`bmc-sensor-audit`](https://github.com/james-sheen/bmc-sensor-audit)
+audits firmware sensor coverage; [`fleet-sensor-baseline`](https://github.com/james-sheen/fleet-sensor-baseline)
+aggregates its output across a fleet. Both are by this author rather than independent adopters, so
+take them as worked examples of the shape in `BRIDGES.md` and not as evidence anyone else has done it.
 
 Evidence and technical write-ups live in `evidence/` — architecture, deployment runbook,
 fault-scenario catalogue, and the observation logs from the closed-loop alpha, including the

@@ -26,7 +26,7 @@ No closed-loop actions were exercised against the deployment during Alpha-1; the
 | Load-generator | Separate VM (the load generator) emitting sustained + adversarial traffic |
 | Fault windows | 6 scheduled events Days 2-7 (durations 30-240 min; multipliers 1-6× adversarial density) |
 | Substrate axes exercised | 14 (per-axis ring buffers in Core: observation / axiom verdict / RCA / explanation / LLM invocation / action / privacy / audit / tenant-context / 6 more) |
-| the established pattern endpoints surfaced | 18 (cross-pillar attestation + per-axis evidence) |
+| Bootstrap-aware endpoints surfaced | 18 (cross-pillar attestation + per-axis evidence) |
 | Diagnostic signatures catalogued | 18 (T1 library; auto-applied at session start) |
 | L5 surprises observed | 16 cumulative across Days 1-11 (Alpha-1 closure) |
 | Pattern N family | 3-branch: N.a sleep-clamp / N.b 403-cascade / N.c 502-cascade — all PROVEN (2+ instances each) |
@@ -129,7 +129,7 @@ Alpha-1 work was structured by the recursive-examination framework (Recursive Ex
 - **T1**: Diagnostic-signature library match — 18 catalogued signatures save ~30-60 min per match.
 - **T2**: Adversarial probe cycle — 3-5 probes designed to BREAK current substrate; each = candidate L5 surprise.
 - **T3**: Diagnostic-Iteration Loop (DIL) — when live-verify fails, iterate diagnostically; 3-iteration limit per session before honest-stop.
-- **T4**: Cross-pattern leverage — apply canonical fix templates (e.g. the established pattern substrate-callsite-gap) rather than re-deriving solutions.
+- **T4**: Cross-pattern leverage — apply canonical fix templates (e.g. the substrate-callsite gap) rather than re-deriving solutions.
 - **T5**: Pattern codification (session-end audit) — new signatures join T1; new architectural antipatterns join the feedback memory canon.
 
 **T-1 extension** (operator-diagnostic-question-as-T-minus-1, PROVEN): a single operator diagnostic question after a "clean" T0-T5 closure can surface more substrate gaps than the planned probes. 2026-06-12 codification: invite one such question explicitly at session end before declaring done.

@@ -5,8 +5,11 @@ checkers", having measured a release it did not pin. It is wired, and has been.
 What measuring the current engine found instead is two facts a call site cannot
 show you, and this file is the oracle for both.
 
-FIRST, an override reaches four of the eight axioms. Two more call the resolver
-on paths nothing invokes, so setting one is silent. The module carries that as
+FIRST, an override reaches FIVE of the eight axioms. One more calls the resolver
+on a path nothing invokes, so setting one there is silent. RESPONSIVENESS was
+filed as the second such axiom and is not: `check_io_pair` runs, fires and
+honours the override on any session given I/O relationships. The module carries
+the count as
 a table; the table is documentation and THIS is what holds it true — every row
 is re-derived here by running the engine with the override absent and present
 and watching the verdict move or not. A table checked only by reading is a
@@ -14,7 +17,7 @@ second copy of a fact, and this project keeps finding those after they drift.
 
 SECOND, and it is the one a consumer feels: an override never touches a
 DECLARED threshold. `warning:` and `critical:` are read straight off the model
-with no override lookup on that path. What the four reachable axioms override
+with no override lookup on that path. What the five reachable axioms override
 is their calibration parameter. Pinned below, because the difference is
 invisible until a check that should have moved does not.
 """
@@ -324,7 +327,7 @@ class TestTheFeeder:
         session.set_threshold_override(ENTITY, "v", "STABILITY", warning=1.5)
         stored = next(iter(
             session.entities[ENTITY].properties[
-                "__cd508_axiom_thresholds__"]))
+                "__axiom_threshold_overrides__"]))
         assert stored[0] == "raw_v", (
             f"stored under {stored[0]!r}; the checker will look up the mapped "
             f"property name and find nothing")

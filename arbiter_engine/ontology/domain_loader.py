@@ -846,12 +846,21 @@ def load_domain(source: Union[str, Path, Dict[str, Any]]) -> DomainModel:
     # the model over it would be the tool overruling its author.
     unreachable = model.unreachable_declarations()
     if unreachable:
+        # the remedy is PER PAIR, and it was already computed one
+        # attribute away. This printed a single blanket `declare a role:` for
+        # every unreachable pair, which is simply wrong for CONSERVATION: a
+        # `role:` does nothing there and the `conservation:` block is what is
+        # missing. `unreachable_declarations()` carries the right remedy for
+        # each pair and says so correctly in the same process, so a reader who
+        # looked at both surfaces was told two different things about one
+        # condition. The warning now prints what the report computed rather
+        # than a second guess at it.
         logger.warning(
             "domain %r declares %d (indicator, axiom) pair(s) that cannot "
-            "evaluate under any input: %s — declare a `role:` on the indicator "
-            "to make them reachable",
+            "evaluate under any input: %s",
             model.domain_id or "<unnamed>", len(unreachable),
-            "; ".join(f"{u['indicator']}/{u['axiom']}" for u in unreachable),
+            "; ".join(f"{u['indicator']}/{u['axiom']} — {u['remedy']}"
+                      for u in unreachable),
         )
 
     return model

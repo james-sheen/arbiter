@@ -36,8 +36,8 @@ def _wire_mcts_reranker_for_candidate(
     reranker_score: float,
 ) -> None:
     """register MCTS + reranker results for a root-cause candidate at
-    the production emit callsite (was the established pattern callsite-less — the 2nd
-    callsite-less Pattern-360 wiring module, sibling of).
+    the production emit callsite, which had no callsite of its own — the second
+    such wiring module.
 
     Self-gated on ``DT_RCA_MCTS_RERANKER_WIRING_ENABLED`` (default OFF -> no-op,
     byte-identical). Called only when the MCTS strategy actually ran, so the
@@ -480,7 +480,7 @@ class RootCauseIdentifier:
                         supporting_evidence_count=len(rc.coverage),
                     )
                     # register MCTS+reranker results when the MCTS
-                    # strategy ran (the established pattern sibling of). Self-gated
+                    # strategy ran. Self-gated
                     # on DT_RCA_MCTS_RERANKER_WIRING_ENABLED -> byte-identical off.
                     if self._use_mcts:
                         _wire_mcts_reranker_for_candidate(

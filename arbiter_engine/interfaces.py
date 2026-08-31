@@ -642,7 +642,7 @@ class RelationshipGraph:
         ``_normalize_rel_type`` in the generic builder; callers should
         pass the same form. The ``DetGraphAdapter._coerce_str``
         normalizes ``RelationshipType`` enum members to ``.name``
-        (uppercase) so dynamic_layer + DetGraphAdapter callers match
+        (uppercase) so callers in the layers above match
         without further mangling. previously the K8s
         ``RelationshipBuilder`` projected lowercase values into
         ``det_graph``; papered over that with case-insensitive
