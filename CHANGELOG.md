@@ -20,6 +20,12 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+Nothing yet.
+
+---
+
+## [0.1.9] — 2026-08-31
+
 ### Added
 
 - Every envelope's `meta` now carries `engine_version`: the version of the
