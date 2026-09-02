@@ -430,14 +430,14 @@ class ProductionTemporalEdge:
     Mirrors ProductionEntityLifecycleRecord 5-field shape:
     KEY (src_entity_id + dst_entity_id composite) + METRIC
     (time_lag_seconds) + TIMESTAMP (observed_at) + PROVENANCE
-    (emit_policy_per_cd1120).
+    (emit_policy).
     """
 
     src_entity_id: str
     dst_entity_id: str
     time_lag_seconds: float
     observed_at: datetime
-    emit_policy_per_cd1120: str
+    emit_policy: str
     cluster_id: Optional[str] = None  # (Bucket A) per-axis cluster-scope
 
 
@@ -502,7 +502,7 @@ def record_production_temporal_edge(
         dst_entity_id=dst_entity_id,
         time_lag_seconds=float(time_lag_seconds),
         observed_at=ts,
-        emit_policy_per_cd1120=policy,
+        emit_policy=policy,
         cluster_id=cluster_id,  # (Bucket A)
     )
     with _PRODUCTION_TEMPORAL_LOCK:

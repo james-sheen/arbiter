@@ -509,6 +509,23 @@ def check(session: EngineSession) -> Envelope:
     return _WithPayload(envelope, payload)
 
 
+def _fold(word: Any, vocabulary: Sequence[str]) -> Optional[str]:
+    """Match `word` against a closed vocabulary ignoring case, returning the
+    CANONICAL spelling or None.
+
+    Returning the canonical form rather than a bool is the point: the
+    caller goes on to look the value up in an enum, and handing back what the
+    author typed would just move the case problem one line down.
+    """
+    if not isinstance(word, str):
+        return None
+    lowered = word.casefold()
+    for candidate in vocabulary:
+        if candidate.casefold() == lowered:
+            return candidate
+    return None
+
+
 def traverse(session: EngineSession, start_nodes: Sequence[str],
              direction: str = "forward", value_mode: str = "current",
              max_hops: int = 4,
@@ -520,20 +537,57 @@ def traverse(session: EngineSession, start_nodes: Sequence[str],
     An internal ruling records that PREDICT is plumbed but unfed, and a tool that accepts
     a mode it cannot honour is worse than one that declines it.
     """
-    if value_mode not in SUPPORTED_VALUE_MODES:
-        return unavailable_envelope(
-            f"value_mode {value_mode!r} is not supported; this build accepts "
-            f"{', '.join(SUPPORTED_VALUE_MODES)}."
-        )
-    topology = _build_topology(session)
-    if topology is None:
-        return unavailable_envelope(
-            "no topology available: supply entities before traversing")
-
+    # Imported here rather than at module scope for the cycle, and hoisted
+    # above the topology build so both ARGUMENT checks happen before any state
+    # check -- an author who mistyped a direction should be told that, not told
+    # they supplied no entities.
     from arbiter_engine.twin.topology import (
         TraversalDirection, TraversalRequest, ValueMode,
     )
     from arbiter_engine.twin.traverser import TopologyTraverser
+
+    # this function takes TWO closed vocabularies and treated them
+    # differently in three ways, none of them intended.
+    #
+    # `direction` reached `TraversalDirection[direction.upper()]` unguarded, so
+    # an unrecognised word escaped as `KeyError: 'BACKWARD'` -- an uncaught
+    # exception out of a library whose product is saying what it could not do,
+    # naming an UPPER-CASED token the caller never typed. `value_mode` declined
+    # cleanly. That asymmetry is the defect.
+    #
+    # The second one is the trap: the `.upper()` meant `direction` accepted ANY
+    # case, and `value_mode` accepted only lower. A guard written to match
+    # `value_mode` therefore REFUSED `FORWARD`, which the published release
+    # accepts -- narrowing what a caller may send, which is not something a
+    # patch may do. Both now FOLD case, which widens one and keeps the other,
+    # and matches the rule the loader's vocabularies already follow: fold on
+    # the way in, and answer in the canonical spelling.
+    #
+    # `direction`'s valid set is DERIVED from the enum. `SUPPORTED_VALUE_MODES`
+    # stays a literal for a reason of its own -- it names what this BUILD
+    # accepts, which may be narrower than the type -- and no such reason applies
+    # here, so a second copy would only be somewhere to drift.
+    directions = [member.value for member in TraversalDirection]
+    resolved_direction = _fold(direction, directions)
+    if resolved_direction is None:
+        return unavailable_envelope(
+            f"direction {direction!r} is not supported; this build accepts "
+            f"{', '.join(directions)}."
+        )
+    direction = resolved_direction
+
+    resolved_mode = _fold(value_mode, SUPPORTED_VALUE_MODES)
+    if resolved_mode is None:
+        return unavailable_envelope(
+            f"value_mode {value_mode!r} is not supported; this build accepts "
+            f"{', '.join(SUPPORTED_VALUE_MODES)}."
+        )
+    value_mode = resolved_mode
+
+    topology = _build_topology(session)
+    if topology is None:
+        return unavailable_envelope(
+            "no topology available: supply entities before traversing")
 
     request = TraversalRequest(
         start_nodes=list(start_nodes),

@@ -96,7 +96,7 @@ class ProductionAxiomVerdict:
     entity_id: str
     verdict: str  # "PASS" | "FAIL" | "UNKNOWN"
     confidence: float
-    emit_policy_per_cd1098: str
+    emit_policy: str
     cluster_id: Optional[str] = None  # (Bucket A)
 
 
@@ -244,7 +244,7 @@ def record_axiom_verdict(
         entity_id=entity_id,
         verdict=verdict,
         confidence=float(confidence),
-        emit_policy_per_cd1098=policy,
+        emit_policy=policy,
         cluster_id=effective_cluster_id,
     )
     with _PRODUCTION_LOCK:

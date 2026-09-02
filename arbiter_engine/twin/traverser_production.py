@@ -11,7 +11,7 @@ foundation TopologyTraverser preserved unchanged.
 Records ProductionTraversal events on each `TopologyTraverser.traverse()`
 invocation (callsite-wire at line 231-232 of traverser.py). Each record
 captures: (start_node, direction, value_mode, hop_count, gap_count,
-traversal_severity, observed_at, tenant_id, emit_policy_per_cd1277).
+traversal_severity, observed_at, tenant_id, emit_policy).
 
 traversal_severity log-normalized scalar from `hop_count *gap_count`
 clamped to [0, 1] — single-node-zero-gap = LOW; deep-multi-gap = CRITICAL.
@@ -140,7 +140,7 @@ class ProductionTraversal:
 
     KEY: (start_node, direction, value_mode, observed_at) implicit;
     METRICS: hop_count + gap_count + traversal_severity scalar +
-    severity tier; PROVENANCE: emit_policy_per_cd1277 + tenant_id.
+    severity tier; PROVENANCE: emit_policy + tenant_id.
     """
 
     start_node: str
@@ -152,7 +152,7 @@ class ProductionTraversal:
     severity: str
     observed_at: datetime
     tenant_id: str
-    emit_policy_per_cd1277: str
+    emit_policy: str
 
 
 def _resolve_severity_floor_cd1282(value):  # noqa: ANN001
@@ -228,7 +228,7 @@ def record_production_traversal(
         severity=effective_severity,
         observed_at=ts,
         tenant_id=tenant_id,
-        emit_policy_per_cd1277=emit_policy,
+        emit_policy=emit_policy,
     )
     with _PRODUCTION_TRAVERSAL_LOCK:
         _PRODUCTION_TRAVERSALS.append(record)

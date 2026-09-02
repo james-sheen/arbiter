@@ -1,0 +1,128 @@
+# Does the sdist on the index match the tree the tag names?
+#
+# WHY THIS EXISTS. Both releases so far were uploaded BEFORE their release
+# commit existed — the 0.1.9 wheel at 04:08:09Z, the tag commit at 04:09:26Z.
+# Parity held both times and was checked by hand afterwards, which means the
+# thing making it hold is a person. A person is not a guard. The failure this
+# prevents is a build made from a working tree carrying an edit the tag does
+# not, producing an artifact no tag describes — and every downstream
+# verification that starts from the tag would then be checking the wrong tree,
+# silently and forever, because an index file cannot be replaced.
+#
+# Reported from outside, twice: once as the observation that upload precedes
+# commit, once as the recommendation to build from the tag in CI.
+#
+# ON PUSH, AND THAT NEEDS DEFENDING, because the sibling `verify-published.yml`
+# is scheduled precisely to avoid being red on release day. The difference is
+# what each one waits for. That one installs the package and runs it, so it
+# needs the index resolver to serve a NEW version, which takes minutes and is
+# not a defect while it is happening. This one only needs the version to APPEAR
+# in the project's JSON, and it waits for that explicitly rather than assuming
+# it. Propagation lag is a WAIT here, never a failure.
+#
+# The two states are told apart on purpose. *Not there yet* retries. *Still not
+# there after the budget* is a finding, and a different one: it means a tag was
+# pushed for a version nobody uploaded, which is worth being loud about.
+
+name: verify tag artifact
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'version to check, without the leading v'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  artifact-matches-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The default depth of 1 fetches no tags. This job is about a tag.
+          fetch-depth: 0
+
+      - name: Resolve the version this run is about
+        id: v
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Wait for the index to list it
+        id: wait
+        env:
+          V: ${{ steps.v.outputs.version }}
+        run: |
+          # Bounded, and the bound is stated: ten tries a minute apart. Long
+          # enough that ordinary propagation never reds this, short enough that
+          # a tag with no upload behind it is reported the same day.
+          for attempt in $(seq 1 10); do
+            code="$(curl -s -o /tmp/pypi.json -w '%{http_code}' \
+              "https://pypi.org/pypi/arbiter-engine/$V/json")"
+            if [ "$code" = "200" ]; then
+              echo "the index lists $V on attempt $attempt"
+              exit 0
+            fi
+            echo "attempt $attempt: the index answered $code for $V — waiting"
+            sleep 60
+          done
+          echo "::error::the tag v$V exists and the index does not serve $V after"
+          echo "::error::ten minutes. That is not propagation lag; it means a tag"
+          echo "::error::was pushed for a version nobody uploaded."
+          exit 1
+
+      - name: Download the sdist the index is serving
+        env:
+          V: ${{ steps.v.outputs.version }}
+        run: |
+          URL="$(python3 -c "
+          import json, sys
+          data = json.load(open('/tmp/pypi.json'))
+          for f in data['urls']:
+              if f['packagetype'] == 'sdist':
+                  print(f['url']); break
+          else:
+              sys.exit('no sdist among the uploaded files')
+          ")"
+          echo "sdist: $URL"
+          curl -sSL -o /tmp/sdist.tar.gz "$URL"
+          mkdir -p /tmp/sdist && tar -xzf /tmp/sdist.tar.gz -C /tmp/sdist --strip-components=1
+
+      - name: Every file the sdist carries must match the tag
+        run: |
+          # ONE-DIRECTIONAL, deliberately. The tag's tree holds documents the
+          # build does not package, so their absence from the sdist is correct
+          # and says nothing about either. What must hold
+          # is the other way: nothing the sdist ships may differ from the tree
+          # the tag names.
+          #
+          # PKG-INFO is generated at build time and has no counterpart here.
+          differing=0
+          while IFS= read -r rel; do
+            case "$rel" in
+              PKG-INFO|*.egg-info/*) continue ;;
+            esac
+            if [ ! -f "$rel" ]; then
+              echo "::error::$rel is in the sdist and not at the tag"
+              differing=$((differing + 1))
+            elif ! cmp -s "/tmp/sdist/$rel" "$rel"; then
+              echo "::error::$rel differs between the sdist and the tag"
+              differing=$((differing + 1))
+            fi
+          done < <(cd /tmp/sdist && find . -type f | sed 's|^\./||' | sort)
+
+          if [ "$differing" -ne 0 ]; then
+            echo "::error::$differing file(s) differ. The artifact on the index was"
+            echo "::error::not built from the tree this tag names, and an index file"
+            echo "::error::cannot be replaced — only a new version can correct it."
+            exit 1
+          fi
+          echo "every file in the sdist is byte-identical to the tag"

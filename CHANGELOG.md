@@ -189,6 +189,20 @@ own vertical, whose method document and probes found eight of the entries below.
 
 ### Fixed
 
+- **`traverse` raised `KeyError` on an unrecognised `direction`.** The argument
+  went straight into an enum lookup, so a word the engine does not know left the
+  library as an uncaught exception — naming an upper-cased token you never typed.
+  Its sibling `value_mode` has always declined into an envelope. Both now do,
+  and the refusal names what would have worked.
+
+  **Both arguments also fold case now.** `direction` always accepted any
+  spelling, as an accident of the same lookup; `value_mode` accepted only lower
+  case. Nothing that worked before stops working — `value_mode` is the one that
+  widens — and both answer in the canonical spelling.
+
+  The valid directions are `forward`, `reverse` and `bidirectional`. If you were
+  passing something else, you were getting an exception, not a traversal.
+
 - **`role:` declared on an indicator was dropped by one of the two YAML
   loaders.** The model loaded clean, the field vanished, and until this release
   the name-guess supplied a rule anyway — so a model that declared the role
@@ -223,6 +237,26 @@ own vertical, whose method document and probes found eight of the entries below.
 ---
 
 ## [0.1.9] — 2026-08-31
+
+### Fixed — added 2026-09-02, after release
+
+- **This entry was incomplete when it shipped.** One fix went out in 0.1.9 and is
+  not in the notes below: the published override-reachability constants said
+  `RESPONSIVENESS` accepts a per-entity threshold override and never reads it,
+  and the runtime read it. `OVERRIDE_DECLARED_BUT_UNREACHABLE` is an exported
+  name whose only purpose is telling you whether declaring an override is worth
+  the trouble, so a wrong entry costs precisely the readers who consulted it —
+  anyone who skipped an override that would have worked. `RESPONSIVENESS` now
+  sits in `OVERRIDE_CONSULTED_BY`, which is where the runtime always had it, and
+  a test drives each named path instead of restating the table.
+
+  **It is recorded here rather than under a later version because it corrects
+  something this project had already published.** A retraction filed under the
+  next release reads as new behaviour, which is the wrong sentence for someone
+  who acted on the old claim. If you removed a `RESPONSIVENESS` override on the
+  strength of that constant, it works; put it back.
+
+  Reported from outside, in a verification of this release.
 
 ### Added
 

@@ -146,7 +146,7 @@ class ProductionRCACandidate:
     target_entity: str
     confidence_score: float
     supporting_evidence_count: int
-    emit_policy_per_cd1075: str
+    emit_policy: str
     cluster_id: Optional[str] = None  #
 
 
@@ -195,7 +195,7 @@ def record_rca_candidate(
         target_entity=target_entity,
         confidence_score=float(confidence_score),
         supporting_evidence_count=int(supporting_evidence_count),
-        emit_policy_per_cd1075=policy,
+        emit_policy=policy,
         cluster_id=cluster_id,
     )
     with _PRODUCTION_LOCK:

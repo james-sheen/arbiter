@@ -318,7 +318,7 @@ The engine is open. The knowledge and the operations are not.
 
 ## Status
 
-**v0.1.** 60 Python files, 58 modules importing on the declared dependencies alone, 11 supported
+**v0.1.** 61 Python files, 59 modules importing on the declared dependencies alone, 11 supported
 names — **counted in this repository**, which is the package you are holding.
 
 That basis is stated because it is easy to get wrong in a way nobody notices. The build adds one
@@ -327,7 +327,9 @@ are holding — and this line published the smaller figure until 2026-08-12, whe
 falsify it with `find . -name '*.py' | wc -l`. A checkable false claim, in the Status section of a
 project whose subject is checkable claims. Count the artifact, never an earlier stage of it.
 
-The import figure carries the same hazard one layer down, and it depends on what you have installed. Sweeping the package where `scipy` happens to be present imports 59; on the declared dependencies alone it is the 58 above, because `propagation.lp_confidence` is the one module that needs `scipy` and it is a deep path outside the supported surface. Count the artifact **in the state the reader will have it**, not in the state the person measuring happens to be standing in — this line quoted the with-`scipy` figure until 2026-08-12, which no reader installing normally could reproduce.
+The import figure carries the same hazard one layer down, and it depends on what you have installed. Sweeping the package where `scipy` happens to be present imports 60; on the declared dependencies alone it is the 59 above, because `propagation.lp_confidence` is the one module that needs `scipy` and it is a deep path outside the supported surface. Count the artifact **in the state the reader will have it**, not in the state the person measuring happens to be standing in — this line quoted the with-`scipy` figure until 2026-08-12, which no reader installing normally could reproduce.
+
+**And the count is of SUBMODULES: the root package is not one of them.** Walking `arbiter_engine` for what it contains gives 59; adding the package you imported to reach them gives 60. Both are honest and they are answers to different questions, so a reader who recounts and gets one more has not found a defect — they have used the other convention. Stated because someone did exactly that from outside, and a number published without its predicate can only be agreed with or disagreed with, never checked.
 
 Honest boundaries, stated because you would otherwise find them yourself:
 

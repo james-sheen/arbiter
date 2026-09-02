@@ -823,250 +823,36 @@ class UnifiedAxiomReasoner(OntologyReasonerInterface):
         return failure_modes[0]
 
 
-# ============================================================
-# ProductionPrediction production-readiness
-# substrate sibling, on the sibling-within-existing-module shape.
+# The production-prediction substrate lives in `prediction_production` since
+# 2026-09-02. It is re-exported here because two callers reach it through this
+# module by dotted path, and because the import is what keeps the new module
+# reachable from the curated exports rather than stranded beside them.
 #
-# 5-field frozen dataclass + 5 public functions + the default-off env-gates
-# DT_PRODUCTION_PREDICTION_ENABLED and DT_PRODUCTION_PREDICTION_SEVERITY_FLOOR
-# + ring-cap eviction. Foundation UnifiedAxiomReasoner class above preserved
-# unchanged, per the in-place extension discipline.
-#
-# Hybrid default-on emit-policy decision (15-precedent
-# uniform-knob discipline; the axis-closure shape).
-#
-# Domain-agnostic: entity_id + axiom_engine + prediction_severity scalars
-# opaque; no per-domain dispatch. Composes emit-policy decision +
-# attestation severity floor + the NaturalCategoryDispatcher
-# (severity axis = 1 of 8 canonical axes; no new axis). EU AI Act
-# Article 16 (risk-management system requires prediction-attestation on
-# every AI prediction) + SOC2 audit-trail completeness compliance addressed
-# via per-prediction audit-trail substrate.
-# ============================================================
-
-import os as _os_cd1213
-import threading as _threading_cd1213
-from dataclasses import dataclass as _dataclass_cd1213
-from datetime import datetime as _datetime_cd1213
-from typing import Dict as _Dict_cd1213, List as _List_cd1213, Tuple as _Tuple_cd1213
-
-
-def _env_bool_cd1213(name: str, default: bool = False) -> bool:
-    raw = _os_cd1213.environ.get(name, "1" if default else "0").strip().lower()
-    return raw in ("1", "true", "yes", "on")
-
-
-DT_PRODUCTION_PREDICTION_ENABLED: bool = _env_bool_cd1213(
-    "DT_PRODUCTION_PREDICTION_ENABLED", default=False
-)
-DT_PRODUCTION_PREDICTION_RING_CAP: int = int(
-    _os_cd1213.environ.get("DT_PRODUCTION_PREDICTION_RING_CAP", "10000")
-)
-
-# Per decision — a default-off env-gate (3-value enum)
-PRODUCTION_PREDICTION_EMIT_POLICY_HYBRID: str = "hybrid"
-PRODUCTION_PREDICTION_EMIT_POLICY_FULL_EMIT: str = "full_emit"
-PRODUCTION_PREDICTION_EMIT_POLICY_SUPPRESSED: str = "suppressed"
-KNOWN_PRODUCTION_PREDICTION_EMIT_POLICIES = frozenset([
-    PRODUCTION_PREDICTION_EMIT_POLICY_HYBRID,
+# THE FACADE IS COMPLETE ON PURPOSE, private test helper included. A partial one
+# fails on whichever name a caller happens to want, which is how the first
+# version of this move broke a suite that never imported anything public.
+from .prediction_production import (  # noqa: E402,F401
+    DEFAULT_PRODUCTION_PREDICTION_EMIT_POLICY,
+    DEFAULT_PRODUCTION_PREDICTION_SEVERITY_FLOOR,
+    DT_PRODUCTION_PREDICTION_ENABLED,
+    DT_PRODUCTION_PREDICTION_RING_CAP,
+    DT_PRODUCTION_PREDICTION_SEVERITY_FLOOR,
+    KNOWN_PRODUCTION_PREDICTION_EMIT_POLICIES,
+    KNOWN_PRODUCTION_PREDICTION_SEVERITY_FLOORS,
     PRODUCTION_PREDICTION_EMIT_POLICY_FULL_EMIT,
+    PRODUCTION_PREDICTION_EMIT_POLICY_HYBRID,
     PRODUCTION_PREDICTION_EMIT_POLICY_SUPPRESSED,
-])
-DEFAULT_PRODUCTION_PREDICTION_EMIT_POLICY: str = (
-    PRODUCTION_PREDICTION_EMIT_POLICY_HYBRID
-)
-
-# Per decision — a default-off env-gate
-# (CENTENARY MILESTONE — 4-value enum)
-PRODUCTION_PREDICTION_SEVERITY_LOW: str = "LOW"
-PRODUCTION_PREDICTION_SEVERITY_MEDIUM: str = "MEDIUM"
-PRODUCTION_PREDICTION_SEVERITY_HIGH: str = "HIGH"
-PRODUCTION_PREDICTION_SEVERITY_CRITICAL: str = "CRITICAL"
-KNOWN_PRODUCTION_PREDICTION_SEVERITY_FLOORS = frozenset([
+    PRODUCTION_PREDICTION_SEVERITY_CRITICAL,
+    PRODUCTION_PREDICTION_SEVERITY_HIGH,
     PRODUCTION_PREDICTION_SEVERITY_LOW,
     PRODUCTION_PREDICTION_SEVERITY_MEDIUM,
-    PRODUCTION_PREDICTION_SEVERITY_HIGH,
-    PRODUCTION_PREDICTION_SEVERITY_CRITICAL,
-])
-DEFAULT_PRODUCTION_PREDICTION_SEVERITY_FLOOR: str = (
-    PRODUCTION_PREDICTION_SEVERITY_MEDIUM
+    ProductionPrediction,
+    _reset_production_prediction_for_tests,
+    get_production_prediction_count,
+    get_production_predictions,
+    get_severity_for_entity_prediction,
+    known_production_predictions,
+    record_production_prediction,
+    resolve_production_prediction_emit_policy,
+    resolve_production_prediction_severity_floor,
 )
-
-_SEVERITY_RANK_CD1213: _Dict_cd1213[str, int] = {
-    PRODUCTION_PREDICTION_SEVERITY_LOW: 1,
-    PRODUCTION_PREDICTION_SEVERITY_MEDIUM: 2,
-    PRODUCTION_PREDICTION_SEVERITY_HIGH: 3,
-    PRODUCTION_PREDICTION_SEVERITY_CRITICAL: 4,
-}
-
-DT_PRODUCTION_PREDICTION_SEVERITY_FLOOR: str = _os_cd1213.environ.get(
-    "DT_PRODUCTION_PREDICTION_SEVERITY_FLOOR",
-    DEFAULT_PRODUCTION_PREDICTION_SEVERITY_FLOOR,
-).upper()
-if DT_PRODUCTION_PREDICTION_SEVERITY_FLOOR not in KNOWN_PRODUCTION_PREDICTION_SEVERITY_FLOORS:
-    DT_PRODUCTION_PREDICTION_SEVERITY_FLOOR = DEFAULT_PRODUCTION_PREDICTION_SEVERITY_FLOOR
-
-
-@_dataclass_cd1213(frozen=True)
-class ProductionPrediction:
-    """ per-(entity, axiom_engine) production-readiness prediction event.
-
-    5 opaque fields domain-agnostic invariant. Frozen for
-    audit-trail provenance emit-policy decision.
-
-    Mirrors ProductionFeedback 5-field shape: KEY (entity_id +
-    axiom_engine composite key) + METRIC (prediction_severity) + TIMESTAMP
-    (observed_at) + PROVENANCE (emit_policy_per_cd1212).
-    """
-
-    entity_id: str
-    axiom_engine: str
-    prediction_severity: float
-    observed_at: _datetime_cd1213
-    emit_policy_per_cd1212: str
-    cluster_id: Optional[str] = None  # (Bucket A) per-axis cluster-scope
-
-
-def resolve_production_prediction_emit_policy(value):  # noqa: ANN001
-    """Safe-default to hybrid."""
-    if value is None or value not in KNOWN_PRODUCTION_PREDICTION_EMIT_POLICIES:
-        return DEFAULT_PRODUCTION_PREDICTION_EMIT_POLICY
-    return value
-
-
-def resolve_production_prediction_severity_floor(value):  # noqa: ANN001
-    """Safe-default to MEDIUM."""
-    if value is None:
-        return DEFAULT_PRODUCTION_PREDICTION_SEVERITY_FLOOR
-    v = value.upper()
-    if v not in KNOWN_PRODUCTION_PREDICTION_SEVERITY_FLOORS:
-        return DEFAULT_PRODUCTION_PREDICTION_SEVERITY_FLOOR
-    return v
-
-
-def _severity_at_or_above_floor_cd1213(severity: str, floor: str) -> bool:
-    s = resolve_production_prediction_severity_floor(severity)
-    f = resolve_production_prediction_severity_floor(floor)
-    return _SEVERITY_RANK_CD1213[s] >= _SEVERITY_RANK_CD1213[f]
-
-
-_PRODUCTION_PREDICTIONS: _List_cd1213["ProductionPrediction"] = []
-_PRODUCTION_PREDICTION_LOCK = _threading_cd1213.RLock()
-_PRODUCTION_PREDICTION_LAST_SEVERITY: _Dict_cd1213[_Tuple_cd1213[str, str], float] = {}
-
-
-def record_production_prediction(
-    entity_id: str,
-    axiom_engine: str,
-    prediction_severity: float,
-    severity: str = PRODUCTION_PREDICTION_SEVERITY_MEDIUM,
-    observed_at=None,
-    emit_policy=None,
-    cluster_id: Optional[str] = None,
-):
-    """Record a prediction event at production-readiness shape.
-
-    optional ``cluster_id`` stamps the record
-    for per-axis cluster-scope filtering. Additive, None default; the
-    emission callsites have no cluster in scope and pass None (the param
-    exists for any cluster-aware caller).
-
-    Returns the stored ProductionPrediction when gate enabled AND
-    emit_policy admits the event; returns None when gate off OR
-    emit_policy suppressed OR hybrid mode rejects per severity-floor
-    gate (severity < DT_PRODUCTION_PREDICTION_SEVERITY_FLOOR).
-
-    Hybrid mode gate (decision): admits if severity is
-    at-or-above the configured severity-floor.
-    """
-    if not DT_PRODUCTION_PREDICTION_ENABLED:
-        return None
-    policy = resolve_production_prediction_emit_policy(emit_policy)
-    if policy == PRODUCTION_PREDICTION_EMIT_POLICY_SUPPRESSED:
-        return None
-    ts = as_naive_utc(observed_at) if observed_at else now_utc()
-    if policy == PRODUCTION_PREDICTION_EMIT_POLICY_HYBRID:
-        if not _severity_at_or_above_floor_cd1213(
-            severity, DT_PRODUCTION_PREDICTION_SEVERITY_FLOOR
-        ):
-            return None
-    record = ProductionPrediction(
-        entity_id=entity_id,
-        axiom_engine=axiom_engine,
-        prediction_severity=float(prediction_severity),
-        observed_at=ts,
-        emit_policy_per_cd1212=policy,
-        cluster_id=cluster_id,  # (Bucket A)
-    )
-    with _PRODUCTION_PREDICTION_LOCK:
-        _PRODUCTION_PREDICTIONS.append(record)
-        _PRODUCTION_PREDICTION_LAST_SEVERITY[(entity_id, axiom_engine)] = (
-            float(prediction_severity)
-        )
-        if len(_PRODUCTION_PREDICTIONS) > DT_PRODUCTION_PREDICTION_RING_CAP:
-            del _PRODUCTION_PREDICTIONS[
-                : len(_PRODUCTION_PREDICTIONS) - DT_PRODUCTION_PREDICTION_RING_CAP
-            ]
-    return record
-
-
-def _filter_by_cluster_id_cd1436(predictions, cluster_id: Optional[str]):
-    """ helper: filter predictions by cluster_id when non-None.
-
-    cluster_id=None returns the full list (backward compat). cluster_id="X"
-    returns only predictions with ``p.cluster_id == "X"``. Records emitted
-    previously carry cluster_id=None and are excluded from a specific-
-    cluster query. Mirror of the RCA / axiom_verdicts
-    pattern.
-    """
-    if cluster_id is None:
-        return list(predictions)
-    return [p for p in predictions if p.cluster_id == cluster_id]
-
-
-def get_production_predictions(cluster_id: Optional[str] = None):
-    """All recorded production prediction records. Empty when gate off.
-
-    optional ``cluster_id`` filter. None = all (backward compat);
-    string value returns only predictions stamped with that cluster_id.
-    """
-    if not DT_PRODUCTION_PREDICTION_ENABLED:
-        return []
-    with _PRODUCTION_PREDICTION_LOCK:
-        return _filter_by_cluster_id_cd1436(_PRODUCTION_PREDICTIONS, cluster_id)
-
-
-def get_production_prediction_count(cluster_id: Optional[str] = None) -> int:
-    """Aggregate count of recorded production prediction records.
-
-    Dashboard-data defensive-accessor entry point. Returns 0 when gate off.
-
-    optional ``cluster_id`` filter. None = aggregate count;
-    string value returns count of predictions stamped with that cluster_id.
-    """
-    if not DT_PRODUCTION_PREDICTION_ENABLED:
-        return 0
-    with _PRODUCTION_PREDICTION_LOCK:
-        return len(_filter_by_cluster_id_cd1436(_PRODUCTION_PREDICTIONS, cluster_id))
-
-
-def get_severity_for_entity_prediction(entity_id: str, axiom_engine: str):
-    """Last-known prediction_severity for (entity, axiom_engine); None when unknown or gate off."""
-    if not DT_PRODUCTION_PREDICTION_ENABLED:
-        return None
-    with _PRODUCTION_PREDICTION_LOCK:
-        return _PRODUCTION_PREDICTION_LAST_SEVERITY.get((entity_id, axiom_engine))
-
-
-def known_production_predictions():
-    """Diagnostic accessor — sorted unique (entity_id, axiom_engine) pairs."""
-    if not DT_PRODUCTION_PREDICTION_ENABLED:
-        return []
-    with _PRODUCTION_PREDICTION_LOCK:
-        return sorted({(r.entity_id, r.axiom_engine) for r in _PRODUCTION_PREDICTIONS})
-
-
-def _reset_production_prediction_for_tests() -> None:
-    with _PRODUCTION_PREDICTION_LOCK:
-        _PRODUCTION_PREDICTIONS.clear()
-        _PRODUCTION_PREDICTION_LAST_SEVERITY.clear()

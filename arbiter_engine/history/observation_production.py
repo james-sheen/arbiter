@@ -79,7 +79,7 @@ class ProductionObservation:
     source_id: str
     freshness_age_seconds: float
     observed_at: datetime
-    emit_policy_per_cd1109: str
+    emit_policy: str
     cluster_id: Optional[str] = None  # (Bucket A) per-axis cluster-scope
 
 
@@ -258,7 +258,7 @@ def record_observation(
         source_id=source_id,
         freshness_age_seconds=float(freshness_age_seconds),
         observed_at=ts,
-        emit_policy_per_cd1109=policy,
+        emit_policy=policy,
         cluster_id=cluster_id,  # (Bucket A)
     )
     with _PRODUCTION_LOCK:
