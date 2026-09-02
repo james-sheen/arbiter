@@ -29,10 +29,30 @@ from arbiter_engine.types import Axiom
 PACKAGE = pathlib.Path(_anchor.__file__).parent
 AXIOMS = PACKAGE / "ontology" / "axioms"
 
-#: The pattern the scheduled job uses. Written the same way on purpose: two
-#: readers of one fact, and a test below asserts they have not drifted apart.
+#: The patterns the scheduled job uses. Written the same way on purpose: two
+#: readers of one fact, and `TestTheOtherReaderStillReadsItTheSameWay` below
+#: asserts they have not drifted apart wherever the job is on disk.
 DECLINE = r"\.declined\("
 CLAIM = r"\((\d+) call sites\)"
+
+#: The scheduled job, in whichever tree this file runs in. It is CI
+#: configuration and does not ship, so from an installed package there is
+#: nothing to compare and the tests below say so and pass. Resolving it is
+#: separated from asserting on it for that reason.
+WORKFLOW_CANDIDATES = (
+    pathlib.Path(__file__).resolve().parents[1]
+    / ".github" / "workflows" / "verify-published.yml",
+    pathlib.Path(__file__).resolve().parents[2]
+    / "docs" / "publication" / "github-merged" / "workflows"
+    / "verify-published.yml",
+)
+
+
+def _workflow() -> pathlib.Path | None:
+    for candidate in WORKFLOW_CANDIDATES:
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 def _readme() -> pathlib.Path:
@@ -103,3 +123,68 @@ class TestTheDerivationIsNotVacuous:
         """If the resolver picked a file with no claim in it, the first test
         would fail confusingly rather than clearly."""
         assert _readme().is_file()
+
+
+class TestTheOtherReaderStillReadsItTheSameWay:
+    """The promise the two patterns above make, kept.
+
+    The number has two readers: this file, which asks whether the tree you are
+    holding matches its own claim, and a scheduled job, which asks whether the
+    INDEX matches it. Neither substitutes for the other and both need the same
+    two regexes -- so they are two copies, and a copy nobody compares is the
+    shape this project keeps paying for.
+
+    THE JOB DOES NOT SHIP. From an installed package there is no workflow to
+    read, and these skip with the reason and the paths that were tried. A check
+    that could not run saying so is worth more than one quietly asserting
+    nothing; the edit that would break this happens in a repository anyway,
+    which is where the file is.
+    """
+
+    def _text(self) -> str:
+        workflow = _workflow()
+        if workflow is None:
+            pytest.skip(
+                "the scheduled job is CI configuration and is not part of the "
+                "package, so there is no second copy here to compare; looked "
+                f"at {[str(c) for c in WORKFLOW_CANDIDATES]}")
+        return workflow.read_text(encoding="utf-8")
+
+    def test_the_decline_pattern_is_the_same_in_both(self):
+        assert DECLINE in self._text(), (
+            f"the job no longer counts declines with {DECLINE!r}; one of the "
+            f"two readers of this number has moved and the other has not")
+
+    def test_the_claim_pattern_is_the_same_in_both(self):
+        assert CLAIM in self._text(), (
+            f"the job no longer reads the claim with {CLAIM!r}")
+
+    def test_the_job_derives_its_checkers_too(self):
+        """The drift that mattered was not the regexes.
+
+        The job listed the eight checker names while this file derived them
+        from the enum, so a ninth axiom would have joined one count and not the
+        other -- and the job would have gone on describing eight of nine
+        without a red. Asserting the two regexes match and stopping there would
+        have pinned the copies that agreed.
+        """
+        text = self._text()
+        assert "from arbiter_engine import Axiom" in text, (
+            "the job does not derive its checker set from the enum")
+        for listed in ('"boundedness", "stability"', "'boundedness', 'stability'"):
+            assert listed not in text, (
+                f"the job lists its checkers ({listed}); a ninth axiom would "
+                f"join this file's count and not that one")
+
+
+class TestTheComparisonCouldFail:
+    def test_a_workflow_missing_the_pattern_would_be_caught(self, tmp_path):
+        """Without this, a resolver returning an empty file reads as agreement."""
+        assert DECLINE not in "name: verify\non: schedule\n"
+
+    def test_both_candidate_paths_are_named_when_neither_exists(self):
+        """The skip has to say where it looked, or an unrunnable check and a
+        wrong-tree check produce the same line."""
+        assert len(WORKFLOW_CANDIDATES) == 2
+        assert all(str(c).endswith("verify-published.yml")
+                   for c in WORKFLOW_CANDIDATES)

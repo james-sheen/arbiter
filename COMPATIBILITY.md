@@ -107,6 +107,16 @@ The schema itself is at [`schema/envelope.schema.json`](schema/envelope.schema.j
 ## What is NOT part of the contract, at any version
 
 - Anything whose name starts with an underscore.
+- **Any import deeper than the names the README lists as the public API.** Those
+  paths are importable and unpromised, and they may move in a patch release. The
+  list lives in the README and is deliberately not copied here: it is a
+  vocabulary, and this project has been bitten more than once by a second copy
+  of one drifting from the first.
+
+  This bullet is recorded late. A release renamed thirteen deep names that do
+  not start with an underscore, which the README permitted and this document —
+  the one a pin points at — did not mention. Both documents had the same policy
+  and only one of them said so.
 - `evidence` dict *contents* beyond the keys the schema names. Evidence is what
   the engine happened to know when it fired.
 - Log output, log levels, and the exact wording of any message.

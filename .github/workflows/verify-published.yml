@@ -75,14 +75,26 @@ jobs:
         run: |
           python - <<'EOF'
           import importlib.util, os, pathlib, re, subprocess, sys
+          from arbiter_engine import Axiom
           ax = pathlib.Path(importlib.util.find_spec("arbiter_engine").origin).parent
           ax = ax / "ontology" / "axioms"
-          eight = ["boundedness", "stability", "homeostasis", "monotonicity",
-                   "conservation", "connectivity", "consistency", "responsiveness"]
+          # DERIVED FROM THE ENUM, not listed. The eight were written out here
+          # while the shipped test derived them, so a ninth axiom would have
+          # joined one count and not the other -- and this one would have gone
+          # on describing eight of nine without going red. The shipped test
+          # makes the same argument in its own docstring; this file was the
+          # second copy it was arguing about.
+          checkers = [a.name.lower() for a in Axiom
+                      if (ax / f"{a.name.lower()}.py").is_file()]
           per = {n: len(re.findall(r"\.declined\(", (ax / f"{n}.py").read_text()))
-                 for n in eight}
+                 for n in checkers}
           total = sum(per.values())
           print(f"package: {per} -> {total}")
+          silent = [n for n, c in per.items() if c == 0]
+          if silent:
+              print(f"::error::{silent} declines nowhere; the total passes by "
+                    f"arithmetic while a checker has stopped declining")
+              sys.exit(1)
 
           def claimed(text):
               m = re.search(r"\((\d+) call sites\)", text)

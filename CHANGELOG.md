@@ -91,6 +91,23 @@ own vertical, whose method document and probes found eight of the entries below.
   missing a member does not raise, it reclassifies into the nearest one and
   reports it with confidence. Reported from outside.
 
+- **Two guards in the shipped `tests/`**, so the claims they hold can be checked
+  by whoever is holding the package rather than only by us.
+
+  `test_no_identifier_names_a_private_record.py` walks the installed package and
+  fails on any name citing a tracker record — the rule 0.1.9 stated for one
+  constant, now enforced for all of them, including the string constants a name
+  can hide in.
+
+  `test_the_readme_decline_count_is_derived.py` recomputes the README's decline
+  call-site count from the axiom enum. The number was previously held by a
+  weekly job that installs from the index: that job answers whether the INDEX
+  matches the claim and cannot answer whether the tree you are holding does.
+
+  The tag workflow also now compares the **wheel** against the tag, not only the
+  sdist. `pip install` resolves the wheel, so checking the other file was
+  checking the copy most readers never receive. Reported from outside.
+
 ### Removed
 
 - **The raw-property walk.** `CONSISTENCY` used to read every entity property,
@@ -118,6 +135,15 @@ own vertical, whose method document and probes found eight of the entries below.
   for the removal: one pack declared `role: percentage` correctly and one of the
   two YAML loaders never read the field, so the check had been passing on the
   property's spelling for as long as the field has existed. See Fixed, below.
+
+- **`ontology.axioms.roles.name_word_tokens`**, the helper that split an
+  indicator's name into words so the walk above could recognise one. It has no
+  caller once nothing reads a spelling for meaning, and it is named here because
+  it was a public function on a deep path: the removal is invisible until an
+  import fails.
+
+  Found by the departure check described in the entry below, on its first run.
+  Twelve reviews of this release, two of them from outside, had all read past it.
 
 ### Changed
 
@@ -186,6 +212,47 @@ own vertical, whose method document and probes found eight of the entries below.
   this distribution does not export; the envelope emits `findings`, `not_checked`
   and `checked.invariants`. All three are corrected, along with the same name in
   `SECURITY.md`. Also reported from outside, following the same review.
+
+- **Forty-four names in this package cited a private tracker record; none do
+  now.** Thirty-one begin with an underscore and are outside the contract at any
+  version. **Thirteen do not**, and they are named here because a deep import of
+  one gets a `NameError` and nothing to search for. Six are a field on a frozen
+  record, so a constructor keyword and an attribute read move with them.
+
+  | Was | Is | On |
+  |---|---|---|
+  | `emit_policy_per_cd1075` | `emit_policy` | `ProductionRCACandidate` |
+  | `emit_policy_per_cd1098` | `emit_policy` | `ProductionAxiomVerdict` |
+  | `emit_policy_per_cd1109` | `emit_policy` | `ProductionObservation` |
+  | `emit_policy_per_cd1120` | `emit_policy` | `ProductionTemporalEdge` |
+  | `emit_policy_per_cd1212` | `emit_policy` | `ProductionPrediction` |
+  | `emit_policy_per_cd1277` | `emit_policy` | `ProductionTraversal` |
+  | `classify_escalation_tier_per_cd1280` | `classify_escalation_tier` | `twin.traverser` |
+  | `classify_escalation_tier_per_cd1291` | `classify_escalation_tier` | `twin.hypothesis_generator` |
+  | `compute_traversal_severity_per_cd1282` | `compute_traversal_severity` | `twin.traverser_production` |
+  | `severity_tier_for_traversal_severity_per_cd1282` | `severity_tier_for_traversal_severity` | `twin.traverser_production` |
+  | `severity_tier_for_confidence_per_cd1293` | `severity_tier_for_confidence` | `twin.hypothesis_production` |
+  | `severity_tier_for_pareto_per_cd1304` | `severity_tier_for_pareto` | `twin.optimization_production` |
+  | `severity_tier_for_pipeline_per_cd1317` | `severity_tier_for_pipeline` | `twin.pipeline_production` |
+
+  **None of the thirteen is on the eleven-name public API**, and the README
+  places every deeper path outside what a version promises — so this is not a
+  breaking change and is stated anyway. The reason is 0.1.9's, applied where it
+  was not noticed rather than only where it was: a name citing a record you
+  cannot read is the one claim on this surface that cannot be checked. Having
+  given that reason once, doing the rest of it silently would have made the
+  first entry a courtesy rather than a practice.
+
+  They landed across two commits and neither wrote this entry. It is here
+  because the omission was reported from outside, in a verification of the tree
+  rather than of a release.
+
+- `COMPATIBILITY.md`'s list of what is outside the contract said *anything whose
+  name starts with an underscore* and nothing about depth. That is the document a
+  pin points at, and by its own letter the thirteen names above were inside the
+  contract while the README said they were not. The deep-path rule now appears in
+  both, stated once and cross-referenced rather than copied, because the eleven
+  names written down twice is the drift this repository keeps finding.
 
 ### Fixed
 
