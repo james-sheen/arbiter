@@ -361,7 +361,7 @@ class HomeostasisChecker:
             # fault is STABILITY's question, declared via `expect_variation`.
             return CheckOutcome(problems).declined(
                 Axiom.HOMEOSTASIS, entity, indicator.name,
-                NotEvaluatedReason.NOT_APPLICABLE,
+                NotEvaluatedReason.UNDEFINED_FOR_VALUES,
                 detail=(
                     f"the {len(historical_values)} baseline observations of "
                     f"{indicator.property_name} are all {historical_values[0]!r}, "

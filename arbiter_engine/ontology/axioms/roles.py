@@ -27,15 +27,18 @@ the rule exactly as it was: English deciding coverage. A role is a declaration �
 actually needs to know. The vocabulary is engine-level semantics, not domain
 vocabulary, so a cold-chain model and a Kubernetes model use the same four words.
 
-INFERENCE IS KEPT, AND IT ANNOUNCES ITSELF
-Removing name matching outright would silently change coverage for every model
-already relying on it. So an indicator with NO declared role falls back to the
-original rules, reproduced here exactly — substring for latency, whole-token for
-the others, each preserving the reasoning of the CD that set it (moved
-consistency off substrings because `observed_generation` read as a ratio). What
-changes is that the fallback is now VISIBLE: callers can ask where a role came
-from, and the declines say `inferred from the name` rather than presenting a
-guess as a rule.
+INFERENCE IS GONE, AND THE CLAIM THAT REPLACED IT WAS FALSE
+This block used to say inference was kept but now ANNOUNCED ITSELF — *callers
+can ask where a role came from*. They could not. The announcement existed on the
+branch where NO role was inferred, where the decline says so, and was absent on
+the branch where one WAS inferred and its rule ran, which is the case the
+visibility was for. A claim true of one branch, written about both.
+
+The other half of that argument was that removing name matching would silently
+change coverage for every model relying on it. Measurable, and measured: across
+the shipped domain packs ELEVEN (indicator, axiom) pairs relied on the guess and
+NONE declared a role. All eleven now declare one, so coverage did not change and
+`silently` is the word that stopped being true.
 
 A DECLARED ROLE SUPPRESSES INFERENCE ENTIRELY. `response_count` is a count of
 responses; if its author says `role: count`, the engine must not also treat it as
@@ -84,29 +87,34 @@ AXIOM_ROLES = {
     Axiom.CONSISTENCY: frozenset({COUNT, PERCENTAGE, RATIO}),
 }
 
-# --- legacy inference, preserved exactly -------------------------------------
-# whole word-tokens, NOT substrings — a substring test mis-reads
-# `observed_generation` as a ratio (gene-ratio-n), `account` / `discount` as
-# counts, and `configuration` / `duration` / `migration` as ratios.
-_COUNT_TOKENS = frozenset({"count", "counts"})
-_PERCENT_TOKENS = frozenset({"percent", "percentage", "percentages", "pct"})
-_RATIO_TOKENS = frozenset({"ratio", "ratios"})
-
-#: RESPONSIVENESS matched on SUBSTRING, not token, and that difference is
-#: deliberate rather than an oversight to tidy up: `p99latency` and
-#: `responsetime` carry no separator, so a token rule would silently narrow
-#: coverage for models that work today. Preserved as-found.
-_LATENCY_SUBSTRINGS = ("response", "latency")
-
-_CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
-
-
-def name_word_tokens(name: Any) -> set:
-    """Split a name into lowercase word tokens across snake, camel and kebab
-    boundaries. `ready_ratio` -> {ready, ratio}."""
-    spaced = _CAMEL_BOUNDARY.sub(" ", str(name))
-    return {t for t in re.split(r"[^a-zA-Z0-9]+", spaced.lower()) if t}
-
+# --- the inference is GONE, and this is where it was --------------
+# It matched `count` / `percent` / `pct` / `ratio` as whole word-tokens and
+# `response` / `latency` as substrings, all of them English, and handed back a
+# role the author never wrote.
+#
+# A ROLE IS AN INTERPRETATION FACT, and the published guide refuses to derive
+# one from a name in as many words: deriving a relationship from names is a
+# guess wearing the costume of a derivation. the project's design guidance lists property-name
+# normalisation among the hardcoded domain patterns a domain-agnostic component
+# must not contain. An internal ruling removed the same shape from CONSERVATION, which had
+# been rewriting `_in` to `_out` to find the other half of a balance.
+#
+# REPORTED FROM OUTSIDE, against the engine our own guide describes. The
+# demonstration is two indicators identical in every declared respect and given
+# identical values: `error_count` had a role inferred and its rule applied,
+# `errors` declined for a missing role. Nothing on any queryable surface said
+# which had happened, so the visible difference between them was their name.
+#
+# ITS COROLLARY IS WORSE THAN THE DEFECT, and belongs to whoever reads a
+# decline: the ABSENCE of a missing-role decline was not evidence that a role
+# was supplied. It was evidence about the property's name.
+#
+# MEASURED BEFORE REMOVING, across the shipped domain packs: eleven
+# (indicator, axiom) pairs relied on the guess and NONE declared a role. All
+# eleven now declare one, so the removal costs no coverage -- which is the
+# remedy the guide has always named. The published example had already reached
+# it the hard way: it renamed a domain concept so the guess would land, then
+# put the name back and declared the role instead.
 
 def normalise_role(raw: Any) -> Optional[str]:
     """A declared role string -> a canonical role, or None if unrecognised.
@@ -132,28 +140,15 @@ def declared_role(indicator: Any) -> Optional[str]:
 def roles_for(indicator: Any) -> Tuple[FrozenSet[str], str]:
     """The roles this indicator carries, and WHERE THEY CAME FROM.
 
-    Returns ``(roles, source)`` with source one of ``declared`` / ``inferred`` /
-    ``none``. The source is half the value: a decline that says a role was
-    guessed from the name tells the author what to declare, and a decline that
-    hides it sends them to rename their indicator instead.
+    Returns ``(roles, source)``, source ``declared`` or ``none``. An internal ruling
+    removed the third. A role now comes from the model or from nowhere.
     """
     explicit = declared_role(indicator)
     if explicit:
         return frozenset({explicit}), "declared"
-
-    name = str(getattr(indicator, "name", "") or "")
-    found = set()
-    lowered = name.lower()
-    if any(s in lowered for s in _LATENCY_SUBSTRINGS):
-        found.add(LATENCY)
-    tokens = name_word_tokens(name)
-    if tokens & _COUNT_TOKENS:
-        found.add(COUNT)
-    if tokens & _PERCENT_TOKENS:
-        found.add(PERCENTAGE)
-    if tokens & _RATIO_TOKENS:
-        found.add(RATIO)
-    return frozenset(found), ("inferred" if found else "none")
+    # two sources, not three. `inferred` is gone rather than hidden:
+    # a caller branching on it still compiles and now never takes that arm.
+    return frozenset(), "none"
 
 
 def has_cross_signal_rule(indicator: Any) -> bool:
@@ -268,9 +263,14 @@ def explain_absence(axiom: Axiom, indicator: Any) -> str:
         got = sorted(roles)
         return (f"declared role {got[0]!r} has no {axiom.value} rule; "
                 f"this axiom applies to roles {wanted}{alt}")
-    return (f"no role is declared for this indicator and none could be inferred "
-            f"from its name; declare one of {wanted} as `role:` on the "
-            f"indicator to have {axiom.value} evaluate it{alt}")
+    # this said *and none could be inferred from its name* until the
+    # sentence outlived the mechanism. An internal ruling removed the inference; the clause
+    # stayed, on an author-facing surface, telling a reader that the spelling
+    # was tried and failed. That is the rename this function's own docstring
+    # calls the wrong remedy, recommended by the string the function returns.
+    return (f"no role is declared for this indicator, and the engine does not "
+            f"read one from its name; declare one of {wanted} as `role:` on "
+            f"the indicator to have {axiom.value} evaluate it{alt}")
 
 
 def unreachable_axioms(indicator: Any) -> list:

@@ -382,8 +382,53 @@ class NotEvaluatedReason(str, Enum):
     MISSING_CONFIG = "missing_config"
     NO_THRESHOLD = "no_threshold"
     WRONG_INDICATOR_TYPE = "wrong_indicator_type"
+    # `NOT_APPLICABLE` was doing duty for three answers that differ in
+    # WHO OWES SOMETHING, which is the only axis a bridge author can act on.
+    # Reported from outside: a method document built its requirements table by
+    # reading the decline vocabulary backwards, and this reason was the one entry
+    # where the mapping is not a function. Told apart:
+    #
+    # MISSING_ROLE the model never said what this indicator IS to the
+    # axiom. Somebody owes a declaration.
+    # UNDEFINED_FOR_VALUES the axiom applies and its quantity has no value on
+    # the data present -- a zero total, a zero spread.
+    # Nobody owes anything, and tomorrow it may evaluate.
+    # NOT_APPLICABLE what is left: no checker was registered for the
+    # axiom. An engine-side fault, unreachable while all
+    # eight are registered.
+    #
+    # Fourth instance of the shape `NO_CURRENT_VALUE` records above, and the same
+    # remedy: a closed enum missing a member does not raise, it reclassifies into
+    # the nearest one and reports it with confidence. Shipped in a patch for the
+    # same reason 0.1.6 shipped that one -- an over-broad decline is a defect,
+    # not a meaning this release is changing.
+    #
+    # The distinction previously lived only in `detail`, which COMPATIBILITY.md
+    # declares unsupported for matching. A bridge needing the split had to keep a
+    # private copy of wording that may move in a patch, and fail silently when it
+    # did. That is what makes this the vocabulary's problem and not the reader's.
+    MISSING_ROLE = "missing_role"
+    UNDEFINED_FOR_VALUES = "undefined_for_values"
     NOT_APPLICABLE = "not_applicable"
     CHECKER_ERROR = "checker_error"
+    # a cell skipped by a DECLARED gate was counted in
+    # `checked.invariants` and appeared in no row, making it byte-identical to a
+    # cell that evaluated and found nothing. Measured: with 20 healthy entities
+    # and 5 gated ones, `attempted - findings - declines` reads 25, and a reader
+    # cannot tell twenty healthy cells from twenty gated ones or any mix. The
+    # count was never a fallback.
+    #
+    # THE WORDING IS THE DECISION. The engine knows a gate fired and which
+    # declaration gated it; it does NOT know whether the gate was intended, so a
+    # reason asserting `chose not to` would claim knowledge it does not have — a
+    # mistyped gate and a deliberate one are the same fact here. Intentionality
+    # is the scan's to supply, which is the split an outside method document
+    # ruled on and this vocabulary now respects. So the reason states the
+    # precondition and stops.
+    #
+    # Nobody owes anything, like `UNDEFINED_FOR_VALUES`: the model is working as
+    # declared. That is what separates it from the ten could-nots above.
+    PRECONDITION_UNMET = "precondition_unmet"
 
 
 @dataclass(frozen=True)

@@ -88,10 +88,90 @@ class ConnectivityChecker:
         # cardinality check to apply. Selector-less Services (default `kubernetes`
         # service) legitimately have no SELECTS edges — skip those rather than
         # alarm.
+        #
+        # that skip used to read `if not entity.properties.get(prop)`,
+        # which folds TWO facts: the entity does not carry this property, and it
+        # carries it with a falsy value. The second is the case the gate above
+        # was added for. The first is a property name the model got wrong, and
+        # folding them meant a typo RETIRED the check — the cardinality
+        # violation this cell
+        # exists to find became an empty list, which the envelope reports as a
+        # clean pass while `checked.invariants` counts the cell as attempted. A
+        # missed detection whose denominator says it was covered.
+        #
+        # The two cannot be told apart on one entity, so ask the POPULATION. A
+        # name the model supplies resolves on somebody: a cluster running
+        # selector-less Services also runs Services with selectors. A typo
+        # resolves nowhere. This is the move, one block down, for the
+        # same reason — a question about the model answered against the registry
+        # instead of guessed from one record.
         if indicator.required_property:
-            value = entity.properties.get(indicator.required_property)
-            if not value:
-                return problems
+            prop = indicator.required_property
+            if entities is not None:
+                wanted_type = (getattr(entity, "type", "") or "").strip().lower()
+                # PRESENCE of the key, not truthiness. A Service carrying
+                # `selector: {}` carries the property; that is the case and
+                # it must not read as an unresolved name.
+                carried_by_any = any(
+                    prop in (getattr(ent, "properties", None) or {})
+                    for ent in entities.values()
+                    if (getattr(ent, "type", "") or "").strip().lower() == wanted_type
+                )
+                if not carried_by_any:
+                    return CheckOutcome(problems).declined(
+                        Axiom.CONNECTIVITY, entity, indicator.name,
+                        NotEvaluatedReason.MISSING_PROPERTY,
+                        detail=(
+                            f"this check is gated on `{prop}`, and no entity of "
+                            f"type {entity.type} carries that property. Either "
+                            f"the name does not match what the model supplies, "
+                            f"or nothing carrying it has been observed yet — "
+                            f"until one of those resolves, the cardinality "
+                            f"constraint on {indicator.name} is not being "
+                            f"checked for any {entity.type}"),
+                    )
+            # Reached when the name resolves somewhere, or on the degraded path
+            # below. Absent or falsy HERE is the legitimate skip.
+            #
+            # Degraded path: with no registry the population question cannot be
+            # asked, so this keeps the previously behaviour rather than
+            # declining on a question nobody put. Kept only for callers that
+            # construct the checker directly; the reasoner always supplies the
+            # registry and a test pins that, so production cannot quietly fall
+            # back to a silent retire.
+            if not entity.properties.get(prop):
+                # was a bare `return problems`, which counted the cell
+                # and said nothing, so a gated cell and a clean one produced the
+                # same envelope. Says the precondition and stops: whether the
+                # gate was intended is not a fact this engine holds.
+                #
+                # THE SECOND CLAUSE IS BRANCHED, and the first draft got this
+                # wrong. It read *other entities of this type do carry it, so
+                # the name resolves* unconditionally -- true only when the
+                # population above was actually consulted. On the degraded path
+                # there is no registry, nothing was asked, and stating it anyway
+                # would be the engine asserting a fact it does not hold, in the
+                # sentence added to stop it doing that.
+                resolved_clause = (
+                    " Other entities of this type do carry it, so the name "
+                    "resolves and this is a gap in the data rather than in the "
+                    "model."
+                    if entities is not None else
+                    " Whether any entity of this type carries it was not "
+                    "checked on this path, so a mistyped name would look the "
+                    "same from here."
+                )
+                return CheckOutcome(problems).declined(
+                    Axiom.CONNECTIVITY, entity, indicator.name,
+                    NotEvaluatedReason.PRECONDITION_UNMET,
+                    detail=(
+                        f"this check is gated on `{prop}`, and {entity.id} does "
+                        f"not carry a value for it, so the cardinality "
+                        f"constraint on {indicator.name} was not evaluated for "
+                        f"this entity.{resolved_clause} Whether this entity is "
+                        f"meant to be exempt is a question about the model, not "
+                        f"one this run can answer"),
+                )
 
         # Get relationships of the specified type
         # Normalize camelCase → SCREAMING_SNAKE_CASE to match graph storage

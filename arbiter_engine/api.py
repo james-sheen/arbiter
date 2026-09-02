@@ -302,6 +302,64 @@ class EngineSession:
             })
         return records
 
+    def unread_properties(self) -> List[Dict[str, Any]]:
+        """Entity properties this session holds that no declared indicator reads.
+
+        The FOURTH report of a family rather than a new idea.
+        ``unconsumed_observations`` above covers the history store and
+        ``unread_threshold_overrides`` covers overrides; the engine takes three
+        input surfaces and this was the one with no report. Feeding it was
+        silent.
+
+        **Filed because removing something made the gap visible.** took
+        out a walk that judged every entity property by the words in its name.
+        That was right -- it derived an interpretation fact from a spelling and
+        its findings sat outside the denominator -- but it had been doing real
+        work, and the replacement is a declaration. An author cannot declare
+        what they do not know they are sending, so the honest half of that
+        removal is a report saying what arrived and went unread.
+
+        **A REPORT, NOT A FINDING, and the line matters.** It names a gap in the
+        model, which is the author's to close. It does not say the value is
+        wrong, because deciding that would need a rule, and picking the rule
+        from the property's name is exactly what was removed.
+
+        **Numeric values only, and that is a stated limit rather than a
+        judgement about domains.** A number is something an axiom could have
+        evaluated and did not. Strings are excluded because telling a state a
+        STATE indicator should read from a label that is merely metadata is a
+        domain question, and this engine does not answer those -- so a mistyped
+        STATE property is NOT reported here, which is a real gap and is written
+        down rather than papered over. Booleans are excluded explicitly: ``bool``
+        subclasses ``int``, so a flag would otherwise arrive as a number nobody
+        reads.
+
+        Top-level keys only. A nested value has no declaration surface of its
+        own, so naming ``status.replicas`` would report something the author
+        cannot declare against.
+        """
+        if self.model is None:
+            return []
+        declared: Dict[str, set] = {
+            etype: {spec.property_name or spec.name for spec in specs}
+            for etype, specs in self.model.indicators.items()
+        }
+        records: List[Dict[str, Any]] = []
+        for entity in self.entities.values():
+            readable = declared.get(entity.type, set())
+            for prop, value in (entity.properties or {}).items():
+                if isinstance(value, bool) or not isinstance(value, (int, float)):
+                    continue
+                if prop in readable:
+                    continue
+                records.append({
+                    "entity_id": entity.id,
+                    "entity_type": entity.type,
+                    "property": prop,
+                    "reason": "undeclared_property",
+                })
+        return records
+
 
 # =====================================================================
 # The five tools
@@ -388,7 +446,8 @@ def model_describe(session: EngineSession) -> Envelope:
             "provably cannot evaluate under any input; unread_fields "
             "lists fields whose consuming axiom is absent, so nothing will read "
             "them; unconsumed_observations lists series no declared "
-            "indicator reads"
+            "indicator reads; unread_properties lists numeric entity "
+            "properties no declared indicator reads"
         ),
     }
     # the mirror of `model.unreachable_declarations`, and deliberately
@@ -405,6 +464,12 @@ def model_describe(session: EngineSession) -> Envelope:
     # A feeder without this would have shipped the exact asymmetry that the
     # observations report was added to close.
     payload["unread_threshold_overrides"] = session.unread_threshold_overrides()
+    # the fourth report of input that goes nowhere, in both tools for
+    # the reason the third one gives. An internal ruling removed a walk that judged every
+    # entity property by its name; the rules it applied are declarable and now
+    # declared, but an author cannot declare a property they do not know they
+    # are sending. This says what arrived and was never read.
+    payload["unread_properties"] = session.unread_properties()
     return _WithPayload(envelope, payload)
 
 
@@ -418,7 +483,30 @@ def check(session: EngineSession) -> Envelope:
     result = session.reasoner.detect(
         list(session.entities.values()), session.graph, session.history)
     session._last_result = result
-    return build_envelope(result)
+    envelope = build_envelope(result)
+    # the one report this verb owes, and the only one carried here.
+    # withdrew a check: a numeric property no indicator declares used to
+    # be judged by the words in its name. COMPATIBILITY.md permits withdrawing a
+    # check in a patch and forbids doing it QUIETLY, because a check withdrawn
+    # without a word is indistinguishable from one that passed -- measured
+    # against the previous release on the same model, three findings vanished,
+    # one of them critical, with `not_checked` empty and the denominator
+    # unmoved. The other two verbs already carried this population; `check` is
+    # the surface the rule is about, and was the one of the three missing it.
+    #
+    # A payload rather than a `not_checked` decline, and the schema chose that:
+    # a decline record REQUIRES an indicator and an axiom, and an undeclared
+    # property has neither -- supplying them would mean naming the axiom from
+    # the property's name, which is the move that was removed. Payloads ride
+    # alongside the legs by design, which is where the other three reports of
+    # input that goes nowhere already sit.
+    #
+    # Only this one. The observations and override reports answer a question
+    # `check` was not asked; adding them here would be a wider change than the
+    # rule requires and a fifth key nobody reported missing.
+    payload = envelope.to_dict()
+    payload["unread_properties"] = session.unread_properties()
+    return _WithPayload(envelope, payload)
 
 
 def traverse(session: EngineSession, start_nodes: Sequence[str],
@@ -599,6 +687,12 @@ def gaps(session: EngineSession,
     # A feeder without this would have shipped the exact asymmetry that the
     # observations report was added to close.
     payload["unread_threshold_overrides"] = session.unread_threshold_overrides()
+    # the fourth report of input that goes nowhere, in both tools for
+    # the reason the third one gives. An internal ruling removed a walk that judged every
+    # entity property by its name; the rules it applied are declarable and now
+    # declared, but an author cannot declare a property they do not know they
+    # are sending. This says what arrived and was never read.
+    payload["unread_properties"] = session.unread_properties()
     return _WithPayload(envelope, payload)
 
 

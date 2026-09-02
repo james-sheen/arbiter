@@ -305,13 +305,16 @@ class TestTheDescribePayloadLocations:
         extra key, and an envelope that grew a leg silently is the thing this
         class exists to catch.
 
-        It caught one: `unread_threshold_overrides` arrived here as a third
-        report of input that goes nowhere, and this test went red the moment it
-        did. That is the assertion working -- a payload key is a published
-        surface, and one appearing without anyone deciding to publish it is
-        exactly what containment would have waved through.
+        It has caught two. `unread_threshold_overrides` arrived as a third
+        report of input that goes nowhere, and `unread_properties` as a fourth;
+        both reddened this test the moment they landed. That is the assertion
+        working -- a payload key is a published surface, and one appearing
+        without anyone deciding to publish it is exactly what containment would
+        have waved through. Both were then added here on purpose, which is the
+        deciding this test exists to force.
         """
         assert set(self._payload()) == {
             "checked", "findings", "not_checked", "questions", "meta",
             "model", "unconsumed_observations", "unread_threshold_overrides",
+            "unread_properties",
         }

@@ -37,6 +37,7 @@ if HAS_RDFLIB:
 _VALID_HOMEOSTASIS_DIRECTIONS = frozenset({"UPPER", "LOWER", "BIDIRECTIONAL"})
 
 
+
 class OntologyLoader:
     """
     Load and query RDF/TTL ontologies.
@@ -606,6 +607,11 @@ class OntologyLoader:
     def _parse_yaml_indicator(self, data: Dict, entity_type: str,
                               type_mapping: Optional[Dict[str, str]] = None) -> Optional[IndicatorSpec]:
         """Parse a single indicator from YAML dict format."""
+        # deferred, not module-scope: `domain_loader` imports
+        # `.axioms.roles`, which pulls `axioms/__init__`, which imports back
+        # here. A module-scope import makes that cycle depend on which module
+        # is loaded first, and the reasoner loads this one first.
+        from .domain_loader import _resolve_role
         try:
             name = data['name']
             property_name = (type_mapping or {}).get(name, name)
@@ -636,6 +642,19 @@ class OntologyLoader:
                 property_name=property_name,
                 indicator_type=ind_type,
                 relevant_axioms=axiom_list,
+                # this loader dropped `role:` on the floor. The
+                # settlement pack declares `role: percentage` on
+                # `exposure_percent`; the spec came out with role=None, the
+                # declared path declined `missing_role`, and the raw-property
+                # walk supplied the percentage rule from the `percent` token in
+                # the name. The guess was MASKING a loader gap, which is the
+                # strongest argument for removing it: the test that covered this
+                # value passed for a reason nobody had declared.
+                #
+                # Same resolver as `domain_loader`, imported rather than
+                # re-implemented -- two loaders each parsing a closed vocabulary
+                # their own way is how the field came to be read by one of them.
+                role=_resolve_role(data.get('role'), name),
                 # absent means None, not 0.0. With 0.0 the
                 # BOUNDEDNESS `is not None` test treated every non-negative
                 # reading as at-or-above critical, so a healthy Deployment

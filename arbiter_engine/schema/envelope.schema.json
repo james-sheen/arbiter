@@ -75,6 +75,8 @@
             "enum": ["insufficient_samples", "missing_property",
                      "no_current_value", "missing_entity_type",
                      "missing_config", "no_threshold", "wrong_indicator_type",
+                     "missing_role", "precondition_unmet",
+                     "undefined_for_values",
                      "not_applicable", "checker_error"]
           },
           "detail": {"type": "string"},
@@ -135,6 +137,6 @@
     }
   },
   "additionalProperties": {
-    "description": "Tool-specific payloads ride ALONGSIDE the five legs rather than inside them: `model` and `unconsumed_observations` and `unread_threshold_overrides` from model_describe, `evidence` from attest. Additive by design -- the four legs plus meta are what every tool satisfies identically, and a tool-specific key is not a change to that contract."
+    "description": "Tool-specific payloads ride ALONGSIDE the five legs rather than inside them: `model` and `unconsumed_observations` and `unread_threshold_overrides` from model_describe, `evidence` from attest, `unread_properties` from check and gaps -- that last one carried by check because removing a name-derived rule withdrew a check whose cell has no indicator and no axiom to decline on, and a withdrawn check that leaves the envelope identical to a clean pass is the one thing the compatibility policy forbids a patch release from doing. Additive by design -- the four legs plus meta are what every tool satisfies identically, and a tool-specific key is not a change to that contract."
   }
 }

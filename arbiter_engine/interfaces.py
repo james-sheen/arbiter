@@ -963,6 +963,19 @@ class IndicatorSpec:
     # a long record of what happens to those.
     declared_keys: frozenset = field(default_factory=frozenset)
 
+    # the sibling, for the same reason one level down. `declared_keys`
+    # records which KEYS the author typed, because a resolved value cannot say
+    # whether it was declared. This records which of those keys carried a VALUE
+    # the loader did not recognise, because a resolved value cannot say that
+    # either: every closed-vocabulary resolver falls back or skips, so
+    # `type: numric` arrives indistinguishable from `type: numeric`.
+    #
+    # Keyed by the YAML key, holding what the author actually wrote. The
+    # unknown-KEY check inverted catches `directon`; nothing caught
+    # `direction: hihger`, which is the same author error against a key that
+    # exists.
+    unresolved_values: dict = field(default_factory=dict)
+
     def __post_init__(self):
         if not self.property_name:
             self.property_name = self.name

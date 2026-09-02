@@ -193,7 +193,10 @@ class TestZeroSpreadDeclines:
         declines = [d for d in payload["not_checked"]
                     if d.get("axiom") == "HOMEOSTASIS"]
         assert len(declines) == 1
-        assert declines[0]["reason"] == "not_applicable"
+        # a zero-spread baseline is UNDEFINED_FOR_VALUES -- the axiom
+        # applies and its quantity has no value on this data. Nobody owes
+        # anything, and it may evaluate tomorrow.
+        assert declines[0]["reason"] == "undefined_for_values"
 
 
 if __name__ == "__main__":

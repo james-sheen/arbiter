@@ -304,11 +304,19 @@ class DomainModel:
         at all. Fifth independent sighting before it was closed; the fourth was
         our own guide teaching a key nothing reads.
 
-        Two reasons, one list. `axiom_not_declared` is the case and its
-        remedy is to declare the axiom; `unknown_key` is this one and its remedy
-        is to correct or drop the key. A caller that only asks *is this empty?*
+        Three reasons, one list. `axiom_not_declared` is the case and
+        its remedy is to declare the axiom; `unknown_key` is the and its
+        remedy is to correct or drop the key; `unknown_value` is the, a
+        key that exists carrying a value the engine does not recognise, and its
+        remedy is to correct the value. A caller that only asks *is this empty?*
         gets one answer, and a caller that must act gets the distinction —
-        reading the two as one backlog is how the wrong fix gets applied.
+        reading them as one backlog is how the wrong fix gets applied.
+
+        The third arrived the way the second did: from outside, against the
+        field the previous one added. compared every key the author
+        typed against the set the loader reads, which catches `directon`.
+        Nothing compared VALUES, so `direction: hihger` passed through the same
+        gap one level down, and `type: numric` did it without even a log line.
         """
         out: List[Dict[str, Any]] = []
         for entity_type, specs in self.indicators.items():
@@ -334,21 +342,57 @@ class DomainModel:
                             f"`axioms:` list, or remove the field"),
                     })
                 for key in sorted(typed - _KNOWN_INDICATOR_KEYS):
-                    near = difflib.get_close_matches(
-                        key, sorted(_KNOWN_INDICATOR_KEYS), n=1, cutoff=0.8)
+                    near = _did_you_mean(
+                        key, sorted(_KNOWN_INDICATOR_KEYS), cutoff=0.8)
                     remedy = (f"`{key}` is not a key this engine reads, so "
                               f"nothing will ever consume it")
                     if near:
-                        remedy += f" — did you mean `{near[0]}`?"
+                        remedy += f" — did you mean `{near}`?"
                     out.append({
                         "entity_type": entity_type,
                         "indicator": spec.name,
                         "field": key,
                         "reason": "unknown_key",
                         "read_by": [],
-                        "did_you_mean": near[0] if near else None,
+                        "did_you_mean": near,
                         "remedy": remedy,
                     })
+                # the third reason, and the value-side twin of the
+                # one above. inverted the KEY check and caught
+                # `directon`; `direction: hihger` is the same author error
+                # against a key that exists, and reached nothing an author can
+                # query. Seven closed-vocabulary resolvers fall back or skip,
+                # and `type` did it in total silence -- substituting NUMERIC,
+                # so the indicator evaluated the wrong axioms and the model
+                # loaded clean. Reported from outside, found while a method
+                # document was being reviewed rather than by anyone using it.
+                #
+                # The valid set travels in the record from the resolver that
+                # owns it. Holding four vocabularies here would be the
+                # number-written-twice defect, and it would go stale the first
+                # time a member was added -- which happened to the decline
+                # vocabulary the same week.
+                for key in sorted(spec.unresolved_values or {}):
+                    entry = spec.unresolved_values[key]
+                    valid = entry.get("valid") or []
+                    for value in entry.get("values") or []:
+                        near = _did_you_mean(value, valid, cutoff=0.7)
+                        remedy = (
+                            f"`{key}: {value}` is not a value this engine "
+                            f"recognises, so the declaration was not applied; "
+                            f"valid values are {', '.join(str(v) for v in valid)}")
+                        if near:
+                            remedy += f" — did you mean `{near}`?"
+                        out.append({
+                            "entity_type": entity_type,
+                            "indicator": spec.name,
+                            "field": key,
+                            "reason": "unknown_value",
+                            "value": value,
+                            "read_by": [],
+                            "did_you_mean": near,
+                            "remedy": remedy,
+                        })
         return out
 
     def unreachable_declarations(self) -> List[Dict[str, Any]]:
@@ -532,7 +576,57 @@ def parse_duration(raw: Optional[str]) -> Optional[timedelta]:
     return None
 
 
-def resolve_direction(raw: Optional[str], indicator_name: str = "") -> str:
+def _did_you_mean(value: Any, valid: List[Any],
+                  cutoff: float) -> Optional[str]:
+    """Nearest member of a closed set, matched WITHOUT case.
+
+    `difflib` is case-sensitive and every one of these vocabularies is not: the
+    resolvers upper- or lower-case the author's word before comparing, so
+    `NUMERIC` and `numeric` both load. The RECORDED valid sets do not share a
+    convention -- some are the enum's members, some its values -- so a
+    suggestion appeared only when the author's case happened to match the set's,
+    and which case that was varied per key with nothing telling the author
+    which. Measured across all seven closed vocabularies before the change:
+    every one lost its suggestion in one case and kept it in the other, five on
+    upper and two on lower. The shipped example declares `type: NUMERIC`, so the
+    case an author is most likely to copy was the one that produced nothing.
+
+    Worse at the KEY site, where case genuinely matters: `WARNING:` is not a key
+    this engine reads, lower-casing it is the entire fix, and that was the one
+    input the suggester had nothing to say about.
+
+    Returns the CANONICAL spelling from `valid`, which is what the remedy prints
+    in the same sentence, so the two cannot disagree. A vocabulary holding two
+    members differing only by case would fold here; none does, and one would be
+    a defect in the vocabulary rather than in this.
+    """
+    canonical: Dict[str, str] = {}
+    for member in valid:
+        canonical.setdefault(str(member).lower(), str(member))
+    near = difflib.get_close_matches(
+        str(value).lower(), list(canonical), n=1, cutoff=cutoff)
+    return canonical[near[0]] if near else None
+
+
+def _record_unresolved(sink: Optional[dict], key: str, value: Any,
+                       valid: List[str]) -> None:
+    """Record a closed-vocabulary value the loader did not recognise.
+
+    The VALID SET travels with the record because the resolver owns it. The
+    reporter must not hold its own copy of four vocabularies -- that is the
+    number-written-twice defect `declared_keys` was introduced to avoid, and
+    it would go stale the first time a member was added.
+
+    `axioms:` is a list, so its entries accumulate; the scalar keys hold one.
+    """
+    if sink is None:
+        return
+    entry = sink.setdefault(key, {"values": [], "valid": valid})
+    entry["values"].append(value)
+
+
+def resolve_direction(raw: Optional[str], indicator_name: str = "",
+                      unresolved: Optional[dict] = None) -> str:
     """Validate the HOMEOSTASIS direction gate; never raise.
 
     An unrecognised value warns with the offending input and the valid set,
@@ -548,17 +642,32 @@ def resolve_direction(raw: Optional[str], indicator_name: str = "") -> str:
         "unknown direction %r on indicator %r — valid: %s — using BIDIRECTIONAL",
         raw, indicator_name, ", ".join(sorted(VALID_DIRECTIONS)),
     )
+    _record_unresolved(unresolved, "direction", raw, sorted(VALID_DIRECTIONS))
     return "BIDIRECTIONAL"
 
 
-def _resolve_indicator_type(raw: Any) -> IndicatorType:
-    name = str(raw or "NUMERIC").upper()
+def _resolve_indicator_type(raw: Any, unresolved: Optional[dict] = None) -> IndicatorType:
+    """records an unrecognised value rather than swallowing it.
+
+    This was the SILENT one of the four closed-vocabulary resolvers: the other
+    three at least logged. `type: numric` and `type: temperature` both arrived
+    as NUMERIC with no signal at any level, so an indicator typed wrongly by a
+    typo evaluated the wrong axioms and reported a clean model.
+
+    Absent is NOT unresolved. An omitted `type:` legitimately defaults, and
+    conflating the two would report every indicator that never declared one.
+    """
+    if raw is None or raw == "":
+        return IndicatorType.NUMERIC
+    name = str(raw).upper()
     if name in IndicatorType.__members__:
         return IndicatorType[name]
+    _record_unresolved(unresolved, "type", raw,
+                       sorted(m.lower() for m in IndicatorType.__members__))
     return IndicatorType.NUMERIC
 
 
-def _resolve_axioms(raw: Any) -> List[Axiom]:
+def _resolve_axioms(raw: Any, unresolved: Optional[dict] = None) -> List[Axiom]:
     """Parse the `axioms:` list, skipping names the enum does not know.
 
     Skipping rather than raising is deliberate and matches the existing
@@ -571,6 +680,11 @@ def _resolve_axioms(raw: Any) -> List[Axiom]:
             axioms.append(Axiom(str(entry).upper()))
         except (ValueError, KeyError):
             logger.warning("unknown axiom %r in domain file — skipped", entry)
+            # a log line is not a surface an author can query. The
+            # skip is still deliberate; what changes is that it now reaches
+            # the report the author already consults.
+            _record_unresolved(unresolved, "axioms", entry,
+                               sorted(a.value for a in Axiom))
     return axioms
 
 
@@ -604,13 +718,16 @@ def _resolve_threshold(raw: Any) -> Optional[float]:
     return float(raw) if raw is not None else None
 
 
-def _resolve_role(raw: Any, indicator_name: str = "") -> Optional[str]:
+def _resolve_role(raw: Any, indicator_name: str = "",
+                  unresolved: Optional[dict] = None) -> Optional[str]:
     """The declared `role:` for an indicator, or None.
 
-    None means *fall back to inferring the role from the name*, which is what
-    every model written before this field existed relies on. An unrecognised
-    word is warned about and treated as absent, because the alternative is a
-    role the engine ignores while the author believes it is declared.
+    None means *no role*, and is what changed that: it used to mean
+    fall back to inferring one from the indicator's name. The axiom now declines
+    `missing_role` instead, so None is a decision the author can see rather than
+    a guess they cannot. An unrecognised word is warned about and treated as
+    absent, because the alternative is a role the engine ignores while the
+    author believes it is declared.
     """
     if raw is None or str(raw).strip() == "":
         return None
@@ -620,6 +737,7 @@ def _resolve_role(raw: Any, indicator_name: str = "") -> Optional[str]:
             "unknown role %r on indicator %r — ignored; known roles are %s",
             raw, indicator_name, ", ".join(sorted(ROLES)),
         )
+        _record_unresolved(unresolved, "role", raw, sorted(ROLES))
     return resolved
 
 
@@ -628,7 +746,8 @@ def _resolve_role(raw: Any, indicator_name: str = "") -> Optional[str]:
 FLOW_DIRECTIONS = frozenset({"in", "out"})
 
 
-def _resolve_flow_direction(raw: Any, indicator_name: str = "") -> Optional[str]:
+def _resolve_flow_direction(raw: Any, indicator_name: str = "",
+                            unresolved: Optional[dict] = None) -> Optional[str]:
     """The declared `flow:` for an indicator, or None.
 
     None means *undeclared*, and undeclared means this quantity is not summed
@@ -651,6 +770,7 @@ def _resolve_flow_direction(raw: Any, indicator_name: str = "") -> Optional[str]
         "unknown flow %r on indicator %r — ignored; write one of %s",
         raw, indicator_name, ", ".join(sorted(FLOW_DIRECTIONS)),
     )
+    _record_unresolved(unresolved, "flow", raw, sorted(FLOW_DIRECTIONS))
     return None
 
 
@@ -660,7 +780,8 @@ _TRUE = {"true", "yes", "y", "on", "1"}
 _FALSE = {"false", "no", "n", "off", "0"}
 
 
-def _resolve_expect_variation(raw: Any, indicator_name: str = "") -> Optional[bool]:
+def _resolve_expect_variation(raw: Any, indicator_name: str = "",
+                              unresolved: Optional[dict] = None) -> Optional[bool]:
     """The declared `expect_variation:` for an indicator, or None.
 
     None means *undeclared*, and undeclared means the frozen-series check does
@@ -687,16 +808,19 @@ def _resolve_expect_variation(raw: Any, indicator_name: str = "") -> Optional[bo
         "unreadable expect_variation %r on indicator %r — ignored; write "
         "true or false", raw, indicator_name,
     )
+    _record_unresolved(unresolved, "expect_variation", raw, ["false", "true"])
     return None
 
 
-def _resolve_severity(raw: Any) -> Severity:
+def _resolve_severity(raw: Any, unresolved: Optional[dict] = None) -> Severity:
     if not raw:
         return Severity.HIGH
     name = str(raw).upper()
     if name in Severity.__members__:
         return Severity[name]
     logger.warning("unknown severity %r — using HIGH", raw)
+    _record_unresolved(unresolved, "violation_severity", raw,
+                       sorted(s.value for s in Severity))
     return Severity.HIGH
 
 
@@ -712,13 +836,18 @@ def parse_indicator(
         logger.warning("indicator without a name in %r — skipped", entity_type)
         return None
 
+    # the seven closed-vocabulary resolvers below record what they
+    # could not recognise here, so an unrecognised VALUE reaches the same
+    # report an unrecognised KEY already reaches.
+    unresolved: Dict[str, Any] = {}
+
     try:
         return IndicatorSpec(
             uri=f"domain:{entity_type}.{name}",
             name=name,
             property_name=(property_mapping or {}).get(name, name),
-            indicator_type=_resolve_indicator_type(data.get("type")),
-            relevant_axioms=_resolve_axioms(data.get("axioms")),
+            indicator_type=_resolve_indicator_type(data.get("type"), unresolved),
+            relevant_axioms=_resolve_axioms(data.get("axioms"), unresolved),
             warning_threshold=_resolve_threshold(data.get("warning")),
             critical_threshold=_resolve_threshold(data.get("critical")),
             # the floor pair. Same resolver as the ceiling pair, so
@@ -726,7 +855,7 @@ def parse_indicator(
             lower_warning_threshold=_resolve_threshold(data.get("lower_warning")),
             lower_critical_threshold=_resolve_threshold(data.get("lower_critical")),
             time_window=parse_duration(data.get("window", "1h")) or DEFAULT_WINDOW,
-            direction=resolve_direction(data.get("direction"), name),
+            direction=resolve_direction(data.get("direction"), name, unresolved),
             normal_states=data.get("normal", []),
             transient_states=data.get("transient", []),
             problematic_states=data.get("bad", []),
@@ -736,7 +865,8 @@ def parse_indicator(
             relation_type=data.get("relation_type", ""),
             min_cardinality=data.get("min_cardinality", 0),
             max_cardinality=data.get("max_cardinality", 0),
-            violation_severity=_resolve_severity(data.get("violation_severity")),
+            violation_severity=_resolve_severity(data.get("violation_severity"),
+                                                 unresolved),
             required_property=data.get("required_property") or None,
             # the engine loader needs these for the same reason the
             # platform loader does. Fixing only one would leave the extracted
@@ -761,19 +891,21 @@ def parse_indicator(
             # already use, so one mistyped field costs that field and not the
             # file. Dropping it silently would be worse than the defect this
             # closes: the author would believe they had declared a role.
-            role=_resolve_role(data.get("role"), name),
+            role=_resolve_role(data.get("role"), name, unresolved),
             # Same convention as `role` above: normalised here, and an
             # unrecognised value is reported and dropped rather than coerced.
             # `expect_variation: yes` must not become False by way of
             # `bool("yes")` logic somewhere downstream.
             expect_variation=_resolve_expect_variation(
-                data.get("expect_variation"), name),
+                data.get("expect_variation"), name, unresolved),
             # Same convention again: normalised here, unrecognised
             # values reported and dropped. Which side of a balance a quantity
             # sits on is a domain fact, and the path this feeds used to read it
             # off the indicator's name.
-            flow_direction=_resolve_flow_direction(data.get("flow"), name),
+            flow_direction=_resolve_flow_direction(data.get("flow"), name,
+                                                   unresolved),
             # what the AUTHOR typed, which the values cannot say.
+            unresolved_values=unresolved,
             declared_keys=frozenset(data.keys()) if isinstance(data, dict)
             else frozenset(),
         )

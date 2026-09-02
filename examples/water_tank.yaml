@@ -27,9 +27,15 @@ domain:
       # floor as well; see the Pump's speed_rpm below for both on one indicator.
       # A tank has no interesting floor -- an empty supply tank is a fact about
       # the process, not a fault -- so this one declares only the ceiling.
+      #
+      # CONSISTENCY and `role: percentage` are DECLARED, and is why.
+      # The 0-100 range check used to arrive by itself, from a walk that read
+      # every property name and recognised the `pct` token. That walk is gone,
+      # so a rule nobody declared is a rule that does not run.
       - name: level_pct
         type: NUMERIC
-        axioms: [BOUNDEDNESS, HOMEOSTASIS]
+        role: percentage
+        axioms: [BOUNDEDNESS, HOMEOSTASIS, CONSISTENCY]
         warning: 85
         critical: 95
         window: 1h
@@ -81,9 +87,12 @@ domain:
       # argument `expect_variation` and `role:` make. Delete the block and this
       # indicator goes back to being range-checked alone.
       #
-      # `role: percentage` selects the 0-100 rule. Without it the engine would
-      # infer the same thing from the `pct` token in the name, which is how
-      # this line worked before the field existed -- correctly, and by accident.
+      # `role: percentage` selects the 0-100 rule. Without it CONSISTENCY
+      # declines for a missing role and the name is not read. Until 2026-09-01
+      # the engine DID infer the rule from the `pct` token -- correctly here,
+      # and by accident -- which is how this line worked before the field
+      # existed. That inference is gone, and this comment described it as
+      # current behaviour for a day after it went.
       - name: level_pct_redundant
         type: NUMERIC
         role: percentage
@@ -165,11 +174,11 @@ domain:
       #
       # `role:` IS WHAT MAKES THIS EVALUATE. RESPONSIVENESS and CONSISTENCY are
       # about a KIND of quantity -- a latency, a count, a percentage, a ratio --
-      # so the model says which, and the checker no longer has to guess from
-      # English. Leave `role:` out and the engine still infers one from the
-      # name, so older models keep working; but an indicator whose name carries
-      # no recognised word then declines `not_applicable` while the pass stays
-      # green.
+      # so the model says which, and the checker does not guess from English.
+      # Leave `role:` out and the axiom declines `missing_role`, whatever the
+      # indicator is called. The engine used to infer one from the name, which
+      # meant two identical declarations were treated differently because of
+      # their spelling, and no surface said so.
       #
       # This file worked around that by RENAMING: it read `setpoint_error_pct`
       # until 2026-08-14, which could never fire, and was then renamed to

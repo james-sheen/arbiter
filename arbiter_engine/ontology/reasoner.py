@@ -370,18 +370,24 @@ class UnifiedAxiomReasoner(OntologyReasonerInterface):
                 # evaluations that ran clean and found nothing.
                 evaluations += 1
 
-        # Also run general consistency check
+        # the raw-property walk used to run here, classifying every
+        # entity property by word-token and applying count / percentage / ratio
+        # rules to whatever the spelling matched. Removed.
+        #
+        # Not primarily because it read a name, though it did and the published
+        # guide refuses that move. Because its findings had NO DENOMINATOR: they
+        # ran outside the `relevant_axioms` loop above, so `checked.invariants`
+        # never counted the cells they came from, and a consumer computing
+        # attempted-minus-findings-minus-declines got a negative contribution
+        # from checks the envelope never claimed to attempt.
+        #
+        # The rules it applied are DECLARABLE and now declared. Sized first, by
+        # instrumenting the walk rather than grepping the packs: 31 property
+        # keys reached it across six lanes, 11 produced a finding, and six of
+        # those were real -- three on indicators that simply had not declared
+        # CONSISTENCY, three on properties no pack declares at all.
         consistency_checker = self._axiom_checkers[Axiom.CONSISTENCY]
         if isinstance(consistency_checker, ConsistencyChecker):
-            entity_consistency = consistency_checker.check_entity(entity, graph)
-            _record_fires(Axiom.CONSISTENCY, entity, None, entity_consistency)
-            problems.extend(entity_consistency)
-            # the undeclared paths. These run OUTSIDE the
-            # `relevant_axioms` loop, so nothing about them is declared and
-            # their declines were dropped at the `extend`. Collected so the
-            # channel accounts for every evaluation, declared or not.
-            not_evaluated.extend(
-                getattr(entity_consistency, "not_evaluated", ()))
             # Domain-configurable consistency rules
             if self._consistency_rules:
                 domain_consistency = consistency_checker.check_domain_rules(

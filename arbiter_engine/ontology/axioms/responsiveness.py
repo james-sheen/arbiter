@@ -166,7 +166,7 @@ class ResponsivenessChecker:
             # is the right one.
             return CheckOutcome(result).declined(
                 Axiom.RESPONSIVENESS, entity, indicator.name,
-                NotEvaluatedReason.NOT_APPLICABLE,
+                NotEvaluatedReason.MISSING_ROLE,
                 detail=roles.explain_absence(Axiom.RESPONSIVENESS, indicator),
             )
         if role_source == "inferred":

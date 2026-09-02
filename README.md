@@ -16,9 +16,9 @@ testable*.
 A detection pass returns findings, declines, and a denominator:
 
 ```
-problems              what was found
-not_evaluated         what was NOT evaluated, and why
-evaluations_attempted how many (axiom, entity, indicator) evaluations were tried
+findings              what was found
+not_checked           what was NOT evaluated, and why
+checked.invariants    how many (axiom, entity, indicator) evaluations were tried
 ```
 
 **Every envelope carries `meta.schema_version`.** It names the WIRE SHAPE, not the package
@@ -29,16 +29,18 @@ reason all three exist: the describe payload's nesting moved once between releas
 all, and a consumer who had written against the earlier layout got `None` back from a lookup — which
 reads as *this engine does not support that* rather than *this moved*.
 
-`not_evaluated` entries carry a reason from a closed vocabulary of nine — `not_applicable`,
+`not_checked` entries carry a reason from a closed vocabulary of twelve — `not_applicable`,
 `insufficient_samples`, `missing_property`, `no_current_value`, `missing_config`,
-`missing_entity_type`, `no_threshold`, `wrong_indicator_type`, `checker_error` — so a decline is
-data, not a log line.
+`missing_entity_type`, `missing_role`, `no_threshold`, `precondition_unmet`,
+`undefined_for_values`, `wrong_indicator_type`, `checker_error` — so a decline is data,
+not a log line.
 
-Three of the nine will account for most of what you see. `insufficient_samples` reports both the
+Three of them will account for most of what you see. `insufficient_samples` reports both the
 count it had and the count it needed, so it tells you how much longer to collect.
-`not_applicable` means the checker decided the axiom does not apply to that indicator at all —
-worth reading closely, because it can be decided from a declared `role:`, and inferred from the
-indicator's NAME when no role is declared.
+`missing_role` means an axiom needed to know what KIND of quantity an indicator is — a count, a
+percentage, a ratio, a latency — and the model never said. Declare `role:` on the indicator. The
+engine does not guess it from the indicator's NAME, so this decline is about the declaration and
+never about the spelling.
 
 `no_current_value` is the newest and the reason it exists is worth stating. A threshold axiom reads
 `Entity.properties`; a temporal axiom reads observation history. Feed only the second and the value
@@ -49,11 +51,11 @@ from outside**, and the vocabulary was the thing at fault: a closed set missing 
 raise, it reclassifies the case as the nearest member and reports it with confidence.
 
 **Why the denominator matters.** Findings and declines do not sum to the total: an evaluation that
-ran and found nothing appears in neither. Without `evaluations_attempted`, the statement *checked N
+ran and found nothing appears in neither. Without `checked.invariants`, the statement *checked N
 invariants* has no honest value of N — and an envelope reporting a fabricated denominator is the
 exact failure the envelope exists to prevent.
 
-All eight axiom checkers emit declines (29 call sites). This is not a property of one checker that
+All eight axiom checkers emit declines (33 call sites). This is not a property of one checker that
 the others aspire to.
 
 ## The eight axioms
@@ -124,11 +126,13 @@ applies to a latency, and `0 <= x <= 100` applies to a percentage. Declare which
   critical: 12
 ```
 
-Leave it out and the engine infers a role from the indicator's **name** — `response`/`latency` for
-the first, `count`/`percent`/`pct`/`ratio` for the second — so models written before this field
-existed behave exactly as they did. That inference is a guess about English, and when it misses, the
-axiom declines `not_applicable` and the cycle stays green: an indicator called `pulldown_error_c`
-could declare `RESPONSIVENESS`, be accepted, be listed by `model_describe`, and never once evaluate.
+Leave it out and the axiom declines `missing_role`, whatever the indicator is called. The engine
+used to infer one from the **name** — `response`/`latency` for the first, `count`/`percent`/`pct`/
+`ratio` for the second — and that was a guess about English: two indicators identical in every
+declared respect were treated differently because of their spelling, and no surface said which had
+happened. Worse for a reader, the ABSENCE of the decline was not evidence a role had been supplied.
+It was evidence about the name. An indicator called `pulldown_error_c` could declare
+`RESPONSIVENESS`, be accepted, be listed by `model_describe`, and never once evaluate.
 
 **You do not have to run a cycle to find that out.** `model_describe` reports
 `unreachable_declarations` — every declared `(indicator, axiom)` pair that cannot fire under any
@@ -163,6 +167,21 @@ row carries a `reason`: `axiom_not_declared` for the above, and `unknown_key` fo
 in the schema — with a `did_you_mean` where one is close. `expect_variaton: true` is accepted by
 YAML, read by nothing, and would otherwise leave exactly the silence the field was added to end.
 
+**And it names properties you send that nothing reads.** `unread_properties` lists numeric entity
+properties for which no indicator is declared. It reports what arrived; it does not judge the value,
+because deciding what a number means needs a rule and this engine takes rules from your model rather
+than from the property's name. Earlier versions did guess: a key spelled `*_count` or `*_pct` was
+range-checked whether or not you asked. That is gone — declare `role:` and the axiom to get those
+checks — and this report is how you find the properties that declaration is missing from.
+
+**`check` carries that report too, and the reason is the guess it replaced.** Removing the guess
+withdrew a check: a value that used to raise `impossible_value` off its property's spelling now
+raises nothing. A withdrawn check that says nothing is indistinguishable from one that passed, which
+is the single thing [`COMPATIBILITY.md`](COMPATIBILITY.md) forbids a patch release from doing — so the
+population rides on `check` as well, and a run whose faults moved into undeclared properties reads
+as a run with something unlooked-at rather than as a clean one. It is a report, not a decline:
+a decline record names an indicator and an axiom, and a property nobody declared has neither.
+
 **Leave it out and nothing is reported, and that silence is the design rather than a gap.** Whether a
 constant series is a fault is a question about your domain and not about the number: a CPU
 temperature that never moves is broken, and a replica count, a nominal setpoint and a switched-off
@@ -194,7 +213,7 @@ This block used to open `examples/water_tank.yaml` directly: correct from a clon
 until the install line above stopped saying `git clone`. Both copies are here, written from one
 source: `examples/` for reading, the packaged one for running.
 
-That prints `{'invariants': 0, 'entities': 3, 'declared_invariants': 10}` — three entities, ten
+That prints `{'invariants': 0, 'entities': 3, 'declared_invariants': 11}` — three entities, eleven
 declared invariants, and **zero evaluated**, because no observations have been supplied yet. The
 zero is the point: it is reported rather than left for you to infer from an empty finding list.
 

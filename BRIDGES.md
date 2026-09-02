@@ -57,12 +57,15 @@ declined.
 | [`missing_config`](#missing_config) | `NotEvaluatedReason.MISSING_CONFIG` |
 | [`missing_entity_type`](#missing_entity_type) | `NotEvaluatedReason.MISSING_ENTITY_TYPE` |
 | [`missing_property`](#missing_property) | `NotEvaluatedReason.MISSING_PROPERTY` |
+| [`missing_role`](#missing_role) | `NotEvaluatedReason.MISSING_ROLE` |
 | [`no_current_value`](#no_current_value) | `NotEvaluatedReason.NO_CURRENT_VALUE` |
 | [`no_threshold`](#no_threshold) | `NotEvaluatedReason.NO_THRESHOLD` |
 | [`not_applicable`](#not_applicable) | `NotEvaluatedReason.NOT_APPLICABLE` |
+| [`precondition_unmet`](#precondition_unmet) | `NotEvaluatedReason.PRECONDITION_UNMET` |
+| [`undefined_for_values`](#undefined_for_values) | `NotEvaluatedReason.UNDEFINED_FOR_VALUES` |
 | [`wrong_indicator_type`](#wrong_indicator_type) | `NotEvaluatedReason.WRONG_INDICATOR_TYPE` |
 
-9 reasons. The set is closed, and this table is generated from the engine in this repository rather than transcribed -- a guide that disagreed with it would not have been published.
+12 reasons. The set is closed, and this table is generated from the engine in this repository rather than transcribed -- a guide that disagreed with it would not have been published.
 
 One section per reason follows. Each says what the refusal means and what your
 bridge owes because of it.
@@ -71,9 +74,10 @@ bridge owes because of it.
 
 Fewer observations than the axiom needs to answer. Not a failure: a fresh system
 that declines everything is making a true and useful statement. Report it as
-warm-up rather than suppressing it, and remember that a corpus shorter than the
-floor sits permanently inside this decline — which makes any fault you inject
-into it invisible. Measure the floor, then size the corpus past it.
+warm-up rather than suppressing it — but not all of it is warm-up. A floor is a
+count taken inside a window, so a corpus can hold many times the floor and still
+never present it, and a fault injected into one is invisible. Measure the floor
+and the window together, and build the corpus past both.
 
 ### `missing_property`
 
@@ -115,11 +119,46 @@ The axiom was pointed at a kind of value it cannot reason about. A modelling
 mistake, and one worth failing loudly on: an indicator wired to the wrong axiom
 produces silence that looks like health.
 
+### `missing_role`
+
+The axiom would apply, and the model never said what this indicator *is* to it.
+Somebody owes a declaration, and this is the arm of a decline you can put on a
+backlog. Reading it as *the axiom does not apply here* retires a check that was
+one line of model away from running.
+
+### `precondition_unmet`
+
+A check declared a gate — the entity must carry some property before the check
+means anything — and the entity did not clear it. **The engine does not tell you
+which way to read that**, and it cannot: a deliberate exemption and a mistyped
+property name look identical from here, and only whoever holds the scan knows
+which one it is.
+
+So this is the arm that goes back to a human rather than onto a queue. Route it
+to whoever owns the model, not to whoever owns the data: if the exemption is
+intended, nothing is owed and the row is the engine confirming the gate works;
+if the name is wrong, the check has been retiring itself quietly and the row is
+the first thing that would ever have said so.
+
+Do not fold it into `missing_property`. That one says a value the check needed
+was absent; this one says the check never became applicable. Counting them
+together turns a gate that fired correctly into a data-quality ticket.
+
+### `undefined_for_values`
+
+The axiom applies, the samples are present, and the quantity it computes has no
+value on them — a ratio against a zero total, a deviation against a zero spread.
+**Nobody owes anything.** It is not insufficient data and more collection does not
+address it; the same cell may evaluate tomorrow on different values. Count it, and
+do not put it on anyone's list.
+
 ### `not_applicable`
 
-The axiom does not apply to this subject. Expected, and still data — count it, so
-your *checked* number stays interpretable. A ratio whose denominator quietly
-excludes the inapplicable cases is a ratio nobody can reproduce.
+No checker was registered for the axiom. Engine-side, and it is the residue left
+after the two above were told apart from it — if you are seeing this, the engine
+was asked for an axiom it does not implement, which is a fault and not a
+statement about your model. Expected declines that are genuinely *this does not
+apply* now arrive as one of the two reasons above.
 
 ### `checker_error`
 
@@ -267,7 +306,8 @@ Rules for injecting a fault so the leg means something:
    written afterwards are a description of what happened.
 6. **Check that a passing fault leg passed for the injected reason.** An exit
    code is a claim about the run, not about your fault. Assert on the finding.
-7. **Derive the corpus size from the engine's floors.** Do not choose it.
+7. **Derive the corpus from the engine's floors — how many samples, and over
+   what span.** Do not choose either.
 
 A leg that could not run reports `2` and is **named**. Never skipped: an absent
 leg that leaves no trace reads as a leg that passed.

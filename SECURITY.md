@@ -43,7 +43,7 @@ Out of scope:
 
 The engine's central claim is that a result of nothing-found is distinguishable
 from nothing-checked. If you can make `check` report a pass while an invariant
-silently failed to run — or make `evaluations_attempted` count something the
+silently failed to run — or make `checked.invariants` count something the
 engine did not attempt — that is the defect this project most wants to hear
 about, and it does not need the private channel unless it also exposes a
 deployment. A public issue is fine and is the faster route.

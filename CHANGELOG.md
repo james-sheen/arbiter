@@ -20,7 +20,205 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
-Nothing yet.
+**Read this one before upgrading.** Two rules that used to be read out of a
+property's SPELLING are gone, so a check you have been getting without declaring
+it will stop. Both changes say so at runtime — one as a decline, one as a report
+— and neither goes silent. The [Removed](#removed) section names the exact
+declaration to add.
+
+Most of this release came from outside: a reader applying `BRIDGES.md` to their
+own vertical, whose method document and probes found eight of the entries below.
+
+### Added
+
+- **`unread_properties`**, on `model_describe`, `gaps` and `check`: the numeric
+  entity properties you send for which no indicator is declared. It reports what
+  arrived and does **not** judge the value, because deciding what a number means
+  needs a rule and this engine takes rules from your model.
+
+  It exists because a removal made the gap visible. The engine already reported
+  the mirror — declarations that can never fire — and had nothing for the
+  inverse, data carrying something the model never mentions. An author cannot
+  declare a property they do not know they are sending.
+
+  Numeric only, and booleans are excluded. A mistyped STATE property is not
+  reported, because telling a state from a label is a question about your domain.
+
+- **`precondition_unmet`**, a twelfth member of `not_checked[].reason`. A
+  topology check can be gated on the entity carrying some property; when the gate
+  skipped the cell, the cell was counted in `checked.invariants` and appeared in
+  no row — byte-identical to a cell that evaluated and found nothing. Twenty
+  healthy entities beside five gated ones made the arithmetic read twenty-five
+  and no reader could separate the populations.
+
+  The reason states the precondition and stops. A deliberate exemption and a
+  mistake look the same from here, so claiming which one it is would assert
+  knowledge the engine does not have.
+
+- **`arbiter_engine.__version__`**, read from installed distribution metadata,
+  `None` when running from a source tree. A consumer recording which engine
+  produced a result had to reach for `importlib.metadata` themselves or write the
+  number down twice.
+
+- A third reason in the unread-fields report, `unknown_value`: a key the engine
+  reads, carrying a value it does not recognise. An earlier release inverted the
+  KEY check, so `directon` is caught; nothing compared VALUES, so
+  `direction: hihger` fell through the same gap one level down. Seven resolvers
+  have a closed vocabulary and all seven now report what they rejected, each
+  carrying its own valid set so the report holds no second copy of them.
+
+  `type` is why this exists. It was silent at every level and substituted
+  `numeric`, so `type: numric` produced an indicator typed wrongly, evaluating
+  the wrong axioms, in a model that loaded clean. Loading behaviour is
+  unchanged — refusing would be the tool deciding an author's roadmap — but it
+  no longer does it without saying. Found from outside.
+
+- Two decline reasons, splitting `not_applicable`, which was three answers under
+  one name. `missing_role` -- the model never declared what an indicator IS to
+  `CONSISTENCY` or `RESPONSIVENESS`, so somebody owes a declaration.
+  `undefined_for_values` -- the axiom applies and its quantity has no value on
+  the data present, a ratio against a zero total or a deviation against a zero
+  spread, so nobody owes anything and it may evaluate tomorrow.
+  `not_applicable` now means only what is left: no checker was registered for
+  the axiom.
+
+  The axis is whether an obligation exists, which is the one a bridge author can
+  act on. It was previously recoverable only from `detail`, which this document
+  declares unsupported for matching -- so a bridge needing the split had to keep
+  a private copy of wording a patch may move, and fail silently when it did.
+
+  Additive, and the same shape as `no_current_value` in 0.1.6: a closed enum
+  missing a member does not raise, it reclassifies into the nearest one and
+  reports it with confidence. Reported from outside.
+
+### Removed
+
+- **The raw-property walk.** `CONSISTENCY` used to read every entity property,
+  recognise a word in its name — `pct`, `count`, `ratio` — and range-check the
+  value whether or not your model asked. A key spelled `saturation_pct` carrying
+  150 raised `impossible_value` at HIGH; `retry_count` at -4 raised it at
+  CRITICAL. **Those findings are gone.**
+
+  **To keep them, declare the indicator** with a `role:` of `percentage`, `count`
+  or `ratio` and `CONSISTENCY` in its `axioms:`. That is the whole migration, and
+  `unread_properties` lists the properties you are missing one for.
+
+  Two reasons, and the second is the load-bearing one. It derived an
+  interpretation fact from a spelling: two identical declarations were treated
+  differently because of their names, and no surface said which had happened.
+  And its findings sat OUTSIDE the denominator — they were produced off the
+  per-declaration loop, so the envelope reported problems against cells it never
+  claimed to have attempted, and `checked.invariants` could not account for them.
+
+  Measured before removing, across six model packs: 31 property keys reached the
+  walk, 11 fired, 6 of those were real, and three shipped packs were relying on a
+  rule they had never declared.
+
+  **Removing it exposed a defect it had been hiding**, which is the best argument
+  for the removal: one pack declared `role: percentage` correctly and one of the
+  two YAML loaders never read the field, so the check had been passing on the
+  property's spelling for as long as the field has existed. See Fixed, below.
+
+### Changed
+
+- **A role is no longer inferred from an indicator's name.** `CONSISTENCY` and
+  `RESPONSIVENESS` are about a KIND of quantity — a latency, a count, a
+  percentage, a ratio — and the engine used to guess which from a substring of
+  the indicator's name. `error_count` had a rule applied; `errors`, identical in
+  every declared respect and given identical values, declined. Nothing on any
+  queryable surface said which had happened.
+
+  Unlike the walk above, **this one declines**: the cell reports `missing_role`
+  and the `detail` names the declaration to write, and the load-time warning
+  lists every pair that can never fire. So a model relying on the guess is told,
+  at load and in the envelope, rather than quietly losing a check.
+
+  Measured across the shipped packs before removing: eleven `(indicator, axiom)`
+  pairs relied on the guess and none declared a role. All eleven declare one now
+  and no coverage changed. Reported from outside.
+
+- The did-you-mean that fires on an unrecognised word was **case-sensitive**,
+  while every closed vocabulary it serves folds case on the way in. So a
+  suggestion appeared only when your spelling's case happened to match the set's,
+  and which case that was varied per key with nothing telling you. Measured
+  across all seven vocabularies: every one asymmetric, five losing the suggestion
+  on upper case and two on lower.
+
+  It was worst at the key site, where case genuinely matters: `WARNING:` really
+  is unread, lower-casing it is the entire fix, and that made it the one input
+  the suggester had nothing to say about. Both sites now fold case to match and
+  print the CANONICAL spelling.
+
+- `CONSERVATION` no longer reports an unobserved output side as a system fault.
+  The balance summed each declared output property and treated an absent one as
+  zero, so a block naming a property the model does not supply produced
+  `conservation_violation` at HIGH severity with a 100% deficit -- while the
+  fault was the property name. Absent is not a measurement of zero.
+
+  When **no** declared output property was observed in the window, the check now
+  declines `missing_property` and names them. That is the mirror of the
+  zero-input exit already in this checker: a deficit ratio has no value against a
+  zero total, and a deficit has no value against an output side nobody observed.
+  **Partial** absence deliberately still produces the finding, because it cannot
+  be told from a legitimately sparse channel; it names what contributed nothing
+  in the finding's reason.
+
+  A check that answered from a guess now declines, which this document lists
+  among the things a patch release may do. Found by probing which obligations the
+  engine actually guards, after an outside method document asked the question.
+
+- `BRIDGES.md` now says that a sample floor is a count taken inside a window, in
+  the two places it previously spoke only of corpus size. Sizing a corpus past
+  the floor is not sufficient: samples spread wider than the window never
+  present it, so the corpus stays inside `insufficient_samples` and any fault
+  injected into it is invisible. The guidance was reported incomplete from
+  outside, by a reader who reproduced the omission faithfully in their own
+  method document -- which is the evidence that the gap was ours and not theirs.
+
+- `COMPATIBILITY.md` gains a bullet for the case this release hit: a check with
+  no cell to decline on may be withdrawn if the envelope says so some other way.
+  The test is that a withdrawn check must leave the envelope distinguishable from
+  a clean pass — a report satisfies it, and a release note does not, because
+  nothing reads a release note at runtime.
+
+- The README's `The envelope` section named `problems`, `not_evaluated` and
+  `evaluations_attempted`. Those are attributes of an internal result object that
+  this distribution does not export; the envelope emits `findings`, `not_checked`
+  and `checked.invariants`. All three are corrected, along with the same name in
+  `SECURITY.md`. Also reported from outside, following the same review.
+
+### Fixed
+
+- **`role:` declared on an indicator was dropped by one of the two YAML
+  loaders.** The model loaded clean, the field vanished, and until this release
+  the name-guess supplied a rule anyway — so a model that declared the role
+  correctly got the right answer for the wrong reason, and would have silently
+  lost the check on upgrade. Both loaders now resolve the field through the same
+  function. This is the defect the walk was hiding.
+
+- **A mistyped `required_property` retired a check.** A topology statement can
+  gate its cardinality check on a property the entity must carry, and the gate
+  could not tell *the entity does not carry this property* from *it carries it
+  falsy*. The second is what the gate is for; the first is a property name your
+  model got wrong. So a typo turned a real cardinality violation into an empty
+  result, reported as a clean pass, while `checked.invariants` counted the cell
+  as attempted. It now resolves the name against the population — a name your
+  model supplies resolves on somebody, a typo resolves nowhere — and declines
+  `precondition_unmet` instead of passing.
+
+- **`MONOTONICITY` answered with silence where its seven siblings decline.**
+  Handed an indicator type it cannot reason about, it returned an empty list
+  while every other axiom on the same shape reported something. Fixed with the
+  sibling form verbatim, since the asymmetry was the whole defect, and pinned as
+  a property over the axiom enum rather than as a case — so an axiom added later
+  is covered without anyone remembering to add it.
+
+- One cell could carry **two contradictory records in one envelope**: a finding
+  applying the percentage rule, which IS a role, beside a decline saying no role
+  could be inferred. `checked.invariants` counted the cell once while two records
+  referenced it. Never released in that state; it existed between the two
+  removals above and is recorded because the envelope's arithmetic is a claim
+  this project makes.
 
 ---
 

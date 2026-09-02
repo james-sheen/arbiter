@@ -14,7 +14,6 @@ Requires history for learned invariants.
 """
 
 import logging
-import re
 from typing import Any, List, Optional
 
 from ...interfaces import (
@@ -36,22 +35,28 @@ from . import roles
 logger = logging.getLogger(__name__)
 
 
-# the consistency axiom classifies a numeric property as a count /
-# percentage / ratio by its NAME. Matching is on whole word-tokens, NOT
-# substrings — a substring test mis-reads `observed_generation` as a ratio
-# (gene-ratio-n), `account` / `discount` as counts, and `configuration` /
-# `duration` / `operation` / `migration` as ratios. Tokens come from
-# _name_word_tokens (snake_case / camelCase / kebab-case boundaries).
-# these now live in `roles.py`, which is the single authority for
-# what an indicator's role is and which axioms have a rule for it. Re-exported
-# under their original names because `check_entity` below still classifies RAW
-# PROPERTY KEYS by token — it has no IndicatorSpec and therefore no declared
-# role to read, so name tokens are the only signal available there and remain
-# the right one. Two test modules also import these names directly.
-_COUNT_TOKENS = roles._COUNT_TOKENS
-_PERCENT_TOKENS = roles._PERCENT_TOKENS
-_RATIO_TOKENS = roles._RATIO_TOKENS
-_name_word_tokens = roles.name_word_tokens
+# THE TOKEN TABLES AND THE WALK THEY FED ARE GONE.
+#
+# `check_entity` walked every property of an entity, split each key into word
+# tokens, and applied the count / percentage / ratio rules to whatever matched.
+# had narrowed the matching from substrings to whole tokens, which fixed
+# `observed_generation` reading as a ratio and left the shape intact.
+#
+# Two reasons, and the second is the one that settles it. It derived an
+# interpretation fact from a name, which the published guide refuses. And its
+# findings had NO DENOMINATOR: it ran outside the reasoner's `relevant_axioms`
+# loop, so `checked.invariants` never counted the cells those findings came
+# from, and the envelope reported problems against checks it never claimed to
+# attempt.
+#
+# What it caught is declarable and is now declared -- `role:` plus CONSISTENCY
+# on the indicator. Three shipped packs were relying on the guess and said so
+# nowhere; an internal ruling found a fourth case where the guess was actively CONCEALING a
+# loader that dropped a declared role.
+#
+# The token vocabulary survives only in pack-authoring tests, which use it to
+# check that a property name does not collide with a universal word. It is
+# their vocabulary now, not the engine's.
 
 
 class ConsistencyChecker:
@@ -162,7 +167,7 @@ class ConsistencyChecker:
             # renaming a domain concept to satisfy a checker.
             return CheckOutcome(result).declined(
                 Axiom.CONSISTENCY, entity, indicator.name,
-                NotEvaluatedReason.NOT_APPLICABLE,
+                NotEvaluatedReason.MISSING_ROLE,
                 detail=roles.explain_absence(Axiom.CONSISTENCY, indicator),
             )
         if role_source == "inferred":
@@ -279,40 +284,6 @@ class ConsistencyChecker:
                 f"entity does not carry as a numeric property; agreement "
                 f"cannot be judged against a reading that is not there")
         return problems, None
-
-    def check_entity(
-        self,
-        entity: Entity,
-        graph: RelationshipGraph
-    ) -> List[Problem]:
-        """
-        Check all properties of an entity for consistency.
-
-        This is a comprehensive check that doesn't require an indicator spec.
-        """
-        problems = []
-
-        def check_props(props: dict, path: str = ''):
-            for key, value in props.items():
-                full_path = f"{path}.{key}" if path else key
-                key_tokens = _name_word_tokens(key)
-
-                if isinstance(value, dict):
-                    check_props(value, full_path)
-                elif isinstance(value, (int, float)):
-                    # classify by whole word-token, not substring —
-                    # so `observed_generation` is not mis-read as a ratio.
-                    if key_tokens & _COUNT_TOKENS:
-                        problems.extend(self._check_count(entity, full_path, value))
-
-                    if key_tokens & _PERCENT_TOKENS:
-                        problems.extend(self._check_percentage(entity, full_path, value))
-
-                    if key_tokens & _RATIO_TOKENS:
-                        problems.extend(self._check_ratio(entity, full_path, value))
-
-        check_props(entity.properties)
-        return problems
 
     def _check_count(
         self,

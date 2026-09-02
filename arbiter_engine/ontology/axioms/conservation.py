@@ -157,7 +157,7 @@ class ConservationChecker:
             # zero total, and saying so is the only honest answer.
             return CheckOutcome(problems).declined(
                 Axiom.CONSERVATION, entity, indicator.name,
-                NotEvaluatedReason.NOT_APPLICABLE,
+                NotEvaluatedReason.UNDEFINED_FOR_VALUES,
                 detail=(
                     f"the {len(input_values)} in-window observations of "
                     f"{input_prop} total {total_input:g}; a conservation "
@@ -166,21 +166,70 @@ class ConservationChecker:
                 observations_count=len(input_values),
             )
 
+        # which output properties actually answered. This loop used
+        # to sum an absent property as zero, which is not a measurement of
+        # zero: an output side that was never observed became a 100% deficit,
+        # reported as a HIGH-severity finding ABOUT THE SYSTEM while the fault
+        # was a property name the model got wrong. Measured against a control:
+        # a block naming `outfow` for `outflow` produced
+        # `conservation_violation. 100.0% deficit` with nothing on any
+        # surface saying the model was at fault. Worse than a missed detection
+        # -- it sends somebody to the plant to look for a leak that is a typo.
         total_output = 0.0
+        unobserved = []
         for out_prop in output_props:
             out_values = history.get_values(entity.id, out_prop, window)
+            if not out_values:
+                unobserved.append(out_prop)
+                continue
             total_output += sum(v[1] for v in out_values if v[1] is not None)
+
+        if len(unobserved) == len(output_props):
+            # THE MIRROR of the zero-input exit above, and deliberately no
+            # wider. When nothing on the output side was observed, the deficit
+            # is the whole input and none of it is measured. Certain, so it
+            # declines.
+            #
+            # A PARTIAL absence does not decline, because it cannot be told
+            # from a legitimately sparse channel -- an overflow that runs
+            # rarely has no readings in most windows and is not a modelling
+            # error. That case names the unobserved properties in the
+            # finding's `reason` instead -- see the clause below, which is
+            # where it ended up once the envelope's five keys were measured
+            # rather than assumed. Said here too because the reader deciding
+            # whether this branch is wide enough is reading THIS comment.
+            return CheckOutcome(problems).declined(
+                Axiom.CONSERVATION, entity, indicator.name,
+                NotEvaluatedReason.MISSING_PROPERTY,
+                detail=(
+                    f"conservation balances {input_prop} against "
+                    f"{', '.join(output_props)}, and none of those was "
+                    f"observed in the {window.total_seconds():.0f}s window; a "
+                    f"deficit against an unobserved output side would be the "
+                    f"whole input and none of it measured. Check the property "
+                    f"names in the block against the ones the model declares"),
+                observations_count=0,
+            )
 
         deficit = total_input - total_output
         deficit_ratio = abs(deficit) / total_input if total_input > 0 else 0
 
         if deficit_ratio > margin:
             severity = Severity.HIGH if deficit_ratio > margin * 3 else Severity.MEDIUM
+            # the partial-absence clause rides in `reason` and not in
+            # `evidence`, because the envelope serialises five keys per finding
+            # and evidence is not one of them. A signal a consumer cannot read
+            # is not a signal; this is the only free-text field that survives.
+            unmeasured = (
+                f"; {', '.join(unobserved)} contributed no observations, so "
+                f"that part of the deficit is unmeasured rather than measured "
+                f"as zero" if unobserved else "")
             problems.append(Problem.from_entity(
                 entity=entity,
                 problem_type=f'conservation_violation:{indicator.name}',
                 severity=severity,
-                reason=f"{indicator.name}: input/output imbalance ({deficit_ratio*100:.1f}% deficit)",
+                reason=(f"{indicator.name}: input/output imbalance "
+                        f"({deficit_ratio*100:.1f}% deficit){unmeasured}"),
                 axiom=Axiom.CONSERVATION,
                 source_layer=DetectionLayer.ONTOLOGY,
                 evidence={
@@ -192,6 +241,11 @@ class ConservationChecker:
                     'margin': margin,
                     'window_seconds': self.params.conservation_window_seconds,
                     'samples': len(input_values),
+                    # present only when some output property
+                    # contributed nothing, so a reader can see how much of the
+                    # deficit is unmeasured rather than measured as zero.
+                    **({'unobserved_output_properties': unobserved}
+                       if unobserved else {}),
                 },
                 confidence=min(1.0, deficit_ratio / margin),
             ))

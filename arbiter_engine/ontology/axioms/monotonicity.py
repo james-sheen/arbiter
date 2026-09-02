@@ -170,8 +170,29 @@ class MonotonicityChecker:
         """
         problems = []
 
+        # this was a bare `return problems`. An empty list, no finding
+        # and no decline, from a checker the reasoner had already DISPATCHED: the
+        # cell counts toward `checked.invariants` and produces nothing, so the
+        # envelope reports coverage the run did not have. The outside method
+        # document named this state RETIRED and ranked it above misattribution,
+        # correctly — silence costs a detection and misattribution spends trust,
+        # but retirement produces ASSURANCE, and assurance is the only one of the
+        # three that stops somebody looking.
+        #
+        # Found by answering that document's own open question, *which sites can
+        # retire a check*. Measured across all eight axioms declared on an
+        # indicator whose type they cannot reason about: seven report something —
+        # four `wrong_indicator_type`, two `missing_role`, one
+        # `insufficient_samples` — and this one answered with silence. The fix is
+        # the sibling form, verbatim, because the asymmetry was the whole defect.
         if indicator.indicator_type.value != 'numeric':
-            return problems
+            return CheckOutcome(problems).declined(
+                Axiom.MONOTONICITY, entity, indicator.name,
+                NotEvaluatedReason.WRONG_INDICATOR_TYPE,
+                detail=(
+                    f"MONOTONICITY evaluates numeric indicators; this one is "
+                    f"{indicator.indicator_type.value}"),
+            )
 
         window = indicator.time_window or timedelta(hours=1)
         values = history.get_values(entity.id, indicator.property_name, window)

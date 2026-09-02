@@ -73,6 +73,22 @@ The schema itself is at [`schema/envelope.schema.json`](schema/envelope.schema.j
   — a check withdrawn without a decline is indistinguishable from one that
   passed**, and that is the outcome this whole document exists to prevent.
 
+- **Withdraw a check that has no decline to give, if the envelope says so some
+  other way.** Added 2026-09-02, because the rule above was written assuming the
+  withdrawn check always has a cell to decline on, and the case arrived where it
+  does not. A decline record names an indicator and an axiom; the check this
+  applies to judged properties **nobody declared**, which have neither, and
+  inventing them would mean reading the axiom out of the property's name — the
+  guess being withdrawn. So `check` gained the `unread_properties` report, and a
+  reader diffing two releases sees the values move from `findings` into a leg
+  that says nothing looked at them. The changelog entry names the release.
+
+  This is a narrower permission than it looks, and the test is the sentence
+  above rather than the word *decline*: a withdrawn check must leave the
+  envelope **distinguishable from a clean pass**. A report satisfies that. An
+  empty envelope does not, whatever else the release documents — and a release
+  note is not an envelope, because nothing reads it at runtime.
+
 ## What waits for a MAJOR release
 
 - **Removing or renaming an envelope leg**, or any of `checked.invariants`,
