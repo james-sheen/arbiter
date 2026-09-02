@@ -22,12 +22,12 @@ from ..clock import as_naive_utc, now_utc
 from typing import Dict, List, Optional
 
 
-def _env_bool_cd1317(name: str, default: bool = False) -> bool:
+def _env_bool(name: str, default: bool = False) -> bool:
     raw = os.environ.get(name, "1" if default else "0").strip().lower()
     return raw in ("1", "true", "yes", "on")
 
 
-DT_PRODUCTION_PIPELINE_ENABLED: bool = _env_bool_cd1317(
+DT_PRODUCTION_PIPELINE_ENABLED: bool = _env_bool(
     "DT_PRODUCTION_PIPELINE_ENABLED", default=False
 )
 DT_PRODUCTION_PIPELINE_RING_CAP: int = int(
@@ -47,7 +47,7 @@ KNOWN_PRODUCTION_PIPELINE_SEVERITY_FLOORS = frozenset([
 ])
 DEFAULT_PRODUCTION_PIPELINE_SEVERITY_FLOOR: str = PRODUCTION_PIPELINE_SEVERITY_LOW
 
-_SEVERITY_RANK_CD1317: Dict[str, int] = {
+_SEVERITY_RANK: Dict[str, int] = {
     PRODUCTION_PIPELINE_SEVERITY_LOW: 1,
     PRODUCTION_PIPELINE_SEVERITY_MEDIUM: 2,
     PRODUCTION_PIPELINE_SEVERITY_HIGH: 3,
@@ -62,7 +62,7 @@ if DT_PRODUCTION_PIPELINE_SEVERITY_FLOOR not in KNOWN_PRODUCTION_PIPELINE_SEVERI
     DT_PRODUCTION_PIPELINE_SEVERITY_FLOOR = DEFAULT_PRODUCTION_PIPELINE_SEVERITY_FLOOR
 
 
-def severity_tier_for_pipeline_per_cd1317(
+def severity_tier_for_pipeline(
     total_steps: int,
     failed_steps: int,
 ) -> str:
@@ -90,7 +90,7 @@ class ProductionPipeline:
     observed_at: datetime
 
 
-def _resolve_severity_floor_cd1317(value):  # noqa: ANN001
+def _resolve_severity_floor(value):  # noqa: ANN001
     if value is None:
         return DEFAULT_PRODUCTION_PIPELINE_SEVERITY_FLOOR
     v = value.upper()
@@ -99,10 +99,10 @@ def _resolve_severity_floor_cd1317(value):  # noqa: ANN001
     return v
 
 
-def _severity_at_or_above_floor_cd1317(severity: str, floor: str) -> bool:
-    s = _resolve_severity_floor_cd1317(severity)
-    f = _resolve_severity_floor_cd1317(floor)
-    return _SEVERITY_RANK_CD1317[s] >= _SEVERITY_RANK_CD1317[f]
+def _severity_at_or_above_floor(severity: str, floor: str) -> bool:
+    s = _resolve_severity_floor(severity)
+    f = _resolve_severity_floor(floor)
+    return _SEVERITY_RANK[s] >= _SEVERITY_RANK[f]
 
 
 _PRODUCTION_PIPELINES: List["ProductionPipeline"] = []
@@ -121,9 +121,9 @@ def record_production_pipeline(
     """On the sibling-within-existing-module discipline."""
     if not DT_PRODUCTION_PIPELINE_ENABLED:
         return None
-    derived_severity = severity_tier_for_pipeline_per_cd1317(total_steps, failed_steps)
+    derived_severity = severity_tier_for_pipeline(total_steps, failed_steps)
     effective_severity = severity or derived_severity
-    if not _severity_at_or_above_floor_cd1317(
+    if not _severity_at_or_above_floor(
         effective_severity, DT_PRODUCTION_PIPELINE_SEVERITY_FLOOR
     ):
         return None

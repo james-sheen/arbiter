@@ -39,12 +39,12 @@ from typing import Dict, List, Optional
 
 # ---------- default-off env-gates ----------
 
-def _env_bool_cd1304(name: str, default: bool = False) -> bool:
+def _env_bool(name: str, default: bool = False) -> bool:
     raw = os.environ.get(name, "1" if default else "0").strip().lower()
     return raw in ("1", "true", "yes", "on")
 
 
-DT_PRODUCTION_OPTIMIZATION_ENABLED: bool = _env_bool_cd1304(
+DT_PRODUCTION_OPTIMIZATION_ENABLED: bool = _env_bool(
     "DT_PRODUCTION_OPTIMIZATION_ENABLED", default=False
 )
 DT_PRODUCTION_OPTIMIZATION_RING_CAP: int = int(
@@ -66,7 +66,7 @@ DEFAULT_PRODUCTION_OPTIMIZATION_SEVERITY_FLOOR: str = (
     PRODUCTION_OPTIMIZATION_SEVERITY_LOW
 )
 
-_SEVERITY_RANK_CD1304: Dict[str, int] = {
+_SEVERITY_RANK: Dict[str, int] = {
     PRODUCTION_OPTIMIZATION_SEVERITY_LOW: 1,
     PRODUCTION_OPTIMIZATION_SEVERITY_MEDIUM: 2,
     PRODUCTION_OPTIMIZATION_SEVERITY_HIGH: 3,
@@ -83,7 +83,7 @@ if DT_PRODUCTION_OPTIMIZATION_SEVERITY_FLOOR not in KNOWN_PRODUCTION_OPTIMIZATIO
 
 # ---------- optimization_severity derivation ----------
 
-def severity_tier_for_pareto_per_cd1304(
+def severity_tier_for_pareto(
     pareto_front_size: int,
     max_constraint_satisfaction: float,
 ) -> str:
@@ -126,7 +126,7 @@ class ProductionOptimization:
     observed_at: datetime
 
 
-def _resolve_severity_floor_cd1304(value):  # noqa: ANN001
+def _resolve_severity_floor(value):  # noqa: ANN001
     if value is None:
         return DEFAULT_PRODUCTION_OPTIMIZATION_SEVERITY_FLOOR
     v = value.upper()
@@ -135,10 +135,10 @@ def _resolve_severity_floor_cd1304(value):  # noqa: ANN001
     return v
 
 
-def _severity_at_or_above_floor_cd1304(severity: str, floor: str) -> bool:
-    s = _resolve_severity_floor_cd1304(severity)
-    f = _resolve_severity_floor_cd1304(floor)
-    return _SEVERITY_RANK_CD1304[s] >= _SEVERITY_RANK_CD1304[f]
+def _severity_at_or_above_floor(severity: str, floor: str) -> bool:
+    s = _resolve_severity_floor(severity)
+    f = _resolve_severity_floor(floor)
+    return _SEVERITY_RANK[s] >= _SEVERITY_RANK[f]
 
 
 # ---------- ring buffer + lock ----------
@@ -169,11 +169,11 @@ def record_production_optimization(
     """
     if not DT_PRODUCTION_OPTIMIZATION_ENABLED:
         return None
-    derived_severity = severity_tier_for_pareto_per_cd1304(
+    derived_severity = severity_tier_for_pareto(
         pareto_front_size, max_constraint_satisfaction
     )
     effective_severity = severity or derived_severity
-    if not _severity_at_or_above_floor_cd1304(
+    if not _severity_at_or_above_floor(
         effective_severity, DT_PRODUCTION_OPTIMIZATION_SEVERITY_FLOOR
     ):
         return None

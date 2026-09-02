@@ -380,14 +380,14 @@ class NLHypothesisTranslationResult:
     tier3_reason: Optional[str] = None  # "cross_tenant" / "high_severity" / "ambiguous_verdict"
 
 
-def classify_escalation_tier_per_cd1291(
+def classify_escalation_tier(
     verdict_request: VerdictRequest,
     severity_floor: str = "MEDIUM",
     cross_tenant_start_nodes: Optional[List[str]] = None,
 ) -> tuple:
     """classify which tier a candidate VerdictRequest triggers.
 
-    Mirrors classify_escalation_tier_per_cd1280 discipline.
+    Mirrors classify_escalation_tier discipline.
     Returns (tier, reason).
     """
     if cross_tenant_start_nodes and len(set(cross_tenant_start_nodes)) > 1:
@@ -484,7 +484,7 @@ class NLHypothesisTranslator:
                 tier3_reason="no_verdict_detected",
             )
 
-        tier, reason = classify_escalation_tier_per_cd1291(
+        tier, reason = classify_escalation_tier(
             verdict_request, severity_floor, cross_tenant_start_nodes
         )
 

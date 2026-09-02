@@ -361,20 +361,20 @@ class TemporalPropagationChecker:
 # (severity axis = 1 of 8 canonical axes; no new axis).
 # ============================================================
 
-import os as _os_cd1121
-import threading as _threading_cd1121
+import os as _os
+import threading as _threading
 
 
-def _env_bool_cd1121(name: str, default: bool = False) -> bool:
-    raw = _os_cd1121.environ.get(name, "1" if default else "0").strip().lower()
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = _os.environ.get(name, "1" if default else "0").strip().lower()
     return raw in ("1", "true", "yes", "on")
 
 
-DT_PRODUCTION_TEMPORAL_ENABLED: bool = _env_bool_cd1121(
+DT_PRODUCTION_TEMPORAL_ENABLED: bool = _env_bool(
     "DT_PRODUCTION_TEMPORAL_ENABLED", default=False
 )
 DT_PRODUCTION_TEMPORAL_RING_CAP: int = int(
-    _os_cd1121.environ.get("DT_PRODUCTION_TEMPORAL_RING_CAP", "10000")
+    _os.environ.get("DT_PRODUCTION_TEMPORAL_RING_CAP", "10000")
 )
 
 # Per decision — a default-off env-gate (3-value enum)
@@ -405,14 +405,14 @@ DEFAULT_PRODUCTION_TEMPORAL_SEVERITY_FLOOR: str = PRODUCTION_TEMPORAL_SEVERITY_M
 # downstream gates). Numeric mapping is a substrate-local concern; we do
 # NOT depend on detection.types.Severity here to keep this module
 # domain-opaque.
-_SEVERITY_RANK_CD1121: Dict[str, int] = {
+_SEVERITY_RANK: Dict[str, int] = {
     PRODUCTION_TEMPORAL_SEVERITY_LOW: 1,
     PRODUCTION_TEMPORAL_SEVERITY_MEDIUM: 2,
     PRODUCTION_TEMPORAL_SEVERITY_HIGH: 3,
     PRODUCTION_TEMPORAL_SEVERITY_CRITICAL: 4,
 }
 
-DT_PRODUCTION_TEMPORAL_SEVERITY_FLOOR: str = _os_cd1121.environ.get(
+DT_PRODUCTION_TEMPORAL_SEVERITY_FLOOR: str = _os.environ.get(
     "DT_PRODUCTION_TEMPORAL_SEVERITY_FLOOR",
     DEFAULT_PRODUCTION_TEMPORAL_SEVERITY_FLOOR,
 ).upper()
@@ -461,11 +461,11 @@ def resolve_production_temporal_severity_floor(value: Optional[str]) -> str:
 def _severity_at_or_above_floor(severity: str, floor: str) -> bool:
     s = resolve_production_temporal_severity_floor(severity)
     f = resolve_production_temporal_severity_floor(floor)
-    return _SEVERITY_RANK_CD1121[s] >= _SEVERITY_RANK_CD1121[f]
+    return _SEVERITY_RANK[s] >= _SEVERITY_RANK[f]
 
 
 _PRODUCTION_TEMPORAL_EDGES: List[ProductionTemporalEdge] = []
-_PRODUCTION_TEMPORAL_LOCK = _threading_cd1121.RLock()
+_PRODUCTION_TEMPORAL_LOCK = _threading.RLock()
 _PRODUCTION_TEMPORAL_LAST_SEVERITY: Dict[Tuple[str, str], str] = {}
 
 
@@ -517,7 +517,7 @@ def record_production_temporal_edge(
     return record
 
 
-def _filter_by_cluster_id_cd1436(edges, cluster_id: Optional[str]):
+def _filter_by_cluster_id(edges, cluster_id: Optional[str]):
     """ helper: filter temporal edges by cluster_id when non-None.
 
     cluster_id=None returns the full list (backward compat). cluster_id="X"
@@ -542,7 +542,7 @@ def get_production_temporal_edges(
     if not DT_PRODUCTION_TEMPORAL_ENABLED:
         return []
     with _PRODUCTION_TEMPORAL_LOCK:
-        return _filter_by_cluster_id_cd1436(_PRODUCTION_TEMPORAL_EDGES, cluster_id)
+        return _filter_by_cluster_id(_PRODUCTION_TEMPORAL_EDGES, cluster_id)
 
 
 def get_production_temporal_edge_count(cluster_id: Optional[str] = None) -> int:
@@ -556,7 +556,7 @@ def get_production_temporal_edge_count(cluster_id: Optional[str] = None) -> int:
     if not DT_PRODUCTION_TEMPORAL_ENABLED:
         return 0
     with _PRODUCTION_TEMPORAL_LOCK:
-        return len(_filter_by_cluster_id_cd1436(_PRODUCTION_TEMPORAL_EDGES, cluster_id))
+        return len(_filter_by_cluster_id(_PRODUCTION_TEMPORAL_EDGES, cluster_id))
 
 
 def get_severity_for_edge(

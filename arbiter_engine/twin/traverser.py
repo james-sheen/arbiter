@@ -1210,7 +1210,7 @@ class NLTranslationResult:
     tier3_summary: Optional[str] = None
 
 
-def classify_escalation_tier_per_cd1280(
+def classify_escalation_tier(
     traversal_request: TraversalRequest,
     tenant_id: Optional[str] = None,
     severity_floor: str = "MEDIUM",
@@ -1277,7 +1277,7 @@ class NLTraversalTranslator3Tier:
         rule_based = self.base.translate(nl_text, entity_ids=entity_ids)
 
         if rule_based is not None:
-            tier, reason = classify_escalation_tier_per_cd1280(
+            tier, reason = classify_escalation_tier(
                 rule_based,
                 tenant_id=tenant_id,
                 severity_floor=severity_floor,

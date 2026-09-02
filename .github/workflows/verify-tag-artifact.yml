@@ -79,22 +79,32 @@ jobs:
           echo "::error::was pushed for a version nobody uploaded."
           exit 1
 
-      - name: Download the sdist the index is serving
+      - name: Download both files the index is serving
         env:
           V: ${{ steps.v.outputs.version }}
         run: |
-          URL="$(python3 -c "
-          import json, sys
+          # BOTH, and the wheel is the one that matters most: `pip install
+          # arbiter-engine` resolves the wheel, so a wheel built from a tree the
+          # tag does not name would reach every reader while an sdist-only check
+          # reported green. Reported from outside as the gap in the first
+          # version of this job.
+          python3 - <<'PY'
+          import json
           data = json.load(open('/tmp/pypi.json'))
-          for f in data['urls']:
-              if f['packagetype'] == 'sdist':
-                  print(f['url']); break
-          else:
-              sys.exit('no sdist among the uploaded files')
-          ")"
-          echo "sdist: $URL"
-          curl -sSL -o /tmp/sdist.tar.gz "$URL"
+          urls = {f['packagetype']: f['url'] for f in data['urls']}
+          missing = [k for k in ('sdist', 'bdist_wheel') if k not in urls]
+          if missing:
+              raise SystemExit(f'the index serves no {missing} for this version')
+          open('/tmp/urls.sh', 'w').write(
+              f"SDIST={urls['sdist']}\nWHEEL={urls['bdist_wheel']}\n")
+          PY
+          . /tmp/urls.sh
+          echo "sdist: $SDIST"
+          echo "wheel: $WHEEL"
+          curl -sSL -o /tmp/sdist.tar.gz "$SDIST"
           mkdir -p /tmp/sdist && tar -xzf /tmp/sdist.tar.gz -C /tmp/sdist --strip-components=1
+          curl -sSL -o /tmp/wheel.whl "$WHEEL"
+          mkdir -p /tmp/wheel && python3 -m zipfile -e /tmp/wheel.whl /tmp/wheel
 
       - name: Every file the sdist carries must match the tag
         run: |
@@ -126,3 +136,26 @@ jobs:
             exit 1
           fi
           echo "every file in the sdist is byte-identical to the tag"
+
+      - name: Every module the wheel carries must match the tag
+        run: |
+          # The wheel holds the package and its metadata and nothing else, so the
+          # comparison is scoped to the package directory. `dist-info` is
+          # generated at build time and has no counterpart at the tag.
+          differing=0
+          while IFS= read -r rel; do
+            if [ ! -f "$rel" ]; then
+              echo "::error::$rel is in the wheel and not at the tag"
+              differing=$((differing + 1))
+            elif ! cmp -s "/tmp/wheel/$rel" "$rel"; then
+              echo "::error::$rel differs between the wheel and the tag"
+              differing=$((differing + 1))
+            fi
+          done < <(cd /tmp/wheel && find arbiter_engine -type f | sort)
+
+          if [ "$differing" -ne 0 ]; then
+            echo "::error::$differing file(s) differ. This is the file"
+            echo "::error::\`pip install\` resolves, so every reader gets it."
+            exit 1
+          fi
+          echo "every module in the wheel is byte-identical to the tag"

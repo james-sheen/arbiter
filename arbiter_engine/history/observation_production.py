@@ -271,7 +271,7 @@ def record_observation(
     return record
 
 
-def _filter_by_cluster_id_cd1436(
+def _filter_by_cluster_id(
     observations: List[ProductionObservation],
     cluster_id: Optional[str],
 ) -> List[ProductionObservation]:
@@ -297,7 +297,7 @@ def get_observations(cluster_id: Optional[str] = None) -> List[ProductionObserva
     if not DT_OBSERVATION_PRODUCTION_ENABLED:
         return []
     with _PRODUCTION_LOCK:
-        return _filter_by_cluster_id_cd1436(_PRODUCTION_OBSERVATIONS, cluster_id)
+        return _filter_by_cluster_id(_PRODUCTION_OBSERVATIONS, cluster_id)
 
 
 def get_observation_count(cluster_id: Optional[str] = None) -> int:
@@ -311,7 +311,7 @@ def get_observation_count(cluster_id: Optional[str] = None) -> int:
     if not DT_OBSERVATION_PRODUCTION_ENABLED:
         return 0
     with _PRODUCTION_LOCK:
-        return len(_filter_by_cluster_id_cd1436(_PRODUCTION_OBSERVATIONS, cluster_id))
+        return len(_filter_by_cluster_id(_PRODUCTION_OBSERVATIONS, cluster_id))
 
 
 def get_freshness_for_source(source_id: str) -> Optional[str]:

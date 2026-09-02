@@ -1,7 +1,7 @@
 """The production-prediction substrate: a record per prediction, and the gate.
 
 Moved out of `reasoner.py` 2026-09-02. It was appended to the end of that module
-and every import it needed was aliased with a suffix -- `import os as _os_cd1213`
+and every import it needed was aliased with a suffix -- `import os as _os`
 and six more -- because the module above already imports those names. The suffix
 was doing the work a module boundary does, so the boundary is here now and the
 aliases are gone.
