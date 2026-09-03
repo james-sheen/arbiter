@@ -1,0 +1,23 @@
+Publishing to PyPI from CI is enabled for this repository.
+
+`release.yml` reads only whether this file exists. Its contents are for a human.
+
+WHAT HAD TO BE TRUE BEFORE THIS FILE COULD EXIST, and what breaks if either is
+undone:
+
+  1. A GitHub environment named `pypi`, with a required reviewer. The publish
+     job names that environment, so every upload waits for a person. Delete the
+     environment and the job fails at start rather than uploading unreviewed.
+
+  2. A PyPI trusted publisher on `arbiter-engine` naming this repository, the
+     workflow file `release.yml`, and the `pypi` environment. No API token is
+     stored anywhere; the index mints a short-lived one per run. Remove the
+     publisher and the job fails to authenticate.
+
+Both are settings, not code, so neither shows up in a diff. That is why this
+file says what they are: a reader who finds the publish job enabled can check
+the two things it depends on without guessing.
+
+To hand publishing back to a person, delete this file. The release job still
+builds the distributions from the tag and attaches them to the Release; only the
+upload stops.
