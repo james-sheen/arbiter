@@ -20,7 +20,29 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **`dropped_declarations`**, on `check`: the values this engine read out of your
+  model, did not recognise, and therefore did not apply. Each entry names the
+  field, the value, the valid set and — where one is close — what you probably
+  meant.
+
+  **A misspelled axiom name used to be invisible here.** `axioms: [BOUNDEDNES]`
+  on an indicator with a `critical:`, and an entity reading past it, produced an
+  envelope byte-identical to declaring no axioms at all: no finding, no decline,
+  `invariants: 0`. The check you wrote never ran and the result could not say so.
+  Four of the five tools were silent; only `model_describe` reported it, and a
+  caller who runs `check` does not necessarily run that.
+
+  **A payload rather than a decline, and the schema chose it.**
+  `not_checked[].axiom` is a closed enum of the eight axiom names, so a cell
+  declined for `BOUNDEDNES` cannot be written down without moving the wire
+  contract. This is the same trade `unread_properties` made in 0.1.10, one field
+  further in.
+
+  It is narrower than the describe report it draws from: only values that were
+  REJECTED, not fields whose consuming axiom was never declared. Reported from
+  outside, in a verification of the released 0.1.10 artifact.
 
 ---
 

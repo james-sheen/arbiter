@@ -30,12 +30,18 @@ on:
   push:
     tags: ['v*']
 
-permissions:
-  contents: write
+# PERMISSIONS ARE PER JOB, not per workflow. `id-token: write` is the capability
+# that can mint a PyPI credential, and it exists only in the job that publishes.
+# Granting it workflow-wide would hand it to the job that runs `gh` against the
+# Release as well, for no reason.
 
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      enabled: ${{ steps.gate.outputs.enabled }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -76,3 +82,96 @@ jobs:
             --verify-tag \
             --title "$GITHUB_REF_NAME" \
             --notes "${NOTES}${FOOTER}"
+
+      # ---------------------------------------------------------------------
+      # BUILD THE ARTIFACTS FROM THE TAG, here, rather than from a working tree
+      # on somebody's laptop.
+      #
+      # Three releases in a row were built from a tree no commit named and
+      # uploaded a minute before the release commit existed. Parity held every
+      # time -- checked by hand, and since 0.1.10 by `verify-tag-artifact.yml`
+      # -- but checking afterwards that two things match is not the same as
+      # there being only one thing. This is the half that makes them one.
+      #
+      # The upload ORDER stays as the runbook has it and this does not change
+      # it: the index is written before the repository, so the repository never
+      # advertises a version the index does not serve. What changes is where
+      # the bytes come from.
+      # ---------------------------------------------------------------------
+      - name: Build the distributions from the tag
+        run: |
+          python3 -m pip install --quiet build
+          python3 -m build --outdir dist .
+          ls -l dist/
+
+      - name: Attach them to the Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+
+      # PUBLISHING IS OFF UNTIL THE INDEX SIDE EXISTS, and the marker is a file
+      # rather than a setting so the change that turns it on is reviewable.
+      #
+      # Trusted Publishing needs a publisher registered on PyPI naming this
+      # repository, this workflow file and this environment. Until that is
+      # registered, minting fails -- and a job that is red on every release day
+      # is one people learn to skip, which is the argument `verify-published.yml`
+      # already makes about itself. So: build and attach always, publish only
+      # when the marker says the other side is ready.
+      - name: Is publishing from CI enabled?
+        id: gate
+        run: |
+          if [ -f .github/PUBLISH_FROM_CI ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::CI built these artifacts from the tag and attached them" \
+                 "to the Release. Publishing to the index is still done by hand." \
+                 "To hand it over: create the 'pypi' environment in this" \
+                 "repository's settings, register a PyPI trusted publisher naming" \
+                 "this repository, release.yml and that environment, then add" \
+                 ".github/PUBLISH_FROM_CI. The publish job stays behind the" \
+                 "environment's approval either way."
+          fi
+
+      # The bytes that were attached, kept for the publish job. NOT a rebuild
+      # there: two builds of one tree are not guaranteed identical, and the
+      # whole argument for building here is that there should be ONE set of
+      # bytes rather than two that get compared afterwards.
+      - name: Keep the distributions for the publish job
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  # -------------------------------------------------------------------------
+  # PUBLISHING IS A SEPARATE JOB SO THAT APPROVAL GATES ONLY IT.
+  #
+  # `environment:` is a job-level key, so putting it on the job above would make
+  # creating the Release and building the artifacts wait for a human too --
+  # which is backwards. Those are reversible and worth having immediately; the
+  # upload is the one that cannot be taken back, and a version number on this
+  # index can never be reused.
+  #
+  # That division is the repository's own. `build-engine.sh` says it in as many
+  # words: it builds and verifies, it does not push, because the irreversible
+  # step stays with the operator. Automating the upload would have removed that
+  # division; the approval gate is what puts it back.
+  # -------------------------------------------------------------------------
+  publish:
+    needs: release
+    if: needs.release.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - name: Take the distributions the release job built
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI from the tag
+        uses: pypa/gh-action-pypi-publish@release/v1

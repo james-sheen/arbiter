@@ -302,6 +302,35 @@ class EngineSession:
             })
         return records
 
+    def dropped_declarations(self) -> List[Dict[str, Any]]:
+        """Declarations the loader did not recognise, so it did not apply them.
+
+        REPORTED FROM OUTSIDE against 0.1.10. `axioms: [BOUNDEDNES]` on an
+        indicator carrying a `critical:` and an entity reading past it produced
+        an envelope byte-identical to declaring no axioms at all: no finding, no
+        decline, `invariants: 0`. The check the author wrote never happened and
+        four of the five tools could not say so. Only `model_describe` could,
+        and an agent that calls `check` does not call it.
+
+        A PAYLOAD, NOT A DECLINE, AND THE SCHEMA CHOSE THAT -- the same reason
+        the report above rides this way. `not_checked[].axiom` is a closed enum
+        of the eight axiom names, so a cell declined for `BOUNDEDNES` cannot be
+        expressed without moving the wire contract. The finding proposed
+        declining the cell; the schema does not allow it, and a payload puts the
+        fact where the author reads it without changing what every tool
+        satisfies.
+
+        NARROWER THAN `unread_fields`, deliberately. That list also carries
+        fields whose consuming axiom was never declared, which answers a
+        question `check` was not asked -- the sibling report above refused a
+        fifth key for exactly that reason. This is only the values the engine
+        REJECTED: read, not understood, and dropped.
+        """
+        if self.model is None:
+            return []
+        return [dict(entry) for entry in self.model.unread_fields()
+                if entry.get("reason") == "unknown_value"]
+
     def unread_properties(self) -> List[Dict[str, Any]]:
         """Entity properties this session holds that no declared indicator reads.
 
@@ -504,8 +533,16 @@ def check(session: EngineSession) -> Envelope:
     # Only this one. The observations and override reports answer a question
     # `check` was not asked; adding them here would be a wider change than the
     # rule requires and a fifth key nobody reported missing.
+    #
+    # An internal ruling adds the second, on the same argument and reported the same way:
+    # a name the loader did not recognise drops the declaration, and a dropped
+    # declaration is a check that does not run. It is not the observations or
+    # override report -- those answer a question `check` was not asked. This
+    # one answers *did what I declared actually take effect*, which is the
+    # question `check` IS.
     payload = envelope.to_dict()
     payload["unread_properties"] = session.unread_properties()
+    payload["dropped_declarations"] = session.dropped_declarations()
     return _WithPayload(envelope, payload)
 
 
