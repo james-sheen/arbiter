@@ -17,8 +17,7 @@ A NAME CAN HIDE IN A STRING, and the constant that prompted all of this was one:
 typed by a caller. A NAME-token pass cannot see it. So string constants are
 checked too, on the narrow test that decides the question -- does it look like
 something you would type -- and a sentence mentioning a record stays out, for
-the reason in the paragraph above. Measured when this arm was added: three at the
-time, all keys or provenance values, none of them in a published module.
+the reason in the paragraph above. This package carries none of either.
 
 The two arms need each other and neither is redundant. An identifier is caught
 by shape wherever it appears; a string is caught only if it is name-shaped, and
@@ -174,8 +173,15 @@ class TestTheStringArmCouldFail:
         assert _name_shaped_strings(planted) == {"__cd508_axiom_thresholds__"}
 
     def test_the_three_shapes_that_were_actually_here_would_be_caught(self, tmp_path):
-        """Not hypotheses. These were live in the tree when this arm was added:
-        a provenance value, a metadata key and an evidence tag."""
+        """Not hypotheses.
+
+        A provenance value, a key on a problem's metadata and an evidence tag.
+        All three were live when this arm was written, in the wider codebase this
+        package is cut from; none was ever in a module that ships, which is why
+        grepping for them here finds nothing. They are kept as the controls
+        because a shape that has actually occurred is worth more than one
+        somebody imagined.
+        """
         found = tmp_path / "found.py"
         found.write_text(
             'PROVENANCE = {"bridge": "cd1468"}\n'
@@ -189,17 +195,14 @@ class TestTheStringArmCouldFail:
 
         A log line explaining why something declined may cite the record that
         decided it; forbidding that would forbid the erratum from describing
-        what it corrects. The build scrub removes the HYPHENATED spelling from
-        prose on the way out, which is the spelling those lines use and the only
-        one it looks for.
+        what it corrects. The changelog entry naming thirteen renamed
+        identifiers is that case exactly, and it is in this package.
 
-        So an unhyphenated citation inside a sentence -- `see cd1234 for why` --
-        is caught by neither instrument. That is a real gap and it is narrow: it
-        needs prose, in the rarer spelling, and it costs a reader a reference
-        they cannot follow rather than a name they cannot import. Widening the
-        scrub to see it would red on the changelog entry that names the very
-        identifiers this file made us rename, which is the trade and the reason
-        it is written down here instead of closed.
+        SO PROSE IS OUT OF SCOPE HERE, IN EITHER SPELLING, and nothing else in
+        the package checks it. The gap is narrow -- it needs a citation inside a
+        sentence -- and it costs a reader a reference they cannot follow rather
+        than a name they cannot import. It is written down because a rule with an
+        undeclared edge gets read as covering more than it does.
         """
         prose = tmp_path / "prose.py"
         prose.write_text(

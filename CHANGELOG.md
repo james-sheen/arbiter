@@ -20,6 +20,12 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+Nothing yet.
+
+---
+
+## [0.1.10] — 2026-09-03
+
 **Read this one before upgrading.** Two rules that used to be read out of a
 property's SPELLING are gone, so a check you have been getting without declaring
 it will stop. Both changes say so at runtime — one as a decline, one as a report
@@ -91,8 +97,8 @@ own vertical, whose method document and probes found eight of the entries below.
   missing a member does not raise, it reclassifies into the nearest one and
   reports it with confidence. Reported from outside.
 
-- **Two guards in the shipped `tests/`**, so the claims they hold can be checked
-  by whoever is holding the package rather than only by us.
+- **Three guards in the shipped `tests/`**, so the claims they hold can be
+  checked by whoever is holding the package rather than only by us.
 
   `test_no_identifier_names_a_private_record.py` walks the installed package and
   fails on any name citing a tracker record — the rule 0.1.9 stated for one
@@ -103,6 +109,11 @@ own vertical, whose method document and probes found eight of the entries below.
   call-site count from the axiom enum. The number was previously held by a
   weekly job that installs from the index: that job answers whether the INDEX
   matches the claim and cannot answer whether the tree you are holding does.
+
+  `test_the_rename_table_names_real_things.py` reads the rename table in this
+  file and checks every name in it against the package — the new ones present,
+  the old ones gone. A release note that renames things is a set of
+  instructions, and nothing here had ever held one to the code it describes.
 
   The tag workflow also now compares the **wheel** against the tag, not only the
   sdist. `pip install` resolves the wheel, so checking the other file was
@@ -142,8 +153,14 @@ own vertical, whose method document and probes found eight of the entries below.
   it was a public function on a deep path: the removal is invisible until an
   import fails.
 
-  Found by the departure check described in the entry below, on its first run.
-  Twelve reviews of this release, two of them from outside, had all read past it.
+  Found late, by differencing the public names of 0.1.9 against this tree. That
+  comparison needs two releases and only one of them is here, so it runs where
+  releases are prepared and is not part of this package. **What does ship is the
+  test that holds the table below to the package**: every name it tells you to
+  use has to exist, and every name it says is gone has to be.
+
+  The first version of this paragraph cited that comparison as though you could
+  find it. You could not, and a reader said so.
 
 ### Changed
 
