@@ -138,6 +138,31 @@ class ResponsivenessChecker:
                         f"threshold"),
                     observations_count=seen or None,
                 )
+            # the case the previous three rounds left inside the
+            # helper. The role applies and the value is present, so neither
+            # decline above fires; if no threshold is declared,
+            # `_check_latency_threshold` compares against nothing and returns
+            # an empty list, which `extend` cannot distinguish from a clean
+            # pass. `checked.invariants` then counts the cell as attempted, so
+            # the envelope reports a question as covered that it could not ask.
+            #
+            # Raised here for the same reason the decline above is: a
+            # `not_evaluated` record written in the helper is dropped by this
+            # `extend`. Measured from outside on 0.1.10 by an independent
+            # bridge, against a latency of ten million: no finding, no decline,
+            # `invariants: 1`. BOUNDEDNESS in the same position already
+            # declines NO_THRESHOLD, which is the shape this restores.
+            if (indicator.critical_threshold is None
+                    and indicator.warning_threshold is None):
+                return CheckOutcome(problems).declined(
+                    Axiom.RESPONSIVENESS, entity, indicator.name,
+                    NotEvaluatedReason.NO_THRESHOLD,
+                    detail=(
+                        f"{indicator.name} declares RESPONSIVENESS and a "
+                        f"latency role, and no `critical:` or `warning:` to "
+                        f"compare against; RESPONSIVENESS judges a latency "
+                        f"against a declared threshold"),
+                )
             problems.extend(self._check_latency_threshold(
                 entity, indicator
             ))
@@ -198,8 +223,16 @@ class ResponsivenessChecker:
         except (TypeError, ValueError):
             return problems
 
-        # Check threshold
-        if indicator.critical_threshold and value > indicator.critical_threshold:
+        # Check threshold.
+        #
+        # `is not None`, not truthiness. A declared `critical: 0` is
+        # falsy, and the previous test skipped it silently: a threshold the
+        # model states and the checker does not apply. Zero is a legitimate
+        # bound for a latency that must be immediate, and the caller now
+        # declines NO_THRESHOLD when neither is declared, so an undeclared
+        # threshold no longer reaches here at all.
+        if (indicator.critical_threshold is not None
+                and value > indicator.critical_threshold):
             problems.append(Problem.from_entity(
                 entity=entity,
                 problem_type=f'response_time_critical:{indicator.name}',
@@ -214,7 +247,8 @@ class ResponsivenessChecker:
                 },
                 confidence=1.0,
             ))
-        elif indicator.warning_threshold and value > indicator.warning_threshold:
+        elif (indicator.warning_threshold is not None
+                and value > indicator.warning_threshold):
             problems.append(Problem.from_entity(
                 entity=entity,
                 problem_type=f'response_time_warning:{indicator.name}',

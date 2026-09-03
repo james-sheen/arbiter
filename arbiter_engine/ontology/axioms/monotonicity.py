@@ -25,8 +25,9 @@ Parameters:
   number no model could state, so a counter declared as forward-only carried a
   silent allowance of two backward moves; one rollback produced no finding and
   no decline.
-- rate_warning = 0.1: rate of change warning
-- rate_critical = 0.5: rate of change critical
+- rate_warning / rate_critical: NO DEFAULT since. Undeclared, the rate
+  arm declines `no_threshold` rather than judging against a number the engine
+  chose; the reversal arm beside it still runs and its findings still report.
 - rate_min_span_seconds: optional per-indicator floor on the time the window
   must cover before a rate is asserted; default 0, meaning off
 """
@@ -62,6 +63,25 @@ from ...axiom_thresholds import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+#: The dataclass defaults for the two rate fields, captured once.
+#:
+#: a caller who constructs `AxiomParameters(monotonicity_rate_warning=
+#: 100)` HAS declared a rate and is honoured; the untouched dataclass default is
+#: the engine's own guess and is not. The degenerate case is a caller who passes
+#: exactly the default, which reads as undeclared -- stated here rather than
+#: worked around, because the model and the per-entity override are the two
+#: declaring surfaces this format documents and `params=` is neither.
+_RATE_PARAM_DEFAULTS = {
+    "monotonicity_rate_warning": AxiomParameters().monotonicity_rate_warning,
+    "monotonicity_rate_critical": AxiomParameters().monotonicity_rate_critical,
+}
+
+
+def _declared_param(value, field: str):
+    """A params value a caller changed, or None when it is the engine's guess."""
+    return None if value == _RATE_PARAM_DEFAULTS[field] else value
 
 
 def _positive_int(raw, fallback: int, key: str, indicator) -> int:
@@ -233,8 +253,13 @@ class MonotonicityChecker:
         mono_config = getattr(indicator, 'monotonicity_config', None)
         expected_dir = 'increasing'
         allow_reset = True
-        rate_warning_fallback = self.params.monotonicity_rate_warning
-        rate_critical_fallback = self.params.monotonicity_rate_critical
+        # the rate arm no longer answers from a number nobody
+        # declared. `None` means undeclared and is not compared; the pair being
+        # BOTH undeclared is a decline, below.
+        rate_warning_fallback = _declared_param(
+            self.params.monotonicity_rate_warning, "monotonicity_rate_warning")
+        rate_critical_fallback = _declared_param(
+            self.params.monotonicity_rate_critical, "monotonicity_rate_critical")
 
         # how many reversals, and how many resets, this counter is
         # allowed before the axiom says anything. Declarable since 0.1.8;
@@ -260,12 +285,15 @@ class MonotonicityChecker:
         if mono_config:
             expected_dir = mono_config.get('expected_direction', 'increasing')
             allow_reset = mono_config.get('allow_reset', True)
+            # a declared key wins; an absent one stays undeclared
+            # rather than falling back to the engine's own number. Declaring
+            # only `rate_critical` is legal and leaves the warning arm silent,
+            # which is how `critical:` without `warning:` already behaves under
+            # BOUNDEDNESS and RESPONSIVENESS.
             rate_warning_fallback = mono_config.get(
-                'rate_warning', self.params.monotonicity_rate_warning
-            )
+                'rate_warning', rate_warning_fallback)
             rate_critical_fallback = mono_config.get(
-                'rate_critical', self.params.monotonicity_rate_critical
-            )
+                'rate_critical', rate_critical_fallback)
             # Two keys rather than one, because they count different events and
             # sharing a number is what hid the second. A reset is a drop to
             # near zero that `allow_reset` excuses individually; a reversal is
@@ -296,6 +324,44 @@ class MonotonicityChecker:
             entity, indicator, recent, expected_dir, allow_reset,
             reversal_tolerance, reset_tolerance,
         ))
+
+        # THE RATE ARM DECLINES RATHER THAN ANSWERING FROM A DEFAULT.
+        #
+        # Measured from outside on 0.1.10 by an independent bridge: with nothing
+        # declared, this arm fired `warning` at 0.1/s and `critical` at 0.5/s.
+        # Every PLC heartbeat crosses that. Every fast production counter
+        # crosses it. The finding named an entity whose model never asked the
+        # question, against a number nobody in the domain chose.
+        #
+        # It was the only arm in the format that did this. The reversal
+        # tolerance beside it became declarable in 0.1.8 for the same argument
+        # and by the same route, and the rate arm was left on the old footing --
+        # the instance fixed and the class left, one arm over, again.
+        #
+        # Allowed as a patch release by COMPATIBILITY.md: *make a check DECLINE
+        # where it previously answered from a guess, when the guess was
+        # unsound.* The cost is stated rather than argued away -- a model
+        # relying on the default loses the rate arm until it declares a rate,
+        # and the decline names the declaration to write.
+        #
+        # THE REVERSAL ARM STILL RUNS AND ITS FINDINGS SURVIVE. `CheckOutcome`
+        # is a list of problems PLUS declines, so this reports both: what the
+        # reversal arm found, and that the rate arm was never asked. Returning
+        # early without the problems would have withdrawn a working check to
+        # report a missing one.
+        if rate_warning is None and rate_critical is None:
+            return CheckOutcome(
+                apply_property_confidence(
+                    entity, indicator.property_name, problems)
+            ).declined(
+                Axiom.MONOTONICITY, entity, indicator.name,
+                NotEvaluatedReason.NO_THRESHOLD,
+                detail=(
+                    f"{indicator.name} declares MONOTONICITY and no rate to "
+                    f"judge against; declare `monotonicity: {{rate_warning, "
+                    f"rate_critical}}` with a basis, or accept that only the "
+                    f"reversal arm is being checked. The reversal arm ran"),
+            )
 
         problems.extend(self._check_rate(
             entity, indicator, recent, expected_dir, rate_warning, rate_critical
@@ -474,7 +540,9 @@ class MonotonicityChecker:
             return problems
         rate = abs(slope)
 
-        if rate >= rate_critical:
+        # an undeclared half is not compared. Both undeclared never
+        # reaches here; `check` declines instead.
+        if rate_critical is not None and rate >= rate_critical:
             problems.append(Problem.from_entity(
                 entity=entity,
                 problem_type=f'monotonicity_rate:{indicator.name}',
@@ -501,7 +569,7 @@ class MonotonicityChecker:
                 },
                 confidence=min(1.0, rate / rate_critical),
             ))
-        elif rate >= rate_warning:
+        elif rate_warning is not None and rate >= rate_warning:
             problems.append(Problem.from_entity(
                 entity=entity,
                 problem_type=f'monotonicity_rate:{indicator.name}',

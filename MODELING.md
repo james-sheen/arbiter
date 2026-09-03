@@ -103,12 +103,31 @@ rewrote an `_in` marker to `_out` and balanced against whatever that produced, w
 shipped models named a property that did not exist. `bytes_in` and `bytes_out` balance;
 `bad_actor_input` and `line_input_status` do not; nothing in those names says which is which.
 
+**Separately, the deficit is judged as a PROPORTION of the input, and that decides what you should
+feed it.** What is compared is the shortfall against the inflow, not against an absolute quantity —
+so one real loss is a large fraction of a single interval's flow and a vanishing fraction of a
+lifetime total. If what you hold is a counter that only ever climbs, difference it and balance the
+per-interval rate. A lifetime counter balanced against another lifetime counter gets quieter every
+day the system runs, and nothing in the result says so.
+
 **Telling a broken sensor from a real fault is a separate question, and this format answers it
 without a range.** A reading that never moves is a dead probe rather than a very steady system, and
 saying so is opt-in: declare `expect_variation: true` on the indicator and STABILITY in its
 `axioms:`. Anything the checker could not evaluate — no value, too few samples, no threshold
 configured — is reported in the envelope's `not_checked` leg rather than passing silently, which is
 the distinction a range would otherwise have to carry.
+
+**It answers *has this ever moved*, not *has it stopped moving*, and on a wide window those are far
+apart.** The check reads the observations inside the indicator's `window:`, so a series that varied
+and then went flat still contains variation and the axiom stays quiet — until every varying sample
+has aged out of it. A probe that died twenty minutes into an hour-long window is not reported for
+forty more.
+
+**The window is the lever, and there is a floor under it.** Narrow it and a freeze is found sooner;
+narrow it too far and fewer samples fall inside than the check needs, and it declines
+`insufficient_samples` instead of answering. Pick the span from how quickly a dead probe has to be
+noticed, then check the collection cadence still fills it — the two numbers are a pair, and a window
+chosen without the cadence beside it lands on one side or the other.
 
 ## The eight axioms
 

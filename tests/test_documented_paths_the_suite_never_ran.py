@@ -70,6 +70,18 @@ def _reversals(direction, series):
              if r["axiom"] == "MONOTONICITY"])
 
 
+def _not_the_rate_arm(declined):
+    """Reasons other than the rate arm's.
+
+    MONOTONICITY's rate arm declines `no_threshold` when no rate is
+    declared, and none of the models here declares one. These tests are about
+    `expected_direction`, so the assertion is narrowed to their subject rather
+    than deleted -- and narrowed by NAMING the excluded reason, so a second
+    unexpected decline still fails.
+    """
+    return [r for r in declined if r != "no_threshold"]
+
+
 class TestMonotonicityDecreasing:
     """`expected_direction: decreasing` -- declared, documented, and until now
     never exercised by a test a consumer of the package could run."""
@@ -77,13 +89,14 @@ class TestMonotonicityDecreasing:
     def test_a_monotone_decline_raises_no_reversal(self):
         found, declined = _reversals("decreasing", [60, 50, 40, 30, 20, 10])
         assert found == [], found
-        assert declined == [], f"the axiom declined rather than running: {declined}"
+        assert _not_the_rate_arm(declined) == [], (
+            f"the axiom declined rather than running: {declined}")
 
     def test_rises_in_a_decreasing_series_are_reversals(self):
         """The behaviour the direction exists for."""
         found, declined = _reversals("decreasing", [60, 50, 80, 40, 70, 30, 65, 20])
         assert found, "a decreasing indicator did not report repeated rises"
-        assert declined == []
+        assert _not_the_rate_arm(declined) == []
 
     def test_one_rise_is_under_the_declarable_tolerance(self):
         """Not a gap: the tolerance is a declared number and defaults above one.
@@ -104,7 +117,10 @@ class TestMonotonicityDecreasing:
         assert bool(up) == bool(down), (
             f"increasing reported {up} and decreasing reported {down} on "
             f"mirrored series; the directions have diverged")
-        assert up_declined == down_declined == []
+        assert up_declined == down_declined, (
+            f"the directions decline differently on mirrored series: "
+            f"{up_declined} vs {down_declined}")
+        assert _not_the_rate_arm(up_declined) == []
 
 
 class TestUnconsumedObservationsEdges:

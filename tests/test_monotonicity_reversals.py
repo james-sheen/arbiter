@@ -89,6 +89,21 @@ CLEAN = [10, 11, 12, 13, 14]
 THREE_REVERSALS = [10, 9, 11, 8, 12, 7]
 
 
+def _reversal_declines(declines):
+    """Every decline EXCEPT the rate arm's.
+
+    An internal ruling made the rate arm decline `no_threshold` when no rate is declared,
+    and none of the models in this file declares one -- so every case here now
+    carries exactly that decline beside whatever it was written to check.
+
+    The blanket `declines == []` these assertions used to make was always wider
+    than their subject: this file is about the reversal arm and the sample
+    floor. Narrowed rather than deleted, and narrowed by NAMING the reason
+    excluded, so that a second unexpected decline still fails.
+    """
+    return [d for d in declines if d["reason"] != "no_threshold"]
+
+
 class TestThePositivePathExists:
     """The half that was never demonstrated."""
 
@@ -103,7 +118,10 @@ class TestThePositivePathExists:
         everything, which is not the capability anyone wants."""
         findings, declines = _run(CLEAN)
         assert findings == []
-        assert declines == []
+        assert _reversal_declines(declines) == []
+        assert [d["reason"] for d in declines] == ["no_threshold"], (
+            "the clean control should carry the rate arm's decline and nothing "
+            "else; this model declares no rate")
 
     def test_the_finding_is_attributed_to_the_axiom_and_the_property(self):
         """The SHIPPED envelope carries no `evidence` — `check()` strips it, so
@@ -129,7 +147,7 @@ class TestTheToleranceIsDeclarable:
         This is the behaviour every model written before 0.1.8 has, and the
         pin is what makes a future change to it deliberate."""
         findings, declines = _run(ROLLBACK)
-        assert findings == [] and declines == []
+        assert findings == [] and _reversal_declines(declines) == []
 
     def test_declaring_a_tolerance_of_one_catches_it(self):
         findings, _ = _run(ROLLBACK, reversal_tolerance=1)
@@ -193,7 +211,8 @@ class TestTheSampleFloorIsUnchanged:
 
     def test_at_the_floor_it_evaluates(self):
         _, declines = _run([10, 11, 9])
-        assert declines == [], (
+        assert [d for d in declines
+                if d["reason"] == "insufficient_samples"] == [], (
             "three points is the fewest that can exhibit a reversal and is the "
             "declared floor; declining here would re-impose the over-gate")
 

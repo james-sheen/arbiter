@@ -79,6 +79,12 @@ count taken inside a window, so a corpus can hold many times the floor and still
 never present it, and a fault injected into one is invisible. Measure the floor
 and the window together, and build the corpus past both.
 
+**The trap is stated here and is not particular to this reason.** Every count
+this engine keeps inside a window behaves the same way, including tolerances that
+are not floors at all: one corpus reads as a different tolerance depending on
+where in it the fault was injected, and none of those readings is the declared
+number. Measure the others the way you are measuring this one.
+
 ### `missing_property`
 
 The property was never supplied. This is the belt to your own brace: your walk
@@ -97,7 +103,26 @@ operator the wrong instruction with confidence.
 
 The model refers to a type the telemetry never produced. Not a gap in one
 entity's data — a gap between what your model believes exists and what your walk
-found. Treat it as a modelling error, not a collection error.
+found.
+
+**Which of those two it is depends on how your model was written, and the engine
+cannot know that.** A model written by hand names types somebody chose, so a type
+the walk never served is a modelling error and belongs to whoever wrote it. A
+model **generated** from a register is a different thing: there the register *is*
+what the model believes exists, so this decline says a source you were told to
+expect did not turn up — a collection fact, and one your first stage has almost
+certainly already reported and already acted on.
+
+So classify it the way you classify `missing_property`, and from the same source.
+If your presence stage saw the target absent, this is the engine agreeing with
+it, and it belongs wherever your already-reported class sits rather than counting
+against the run a second time. If your presence stage saw the target reading and
+the type still never reached the model, that is a modelling error, it is yours,
+and nothing else is going to notice it.
+
+Reading it as a modelling error unconditionally costs a generating bridge the
+difference between *could not complete* and *found exactly what it was looking
+for* — on a run that completed and found it.
 
 ### `missing_config`
 
@@ -168,7 +193,46 @@ one is inferred from an unknown.
 
 ---
 
-## 3. The exit contract
+## 3. The three verbs that are not `check`
+
+The vocabulary above is everything the engine refuses to **judge**. It is not
+everything the engine can tell you about your model, and the rest of it lives on
+a small read surface that a bridge built only around `check` never calls.
+
+You need all three, and you need them most if you **generate** your model rather
+than writing it by hand — because then the model is your output, and nothing else
+is going to read it.
+
+**`model_describe`, and the `unread_fields` on it.** Two questions, one answer
+shape. A field you declared that no axiom on that indicator reads: you wrote it,
+and it does nothing, and the check you thought you configured is running on
+defaults. And a **value** you declared that this engine does not recognise —
+a misspelled axiom name, a role that is nearly right. That second one is not a
+decline and cannot be: a decline names an axiom, and the whole problem is that
+the engine never worked out which axiom you meant. So it is dropped, and a
+result computed without it looks exactly like a result from a model that never
+declared it. **Read this leg once per model you generate, and treat an
+unrecognised value as a hard stop.** A run whose declarations were silently
+discarded is not a run whose findings mean anything.
+
+**`unconsumed_observations`.** Series you fed that no declared indicator reads.
+This is the mirror of `missing_property`: that one says the model asked for
+something the feed did not supply, and this one says the feed supplied something
+the model never asked about. A bridge hits it the first time a property name
+drifts between the walk and the generator, and without it the symptom is a
+denominator quietly smaller than you expected.
+
+**`unread_properties`.** The same question one level down, about properties on an
+entity rather than whole series.
+
+None of the three is a verdict, and none belongs in your exit code by itself.
+They are how you check the artifact you just generated before you draw
+conclusions from what it produced. The decline vocabulary is your requirements
+document; this is the proofreader.
+
+---
+
+## 4. The exit contract
 
 Adopt this verbatim. It is what makes results from different bridges comparable.
 
@@ -187,6 +251,26 @@ Adopt this verbatim. It is what makes results from different bridges comparable.
   Two anchors that hold: a declared-but-absent source floors at `1`, because a
   broken promise is a finding; an unreviewed declaration or a schema mismatch
   floors at `2`, because the run's foundation is invalid.
+- **Classify findings the same way, and give those classes floors too.** The rule
+  a first bridge writes — every finding is a `1` — holds for a threshold breach,
+  which is a statement about a number somebody published. It does not hold for an
+  arm whose answer is a tail probability. A baseline-deviation check on a
+  quantity nobody set a target for fires on healthy data at whatever rate its own
+  threshold implies, and across many such series that is most runs. A tool that
+  fails an audit on a healthy system every other run is one people turn off, and
+  it takes the real findings with it.
+
+The distinction that does the work is **where the number came from**. A deviation
+from a target somebody declared is a statement about your system. A deviation
+from a baseline the engine inferred is a statement about the last N samples, and
+those are not the same claim even when the same axiom emits both.
+
+Which of your arms behave which way is a measurement, and C3 is where you take
+it — not a guess, and not something to settle while a run is failing. Then write
+down which finding classes are a verdict and which are a report. Reporting one in
+full and flooring it at `0` is a defensible answer; so is failing on it. Choosing
+after you have seen the output is not, and neither is quietly widening your
+corpus until the check goes quiet.
 
 Version every artifact format you emit as `<package>/<artifact>/<n>`, and refuse
 unknown majors. Validate this engine's result against the schema shipped **inside
@@ -194,7 +278,7 @@ the artifact you installed**, never a copy in your own tree.
 
 ---
 
-## 4. Nine capabilities, in order
+## 5. Nine capabilities, in order
 
 **C1 — Stand alone first.** Your first stage is presence and coverage, and it has
 zero dependency on this engine. It answers the question the engine cannot ask:
@@ -203,10 +287,20 @@ and reading, present but not reading, absent — never as a boolean. A bridge th
 cannot run its first stage without the engine installed has its layering
 backwards.
 
+**The three-way distinction has to survive collection, and that is a layer above
+this stage.** Your walk format must be able to say *present and unreadable*, and
+your collector is where that call gets made: a read that raises is not evidence
+the source is missing, and a client library will usually raise the same way for a
+node that is absent and for one the server will not vouch for. Fold them there
+and this stage cannot recover it — by then the source is simply not in the walk,
+and the stage whose job is keeping them apart never sees two things to separate.
+
 **C2 — Model and manifest, as a pair.** The model declares what gets fed; the
 manifest names everything excluded, with a reason. The second half is not
 optional. One entity type per real-world unit; never fold a value into a slot
 that means something else; exclude templated names before generation, not after.
+A generated model is your output and nothing else will proofread it — read it
+back through the verbs in Section 3 before you trust anything it produced.
 
 **C3 — Measure the engine you pin; do not read it.** Derive what it will judge,
 decline, or excuse by running every arm of every relevant axiom against the exact
@@ -217,7 +311,7 @@ that re-runs, never as a table in a document.
 **C4 — An operator-knowledge channel.** Some facts are physics, law, or contract,
 and no schema contains them. Carry a channel where an operator states them, and
 require every statement to carry a **basis**: what the declarer actually looked
-at. Then gate it (Section 5).
+at. Then gate it (Section 6).
 
 **C5 — Ingestion layering.** Feed only what stage one classified as present and
 reading. Keep the engine's missing-property decline as the belt to that brace.
@@ -244,7 +338,7 @@ it is what keeps everyone honest about what *we tested it* means.
 
 ---
 
-## 5. The review gate
+## 6. The review gate
 
 A rule can *propose* an operator-knowledge fact. A rule cannot *know* one.
 Deriving a relationship from names, or from two configured values happening to
@@ -268,7 +362,7 @@ suite was the thing that was supposed to notice.
 
 ---
 
-## 6. The verification battery
+## 7. The verification battery
 
 Ship your proof as a re-runnable script, not as a transcript. A green recorded in
 a session is a claim about a session nobody else was in.
@@ -285,6 +379,7 @@ a session is a claim about a session nobody else was in.
 | pipe | Does a reader walking away change the verdict, or print anything? |
 | tool | Is the tool surface closed, and does the binding construct for real? |
 | suite | Does the suite pass from a directory that is not the repository? |
+| pin | Does every release inside your declared range actually run? |
 | **ship** | Does the **built artifact**, installed clean, still do all of that? |
 
 **The ship leg is the one to protect.** Every other leg runs against a source tree
@@ -308,6 +403,13 @@ Rules for injecting a fault so the leg means something:
    code is a claim about the run, not about your fault. Assert on the finding.
 7. **Derive the corpus from the engine's floors — how many samples, and over
    what span.** Do not choose either.
+8. **A corpus for a windowed engine has a shelf life.** Several arms count
+   inside a window measured backwards from now, so a corpus written with fixed
+   timestamps stops presenting them as it ages — silently, and every leg that
+   depends on one goes green having tested nothing. Stamp it when it is built,
+   and have the battery refuse one older than the narrowest window you measured
+   rather than run against it. Rule 7 sizes the corpus; this is when it was
+   taken, and nothing else in this list asks.
 
 A leg that could not run reports `2` and is **named**. Never skipped: an absent
 leg that leaves no trace reads as a leg that passed.
@@ -321,7 +423,7 @@ disposable.
 
 ---
 
-## 7. The tool surface, if you build one
+## 8. The tool surface, if you build one
 
 A tool server — for an assistant, or any protocol caller — is a **spec table plus
 a dispatcher**, and the dispatcher routes through your CLI front door. Never a
@@ -342,7 +444,7 @@ entry that was added and never wired sits there returning nothing.
 
 ---
 
-## 8. What no mechanism absorbs
+## 9. What no mechanism absorbs
 
 Three things stay human, and building around them does not dissolve them.
 
@@ -376,7 +478,10 @@ These are complete programs built to it, source and tests readable in full:
   directly, which is the other shape a downstream package takes.
 
 **Both are by this engine's author, and that is a limit on what they prove.**
-They are worked examples, not independent adoption, and the method above has not
-yet been carried into a vertical that shares no vocabulary with them. If you are
-the first to do that, the parts that do not survive contact are worth more to
-this document than the parts that do.
+They are worked examples, not independent adoption. The method has since been
+carried into a vertical sharing no vocabulary with these two — a factory
+production line — and several of the corrections in this document came from
+what did not survive that contact. But it was done by the same author, as a
+deliberate exam, so it moves only one of the two limits. Nobody outside has
+done it. If you are the first, the parts that do not survive contact are worth
+more to this document than the parts that do.

@@ -100,8 +100,16 @@ SCENARIOS = {
     "MONOTONICITY": dict(
         indicators=[{"name": "v", "type": "NUMERIC", "axioms": ["MONOTONICITY"],
                      "window": "24h",
+                     # -- the rate arm no longer answers from an engine
+                     # default, so a scenario that declared no rate stopped
+                     # firing and this row started reporting itself stale. The
+                     # numbers are the scenario's own: they exist to make the
+                     # arm live so the OVERRIDE can be shown to move it, which
+                     # is what this file measures.
                      "monotonicity": {"expected_direction": "increasing",
-                                      "allow_reset": True}}],
+                                      "allow_reset": True,
+                                      "rate_warning": 0.1,
+                                      "rate_critical": 0.5}}],
         properties={"v": 10.0},
         series=(("v", [10_000.0, 5_000.0, 10.0]),),
         silence=dict(warning=1e9, critical=1e9),

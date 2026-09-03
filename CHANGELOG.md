@@ -44,6 +44,28 @@ useful-looking document and the less trustworthy one.
   REJECTED, not fields whose consuming axiom was never declared. Reported from
   outside, in a verification of the released 0.1.10 artifact.
 
+### Changed
+
+- **`RESPONSIVENESS` declines instead of passing when no deadline is declared.**
+  An indicator carrying `role: latency` and neither `warning:` nor `critical:`
+  used to return nothing at all — no finding, no decline — at any latency. The
+  envelope was byte-identical to a check that ran and held, which is the one
+  distinction this engine exists to make. It now reports `no_threshold`, and the
+  `detail` names the keys to write.
+
+- **`MONOTONICITY`'s rate arm declines instead of judging against a default.**
+  `rate_warning:` and `rate_critical:` carried engine-chosen defaults of 0.1 and
+  0.5, so a model declaring neither had its rate measured against numbers nobody
+  wrote down. Undeclared, that arm now reports `no_threshold`. The reversal arm
+  beside it is unaffected and its findings still report.
+
+**Both of these change envelopes you are already getting.** A leg that was silent
+now carries a decline, so anything composing an exit code from `not_checked` gets
+a different answer on an unchanged model. Two downstream programs were measured
+against these before release and moved differently — one from clean to findings,
+one from clean to could-not-complete. Decide what `no_threshold` means to yours
+before you upgrade.
+
 ---
 
 ## [0.1.10] — 2026-09-03
