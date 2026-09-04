@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "arbiter-engine"
-version = "0.1.11.dev0"
+version = "0.1.11"
 description = "A detection engine that reports what it did not check."
 requires-python = ">=3.10"
 license = "Apache-2.0"

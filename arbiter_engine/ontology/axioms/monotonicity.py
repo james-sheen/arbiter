@@ -327,7 +327,10 @@ class MonotonicityChecker:
 
         # THE RATE ARM DECLINES RATHER THAN ANSWERING FROM A DEFAULT.
         #
-        # Measured from outside on 0.1.10 by an independent bridge: with nothing
+        # Measured against the published 0.1.10 artifact, by a bridge written
+        # to the downstream guide without reading this source -- which is what
+        # made it visible, and is the whole of the claim. The bridge is this
+        # engine's author's, so it is not independent evidence: with nothing
         # declared, this arm fired `warning` at 0.1/s and `critical` at 0.5/s.
         # Every PLC heartbeat crosses that. Every fast production counter
         # crosses it. The finding named an entity whose model never asked the

@@ -1,0 +1,217 @@
+# A worked example: one cell of a discrete-manufacturing line.
+#
+# Deliberately synthetic, like the other three. Every number below is invented
+# and none of it is advice about your line -- a die temperature limit comes off
+# a datasheet, not off an example file.
+#
+# What this one adds over the others is its VOCABULARY. Nothing here is a tank,
+# a node or a cell of a battery: presses, weld stations, a robot, a conveyor and
+# the PLC that reports them all. It is here because a reader whose domain is
+# nothing like the engine's own needs to see the format carry a domain that
+# shares no nouns with it.
+#
+# WHY THE ENTITY TYPES LOOK LIKE THAT, which is the part worth reading.
+# `Press__PR_01` is one entity type for one physical press, and that is not a
+# naming quirk -- it is forced. A declared threshold lives on the entity TYPE,
+# and the per-entity override that would vary it does not reach a declared
+# BOUNDEDNESS threshold. So two presses whose die limits differ cannot share a
+# type: they are two types, or one of them is judged against the other's limit.
+# Any fleet of near-identical units with per-unit limits lands here, which is
+# most fleets. Keep the map from type back to asset somewhere an operator reads,
+# because `Station__ST_02` is not a name anybody says out loud.
+#
+# The MONOTONICITY blocks are deliberately uneven. Where a rate was actually
+# specified, `rate_warning` and `rate_critical` are declared; where nobody
+# published one, they are absent and the engine declines rather than judging
+# against a number it chose. An absent rate is not an oversight in this file.
+#
+# Generated from a register of what should exist plus a manifest naming
+# everything deliberately excluded, which is the pair `BRIDGES.md` asks for
+# under `Nine capabilities, in order`. A model without its manifest cannot tell
+# you the difference between a thing nobody watches and a thing nobody noticed.
+
+
+domain:
+  id: line1
+  name: "Cell 1 -- press, weld, assembly, inspection"
+  entity_types: [Press__PR_01, Station__ST_01, Station__ST_02, Station__ST_03, Robot__ROB_01, Conveyor__CNV_01, Controller__PLC_01]
+  relationship_types: [feeds]
+  indicators:
+    Press__PR_01:
+      - name: die_temp_c
+        type: NUMERIC
+        axioms: [BOUNDEDNESS, HOMEOSTASIS]
+        warning: 240
+        critical: 265
+      - name: tonnage_kn
+        type: NUMERIC
+        axioms: [BOUNDEDNESS, HOMEOSTASIS]
+        warning: 1800
+        critical: 2000
+      - name: stroke_count
+        type: NUMERIC
+        role: count
+        axioms: [CONSISTENCY, MONOTONICITY]
+        monotonicity:
+          expected_direction: increasing
+          rate_warning: 0.6
+          rate_critical: 1.2
+      - name: feeds__ST_01
+        type: RELATIONSHIP
+        axioms: [CONNECTIVITY]
+        target_type: Station__ST_01
+        relation_type: feeds
+        min_cardinality: 1
+    Station__ST_01:
+      - name: cycle_time_s
+        type: NUMERIC
+        axioms: [HOMEOSTASIS]
+        homeostasis:
+          setpoint: 60
+          tolerance: 4
+      - name: parts_out
+        type: NUMERIC
+        role: count
+        axioms: [CONSISTENCY, MONOTONICITY]
+        monotonicity:
+          expected_direction: increasing
+      - name: weld_current_a
+        type: NUMERIC
+        axioms: [HOMEOSTASIS, STABILITY]
+        expect_variation: true
+      - name: feeds__ST_02
+        type: RELATIONSHIP
+        axioms: [CONNECTIVITY]
+        target_type: Station__ST_02
+        relation_type: feeds
+        min_cardinality: 1
+    Station__ST_02:
+      - name: cycle_time_s
+        type: NUMERIC
+        axioms: [HOMEOSTASIS]
+        homeostasis:
+          setpoint: 60
+          tolerance: 4
+      - name: parts_in
+        type: NUMERIC
+        role: count
+        axioms: [CONSISTENCY, MONOTONICITY]
+        monotonicity:
+          expected_direction: increasing
+      - name: parts_out
+        type: NUMERIC
+        role: count
+        axioms: [CONSISTENCY, MONOTONICITY]
+        monotonicity:
+          expected_direction: increasing
+        consistency:
+          agrees_with: [parts_out_mes]
+          tolerance: 0.01
+      - name: parts_out_mes
+        type: NUMERIC
+        role: count
+        axioms: [CONSISTENCY, MONOTONICITY]
+        monotonicity:
+          expected_direction: increasing
+      - name: scrap_count
+        type: NUMERIC
+        role: count
+        axioms: [CONSISTENCY, MONOTONICITY]
+        monotonicity:
+          expected_direction: increasing
+      - name: parts_in_per_interval
+        type: NUMERIC
+        axioms: [CONSERVATION]
+        flow: in
+        conservation:
+          input_property: parts_in_per_interval
+          output_properties: [parts_out_per_interval, scrap_count_per_interval]
+      - name: parts_out_per_interval
+        type: NUMERIC
+        flow: out
+      - name: scrap_count_per_interval
+        type: NUMERIC
+        flow: out
+      - name: feeds__ST_03
+        type: RELATIONSHIP
+        axioms: [CONNECTIVITY]
+        target_type: Station__ST_03
+        relation_type: feeds
+        min_cardinality: 1
+    Station__ST_03:
+      - name: cycle_time_s
+        type: NUMERIC
+        axioms: [HOMEOSTASIS]
+        homeostasis:
+          setpoint: 60
+          tolerance: 4
+      - name: parts_out
+        type: NUMERIC
+        role: count
+        axioms: [CONSISTENCY, MONOTONICITY]
+        monotonicity:
+          expected_direction: increasing
+      - name: reject_pct
+        type: NUMERIC
+        role: percentage
+        direction: LOWER
+        axioms: [HOMEOSTASIS, CONSISTENCY]
+    Robot__ROB_01:
+      - name: program_cycle_ms
+        type: NUMERIC
+        role: latency
+        axioms: [BOUNDEDNESS, RESPONSIVENESS, HOMEOSTASIS]
+        warning: 800
+        critical: 1200
+      - name: axis1_temp_c
+        type: NUMERIC
+        axioms: [BOUNDEDNESS, HOMEOSTASIS]
+        warning: 65
+        critical: 80
+      - name: joint_torque_nm
+        type: NUMERIC
+        axioms: [HOMEOSTASIS]
+    Conveyor__CNV_01:
+      - name: speed_mpm
+        type: NUMERIC
+        axioms: [HOMEOSTASIS, STABILITY]
+        homeostasis:
+          setpoint: 12
+          tolerance: 1.2
+        stability:
+          detect_slow_oscillation: true
+          min_amplitude: 0.1
+          min_crossings: 4
+      - name: motor_current_a
+        type: NUMERIC
+        axioms: [BOUNDEDNESS, HOMEOSTASIS]
+        warning: 18
+        critical: 24
+      - name: feeds__PR_01
+        type: RELATIONSHIP
+        axioms: [CONNECTIVITY]
+        target_type: Press__PR_01
+        relation_type: feeds
+        min_cardinality: 1
+    Controller__PLC_01:
+      - name: heartbeat
+        type: NUMERIC
+        role: count
+        axioms: [CONSISTENCY, MONOTONICITY]
+        monotonicity:
+          expected_direction: increasing
+          rate_warning: 60
+          rate_critical: 120
+      - name: scan_time_ms
+        type: NUMERIC
+        role: latency
+        axioms: [BOUNDEDNESS, RESPONSIVENESS, HOMEOSTASIS]
+        warning: 20
+        critical: 40
+      - name: cpu_load_pct
+        type: NUMERIC
+        role: percentage
+        direction: LOWER
+        axioms: [BOUNDEDNESS, HOMEOSTASIS, CONSISTENCY]
+        warning: 70
+        critical: 85

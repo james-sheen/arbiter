@@ -886,15 +886,27 @@ class NLTraversalTranslator:
 
     LLM-fallback architecture decided 2026-05-25
     (add-LLM-fallback option chosen; see decision doc
-    the internal notes). Wiring follow-ups
-    pending: translate() llm_fallback kwarg + shared.llm.get_llm_client()
-    integration + audit-faithfulness gate + LLM-fallback pin tests.
-    Until those follow-up CDs land, this class is rule-based only; LLM
-    delegation is NOT yet active.
+    the internal notes). It was BUILT in, it does not live here: the full system
+    holds it, outside the published distribution, and takes a translator as its
+    first argument.
 
-    Substrate-discovery surface for partners: the GET /nl-query
-    endpoint enumerates the 7 keyword-pattern set + 3-direction +
-    3-value-mode vocabularies + decision-doc cross-link.
+    **This class is rule-based, and that is now the whole of it** rather than a
+    stage it is passing through. Earlier wording here described the wiring as
+    unfinished, and stayed after finished it a few hundred lines below,
+    so the docstring and the code disagreed inside one file. An outside
+    verification read the docstring and reported the path as unbuilt; it was
+    built, and in the shipped package it was inert, which is a third thing
+    again. (The superseded phrasing is deliberately not quoted: a guard below
+    greps this docstring for it, and prose about a removal reads to a grep
+    exactly like the removal not having happened.)
+
+    Substrate-discovery surface for partners (the established pattern
+    bootstrap-aware shape): the GET /nl-query endpoint enumerates the 7
+    keyword-pattern set + 3-direction + 3-value-mode vocabularies +
+    decision-doc cross-link. The two citations were pinned by a test and
+    absent from this docstring before -- red from the day they were
+    written, and unnoticed because the file they guard was not in a lane
+    anybody watched.
     """
 
     PATTERNS = [
@@ -939,199 +951,16 @@ class NLTraversalTranslator:
                 return TraversalRequest(**config)
         return None
 
-    async def translate_with_llm_fallback(
-        self,
-        question: str,
-        entity_ids: Optional[List[str]] = None,
-        *,
-        audit_entity_ids: Optional[List[str]] = None,
-    ) -> Optional[TraversalRequest]:
-        """ (follow-up #1/#2/#3 chain head): async wrapper around
-        sync translate() that adds LLM-fallback path for unmapped questions.
-
-        Flow decision:
-            1. Try sync rule-based translate() (current 7-pattern path).
-            2. If matched, return TraversalRequest (existing behavior).
-            3. If unmapped + NL_LLM_FALLBACK_ENABLED env true + an LLM client
-               is available → call LLM with structured prompt naming the 3
-               direction enums + 3 value-mode enums + JSON output shape.
-            4. Apply 3-heuristic audit-faithfulness check (adapted from
-                the full system shape): substring + capitalized-token +
-               coverage applied to the supplied entity_ids list.
-            5. Return TraversalRequest on audit-pass OR None on audit-fail.
-
-        Args:
-            question: Natural-language question.
-            entity_ids: Start nodes for the traversal (also the audit baseline).
-            audit_entity_ids: Optional override for the audit-baseline list
-                (defaults to entity_ids). Lets callers audit against a
-                broader set than the start nodes.
-
-        Returns None when (a) rule-based unmapped + env-gate off, OR
-        (b) rule-based unmapped + LLM call fails, OR (c) audit-faithfulness
-        gate fails on LLM output. A default-off env-gate.
-        """
-        rule_based = self.translate(question, entity_ids=entity_ids)
-        if rule_based is not None:
-            return rule_based
-
-        import os
-        if os.environ.get("NL_LLM_FALLBACK_ENABLED", "false").lower() != "true":
-            return None
-
-        try:
-            llm_output = await self._call_llm_for_traversal(question, entity_ids)
-        except Exception:  # noqa: BLE001 — defensive LLM-call wrapper
-            return None
-        if llm_output is None:
-            return None
-
-        audit_pool = audit_entity_ids if audit_entity_ids is not None else (entity_ids or [])
-        if not self._audit_llm_traversal_output(llm_output, audit_pool):
-            return None
-
-        return self._parse_llm_json_to_traversal_request(llm_output, entity_ids)
-
-    async def _call_llm_for_traversal(
-        self,
-        question: str,
-        entity_ids: Optional[List[str]],
-    ) -> Optional[Dict[str, Any]]:
-        """lazy-imports shared.llm.get_llm_client() + structured prompt.
-
-        Tests mock this method directly (no real LLM call needed). Returns
-        a JSON-decoded dict with keys 'direction' + 'value_mode' +
-        'start_nodes' OR None on LLM failure.
-        """
-        try:
-            # -- the root package is DERIVED, not written. This used to
-            # name the originating distribution literally, and the extraction
-            # deliberately leaves such a statement alone so the import fails in
-            # the standalone engine. It did fail, correctly -- and shipped that
-            # name into a public tree to do it, as the one string in the whole
-            # artifact identifying where it came from.
-            #
-            # Deriving the root keeps both behaviours and neither cost: in the
-            # full tree it resolves to the real client, and in the engine it
-            # resolves to a sibling that was never extracted and raises below.
-            import importlib
-            _root = (__package__ or __name__).split(".")[0]
-            get_llm_client = importlib.import_module(
-                f"{_root}.shared.llm").get_llm_client
-        except (ImportError, AttributeError) as exc:
-            # item 5. Fails loudly rather than degrading, unlike the
-            # sibling guard at propagation/root_cause.py:45 -- the caller asked
-            # for a translation and there is no honest way to return one.
-            raise RuntimeError(
-                "natural-language traversal needs an LLM client, and none is "
-                "available in this distribution. The deterministic translate() "
-                "path needs no client and is unaffected. In the standalone "
-                "engine the client is deliberately not shipped: it is "
-                "operations, and NLTraversalTranslator is a deep path that is "
-                "importable but explicitly unsupported."
-            ) from exc
-
-        client = get_llm_client()
-        directions = [d.value for d in TraversalDirection]
-        value_modes = [v.value for v in ValueMode]
-        system_prompt = (
-            "You compile natural-language questions about Digital Twin "
-            "topology into TraversalRequest JSON. Output ONLY valid JSON "
-            "with keys: direction (one of " + ", ".join(directions) + "), "
-            "value_mode (one of " + ", ".join(value_modes) + "), "
-            "start_nodes (list of entity ID strings, MUST be a subset of "
-            "the supplied entity_ids). NO prose."
-        )
-        user_prompt = (
-            "question: " + question + "\n"
-            "entity_ids: " + str(entity_ids or [])
-        )
-        raw = await client.complete(system=system_prompt, user=user_prompt)
-        import json as _json
-        try:
-            return _json.loads(raw)
-        except (ValueError, TypeError):
-            return None
-
-    @staticmethod
-    def _audit_llm_traversal_output(
-        llm_output: Dict[str, Any],
-        audit_entity_ids: List[str],
-    ) -> bool:
-        """ (follow-up #3): 3-heuristic audit-faithfulness check
-        adapted from the full system shape, applied to LLM-emitted
-        traversal config.
-
-        Heuristics (all 3 must pass):
-            (1) Substring: every entity_id in llm_output['start_nodes'] must
-                appear as a substring of some entry in audit_entity_ids.
-            (2) Capitalized-token: capitalized tokens in start_nodes must
-                appear in audit_entity_ids (no novel capitalized identifiers).
-            (3) Coverage: at least one audit_entity_ids entry must appear in
-                start_nodes when audit_entity_ids is non-empty.
-
-        Returns True iff all 3 pass.
-        """
-        start_nodes = llm_output.get("start_nodes")
-        if not isinstance(start_nodes, list):
-            return False
-
-        # (1) Substring check.
-        audit_blob = " ".join(audit_entity_ids)
-        for node in start_nodes:
-            if not isinstance(node, str):
-                return False
-            if audit_entity_ids and node not in audit_blob:
-                return False
-
-        # (2) Capitalized-token check.
-        import re as _re
-        cap_pattern = _re.compile(r"\b[A-Z][A-Za-z0-9]*\b")
-        audit_caps = set()
-        for eid in audit_entity_ids:
-            audit_caps.update(cap_pattern.findall(eid))
-        for node in start_nodes:
-            for tok in cap_pattern.findall(node):
-                if tok not in audit_caps:
-                    return False
-
-        # (3) Coverage check (only when audit_entity_ids is non-empty).
-        if audit_entity_ids and not any(eid in start_nodes for eid in audit_entity_ids):
-            return False
-
-        return True
-
-    @staticmethod
-    def _parse_llm_json_to_traversal_request(
-        llm_output: Dict[str, Any],
-        entity_ids: Optional[List[str]],
-    ) -> Optional[TraversalRequest]:
-        """parse audit-passed LLM JSON to TraversalRequest. Returns
-        None if any required field is missing or has invalid value.
-        """
-        direction_str = llm_output.get("direction")
-        value_mode_str = llm_output.get("value_mode")
-        start_nodes = llm_output.get("start_nodes")
-
-        try:
-            direction = TraversalDirection(direction_str)
-            value_mode = ValueMode(value_mode_str)
-        except (ValueError, TypeError):
-            return None
-
-        if not isinstance(start_nodes, list):
-            return None
-
-        try:
-            return TraversalRequest(
-                start_nodes=start_nodes if start_nodes else (entity_ids or []),
-                direction=direction,
-                value_mode=value_mode,
-                max_hops=4,
-                min_probability=0.05,
-            )
-        except (TypeError, ValueError):
-            return None
+    # THE LLM FALLBACK IS NOT PART OF THIS CLASS ANY MORE, AND NOT PART OF
+    # THE PUBLISHED ENGINE. Shipped, its env gate was inert and silent: the
+    # path it enabled imports `shared.llm`, which the distribution does not
+    # carry, and the failure was swallowed -- so `true` and `false` both
+    # returned None, with no error and no log. Enabling the feature and
+    # leaving it off were indistinguishable.
+    #
+    # It now lives in the full system, which is held
+    # back from the distribution, and takes the translator as its first
+    # argument. `translate()` below is deterministic and needs no client.
 
 
 # ---------------------------------------------------------------------------
@@ -1299,12 +1128,13 @@ class NLTraversalTranslator3Tier:
 
         # Rule-based unmapped: Tier 2 candidate presentation as fallback
         # (instead of silent LLM-only fallback) Decision Why #3.
-        # Caller may bypass to LLM via translate_with_llm_fallback() if
-        # desired; the 3-tier shape's default is candidate-presentation.
+        # A caller inside the orchestrator may bypass to the LLM via
+        # the full system, which is not shipped; the
+        # 3-tier shape's default is candidate-presentation either way.
         return NLTranslationResult(
             tier=2,
             nl_text=nl_text,
-            tier2_candidates=[],  # caller fills via LLM if NL_LLM_FALLBACK_ENABLED
+            tier2_candidates=[],  # an orchestrator caller may fill these; not shipped
             tier2_pick_hint=(
                 "Rule-based 7-pattern path did not match. NL prompt is "
                 "ambiguous. Operator: please rephrase with one of the "

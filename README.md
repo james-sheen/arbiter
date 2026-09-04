@@ -224,10 +224,12 @@ document tells them not to depend on.
 
 `examples/water_tank.yaml` is a deliberately synthetic two-tank water system that **declares all
 eight axioms in one file**, so it doubles as the schema reference. It is not one of the curated
-domain models, which are not published — and neither `kubernetes_node.yaml` nor `battery_pack.yaml`
-is one of those either, though all three ship here — and reading it is
-the fastest way to learn the shape. `kubernetes_node.yaml` and `battery_pack.yaml` are the same kind
-of thing on domains where a floor and a band carry the weight.
+domain models, which are not published — and neither `kubernetes_node.yaml`, `battery_pack.yaml`
+nor `factory_line.yaml` is one of those either, though every one of them ships here — and reading it
+is the fastest way to learn the shape. `kubernetes_node.yaml` and `battery_pack.yaml` are the same
+kind of thing on domains where a floor and a band carry the weight. `factory_line.yaml` is a
+manufacturing cell, and it is the one whose vocabulary shares no nouns with the engine's own; it is
+also where you can see why a fleet of near-identical units ends up with one entity type per unit.
 
 **Dependencies are two, and that was measured rather than assumed.** `numpy` and `pyyaml` are
 required. `scipy` and `rdflib` are extras (`[confidence]`, `[rdf]`) because they are reached only
@@ -304,8 +306,8 @@ and not part of the eleven.
 The engine is open. The knowledge and the operations are not.
 
 - **Domain models.** The engine reads them; the curated packs are not published. The mechanism is
-  the contribution — the models are the accumulated work. The three files in `examples/` are
-  synthetic teaching models, deliberately not among them.
+  the contribution — the models are the accumulated work. Everything in `examples/` is a synthetic
+  teaching model, deliberately not among them.
 - **The operator half.** Clinic, planning, the Kubernetes executor, the introspection layer. These
   are welded to a running deployment and are not v0.1.
 - **Two lazy imports reach outside the cut, and they behave differently.** One root-cause wiring
@@ -335,7 +337,7 @@ Honest boundaries, stated because you would otherwise find them yourself:
 
 - **PREDICT is plumbed but unfed.** The traversal mode exists and nothing produces projected values
   outside a test. It is not a working forecast.
-- **Three worked examples ship, not a library of them.** Modelling a real system is your work.
+- **Four worked examples ship, not a library of them.** Modelling a real system is your work.
 - Stage I and Stage II of this project are **archived, not running**. Anything describing them as
   production is out of date.
 
@@ -398,9 +400,10 @@ python3 -m arbiter_engine.scripts.benchmark_check --sizes 10,100,1000 --model-si
 | [`COMPATIBILITY.md`](COMPATIBILITY.md) | what a patch release may change, and what waits |
 | [`schema/envelope.schema.json`](schema/envelope.schema.json) | the response shape, machine-readable |
 
-Three worked models ship in `examples/`: `water_tank.yaml` declares all eight axioms and doubles as
-the schema reference, `kubernetes_node.yaml` is the smallest domain where a band matters, and
-`battery_pack.yaml` is one where nearly every bound is a floor somebody published.
+Four worked models ship in `examples/`: `water_tank.yaml` declares all eight axioms and doubles as
+the schema reference, `kubernetes_node.yaml` is the smallest domain where a band matters,
+`battery_pack.yaml` is one where nearly every bound is a floor somebody published, and
+`factory_line.yaml` is a manufacturing cell whose vocabulary shares no nouns with the other three.
 
 **Built on this engine**: [`bmc-sensor-audit`](https://github.com/james-sheen/bmc-sensor-audit)
 audits firmware sensor coverage; [`fleet-sensor-baseline`](https://github.com/james-sheen/fleet-sensor-baseline)

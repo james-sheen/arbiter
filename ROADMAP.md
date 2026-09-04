@@ -18,7 +18,7 @@ This section read *"Next — open the engine. The current work is extracting..."
 
 ## Published to an index — landed August 2026
 
-`arbiter-engine` installs from PyPI with `pip install arbiter-engine`, and three worked domain models ship in `examples/`.
+`arbiter-engine` installs from PyPI with `pip install arbiter-engine`, and four worked domain models ship in `examples/`.
 
 Until 2026-08-24 this file carried both of these under a *Next* heading — it denied the package was on any index, and it counted the examples at one. Both were false when they were read: the package had been on the index since 0.1.0, and the third example shipped alongside it. The corrections are dated rather than made quietly, because this is the second time this file has described a shipped thing as forthcoming — the section above records the first — and the pattern matters more than either instance.
 

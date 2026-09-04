@@ -20,6 +20,12 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+Nothing yet.
+
+---
+
+## [0.1.11] — 2026-09-04
+
 ### Added
 
 - **`dropped_declarations`**, on `check`: the values this engine read out of your
@@ -44,6 +50,12 @@ useful-looking document and the less trustworthy one.
   REJECTED, not fields whose consuming axiom was never declared. Reported from
   outside, in a verification of the released 0.1.10 artifact.
 
+- **A fourth worked model, `examples/factory_line.yaml`** — a discrete
+  manufacturing cell. It is the first example whose vocabulary shares no nouns
+  with the others, and it shows why a fleet of near-identical units ends up
+  with one entity type per unit: a declared `BOUNDEDNESS` threshold lives on
+  the entity type, and the per-entity override does not reach it.
+
 ### Changed
 
 - **`RESPONSIVENESS` declines instead of passing when no deadline is declared.**
@@ -52,6 +64,15 @@ useful-looking document and the less trustworthy one.
   envelope was byte-identical to a check that ran and held, which is the one
   distinction this engine exists to make. It now reports `no_threshold`, and the
   `detail` names the keys to write.
+
+- **A `RESPONSIVENESS` threshold of zero is no longer read as absent.** A
+  declared `critical: 0` -- *any latency is a breach* -- was compared with a
+  falsy test, so it was skipped and the check reported clean at every reading.
+  Unusual but legal, and anyone who declared one has had clean envelopes for as
+  long as the axiom has existed. Both arms now test for absence explicitly.
+  Reported from outside, in a verification of the released 0.1.10 artifact; it
+  was fixed in the same commit as the entry above and, until this line, had no
+  sentence of its own.
 
 - **`MONOTONICITY`'s rate arm declines instead of judging against a default.**
   `rate_warning:` and `rate_critical:` carried engine-chosen defaults of 0.1 and
@@ -65,6 +86,16 @@ a different answer on an unchanged model. Two downstream programs were measured
 against these before release and moved differently — one from clean to findings,
 one from clean to could-not-complete. Decide what `no_threshold` means to yours
 before you upgrade.
+
+### Removed
+
+- **The natural-language LLM fallback is no longer in this distribution.**
+  `NLTraversalTranslator` carried an `NL_LLM_FALLBACK_ENABLED` env gate whose
+  path imported a module the package does not ship, and the failure was
+  swallowed -- so setting it true and leaving it false were indistinguishable:
+  no error, no log, no difference. A feature that cannot report its own absence
+  is worse than one that is missing. The deterministic `translate()` is
+  unchanged and needs no client; `TopologyTraverser` is untouched.
 
 ---
 
