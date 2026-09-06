@@ -119,7 +119,7 @@ class TestTheHelperSeesAStateSeries:
         stored apart from them, so without the fallback the state arm of
         STABILITY would report `total_observations: 0` about a property with a
         full history -- a wrong number where none was the honest answer."""
-        from datetime import datetime, timedelta
+        from datetime import datetime, timedelta, timezone
 
         from arbiter_engine.interfaces import (
             Observation, sampling_context,
@@ -128,7 +128,11 @@ class TestTheHelperSeesAStateSeries:
             InMemoryObservationHistory,
         )
         history = InMemoryObservationHistory()
-        base = datetime.utcnow() - timedelta(hours=3)
+        # Timezone-aware, and not a style choice: `utcnow()` is deprecated from
+        # 3.12 and this suite runs with warnings as errors, so it passed on the
+        # one interpreter it was written against and failed on the other two the
+        # matrix runs. The sibling tests already build timestamps this way.
+        base = datetime.now(timezone.utc) - timedelta(hours=3)
         for i in range(4):
             history.add_observation(Observation(
                 entity_id="e1", entity_type="T", property_name="phase",
