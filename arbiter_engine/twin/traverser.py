@@ -187,9 +187,7 @@ class TopologyTraverser:
                     result.questions_generated.append(TopologyQuestion(
                         gap=gap,
                         question_text=gap.question,
-                        priority=self._compute_priority(
-                            gap, hop, cum_prob
-                        ),
+                        priority=self._compute_priority(gap, hop),
                         context_path=list(path),
                     ))
                 continue
@@ -289,9 +287,7 @@ class TopologyTraverser:
                         result.questions_generated.append(TopologyQuestion(
                             gap=gap,
                             question_text=gap.question,
-                            priority=self._compute_priority(
-                                gap, hop + 1, new_prob
-                            ),
+                            priority=self._compute_priority(gap, hop + 1),
                             context_path=path + [next_id],
                         ))
                     continue
@@ -722,10 +718,28 @@ class TopologyTraverser:
                     ))
         return problems, attempted
 
-    def _compute_priority(
-        self, gap: TopologyGap, hop: int, probability: float,
-    ) -> float:
-        """Higher = more blocking."""
+    def _compute_priority(self, gap: TopologyGap, hop: int) -> float:
+        """Higher = more blocking.
+
+        **`probability` was a third factor here and is gone.** It was the edge's
+        `propagation_probability` -- fault-propagation dynamics, sitting in the
+        model beside `propagation_delay_s` and `time_constant_s` -- multiplied
+        into the priority of a DISCOVERY question. Those are different
+        questions: a dangling reference is worth the same to ask about whether
+        or not disturbances travel strongly along the edge that led you to it.
+
+        It made the ranking incoherent rather than merely odd. The default
+        probability is 0.3, so a gap two hops out was scaled by 0.09 on top of
+        the hop decay, and measured, a MISSING_NODE -- the highest weight in the
+        table, because it means the topology itself is wrong -- came out at 0.03
+        and sorted below every structural gap in the same list. `gaps` documents
+        itself as priority-ranked, and with two populations on two scales it was
+        not one.
+
+        What is left is one meaning: **the type's weight, decayed by how far the
+        walk had to go to find it.** A structural gap has no hops and is scored
+        at hop zero, so both populations sit on this scale by construction.
+        """
         hop_factor = 1.0 / (1 + hop)
         type_weight = {
             GapType.MISSING_NODE: 1.0,
@@ -739,7 +753,10 @@ class TopologyTraverser:
             # collecting more data.
             GapType.MISSING_DECLARATION: 0.7,
         }
-        return hop_factor * probability * type_weight.get(gap.gap_type, 0.5)
+        # Rounded because this is a ranking key, not a measurement: a raw
+        # third of one is `0.3333333333333333` in published JSON, and three
+        # places separate every pair the table can produce.
+        return round(hop_factor * type_weight.get(gap.gap_type, 0.5), 3)
 
     def _check_flow_balance(self, cycle_path: List[str]) -> List[Problem]:
         """Verify conservation around a flow cycle, from DECLARED directions.

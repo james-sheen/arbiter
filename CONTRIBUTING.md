@@ -40,9 +40,11 @@ do about it, that is worth an issue on its own — the reason is supposed to be
 actionable, and if it is not then the vocabulary or the documentation is wrong.
 
 Two reasons account for most surprises. `insufficient_samples` reports both the
-count it had and the count it needed. `not_applicable` means a checker decided
-the axiom does not apply at all, and some of them decide that by reading the
-indicator's name — a rough edge rather than a rule you should have to infer.
+count it had and the count it needed. `missing_role` means `CONSISTENCY` or
+`RESPONSIVENESS` had no `role:` to work from: those axioms apply to a KIND of
+quantity, the model is the only thing that says which, and **the engine does not
+read one from the indicator's name.** It says so on the decline and again at load
+time. Declare the role rather than renaming the indicator.
 
 ## Sign-off
 

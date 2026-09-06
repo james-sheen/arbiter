@@ -22,6 +22,7 @@ from datetime import timedelta
 from typing import List, Optional
 
 from ...interfaces import (
+    sampling_context,
     Entity,
     Problem,
     RelationshipGraph,
@@ -144,6 +145,15 @@ class ConservationChecker:
                 detail=f"no observations of input property {input_prop}",
                 observations_count=len(input_values),
                 required_count=self.params.conservation_min_samples,
+                # Ask D. The count alone reads as *collect more*, which can be
+                # false: this window is `conservation_window_seconds`, not the
+                # indicator's `window:`, so a series sampled sparser than the
+                # accounting window reports `0 of N` forever. Named against
+                # `input_prop` rather than `indicator.property_name` -- the
+                # input series is the one being counted, and reporting the
+                # interval of a different property would be a precise wrong
+                # answer.
+                **sampling_context(history, entity.id, input_prop, window),
             )
 
         total_input = sum(v[1] for v in input_values if v[1] is not None)

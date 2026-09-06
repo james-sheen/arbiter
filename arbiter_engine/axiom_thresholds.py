@@ -111,17 +111,23 @@ OVERRIDE_CONSULTED_BY = {
 
 #: Axioms that CALL the resolver on a path the engine's own entry points never
 #: reach. An override for these is accepted, stored, and never read.
-OVERRIDE_DECLARED_BUT_UNREACHABLE = {
-    "BOUNDEDNESS": (
-        "the call is inside `check_capacity_ratio`, a used/limit method that "
-        "nothing in the package invokes — only its own tests do, which is why "
-        "it reads as covered"
-    ),
-}
+OVERRIDE_DECLARED_BUT_UNREACHABLE: dict = {}
+#:, executed. Its one entry was BOUNDEDNESS, whose only call to the
+#: resolver sat inside `check_capacity_ratio` -- a used/limit method nothing in
+#: the package invoked, so a per-entity override was accepted and ignored. The
+#: ruling deleted the method rather than wiring it: wiring means designing a
+#: declaration channel, a loader change, documentation and tests for a
+#: capability no consumer has asked for, which is far harder to withdraw than a
+#: method is to restore.
+#:
+#: **The constant stays, empty, and that is the point.** An empty group is a
+#: checkable claim that no axiom is in this state; deleting it would turn the
+#: claim into an absence, and the partition test covering all eight axioms
+#: would have nothing to cover the gap with.
 
 #: Axioms with no override lookup anywhere. Listed so the set is closed and a
 #: reader can tell "not supported" from "we did not check".
-OVERRIDE_NOT_CONSULTED = ("CONNECTIVITY", "CONSISTENCY")
+OVERRIDE_NOT_CONSULTED = ("BOUNDEDNESS", "CONNECTIVITY", "CONSISTENCY")
 
 
 def resolve_axiom_threshold(

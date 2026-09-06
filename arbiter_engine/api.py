@@ -424,6 +424,22 @@ def model_describe(session: EngineSession) -> Envelope:
                 # and reading a decline. `role` is what moves a pair between
                 # them for the two role-gated axioms.
                 "role": getattr(s, "role", None),
+                # The declared state vocabulary, for STATE indicators that
+                # carry one. `bad:` now decides a finding; `normal:` decides
+                # nothing and is reported here, because a key a model may
+                # declare and no surface will show back is how `bad:` came to
+                # sit unread for as long as it did. Absent entirely on
+                # indicators that declare neither, rather than reported empty:
+                # an empty list here would read as a vocabulary that was
+                # declared and came out empty.
+                **({"states": {k: v for k, v in (
+                        ("normal", list(getattr(s, "normal_states", None) or ())),
+                        ("problematic", list(getattr(s, "problematic_states", None) or ())),
+                        ("transient", list(getattr(s, "transient_states", None) or ())),
+                    ) if v}}
+                   if (getattr(s, "normal_states", None)
+                       or getattr(s, "problematic_states", None)
+                       or getattr(s, "transient_states", None)) else {}),
                 "unreachable_axioms": [
                     getattr(a, "value", str(a))
                     for a in _unreachable_axioms(s)],
@@ -749,7 +765,22 @@ def gaps(session: EngineSession,
         seen[key] = TopologyQuestion(
             gap=gap,
             question_text=gap.question,
-            priority=0.5,
+            # Ask E. This was a flat 0.5, and `gaps` documents itself as
+            # priority-ranked -- so the two populations it merges were on
+            # different scales and the ranking was not one. Measured on one
+            # topology: seven structural gaps all at exactly 0.5, with the type
+            # weights (a missing EDGE outranks a missing PROPERTY) applying to
+            # none of them, and a dangling edge -- MISSING_NODE, the highest
+            # weight in the table because it means the topology itself is wrong
+            # -- sorting LAST at 0.03 because it was found several hops from
+            # where the walk began.
+            #
+            # A structural gap has no hops: the builder found it AT the entity.
+            # So it is scored the way a traversal gap at hop zero is scored, by
+            # the same method, and the two populations become comparable --
+            # `type weight` here, `type weight decayed by distance` there. One
+            # source for the weights rather than a constant beside them.
+            priority=traverser._compute_priority(gap, 0),
             context_path=[],
             suggested_resolvers=[gap.suggested_strategy],
         )

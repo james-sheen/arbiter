@@ -36,15 +36,13 @@ from ...interfaces import (
 from ...types import (
     Axiom, Severity, AxiomParameters, DetectionLayer, NotEvaluatedReason,
 )
-# — call resolve_axiom_threshold at calibration-relevant
-# read-sites so per-sample entity-property overrides win over
-# global AxiomParameters fallback during v2 perturbation runs. Non-
-# calibration reads (trend_min_r2, time_to_critical_hours) stay as
-# global params — those are operator-tuning knobs, not per-axiom-per-
-# entity calibration thresholds.
-from ...axiom_thresholds import (
-    resolve_axiom_threshold,
-)
+# the import went with `check_capacity_ratio`. That method
+# held this checker's ONLY call to `resolve_axiom_threshold`, and nothing in
+# the package invoked the method, so a per-entity BOUNDEDNESS override was
+# accepted and ignored. The published constant said so; the ruling was to
+# delete rather than to wire, because wiring means designing a declaration
+# channel for a capability no consumer has asked for. BOUNDEDNESS now sits in
+# `OVERRIDE_NOT_CONSULTED`, which is a true statement rather than a promise.
 
 logger = logging.getLogger(__name__)
 
@@ -493,82 +491,3 @@ class BoundednessChecker:
                 observations_count=len(values),
             )
         return result
-
-    def check_capacity_ratio(
-        self,
-        entity: Entity,
-        used_property: str,
-        limit_property: str
-    ) -> List[Problem]:
-        """
-        Check capacity ratio (used/limit).
-
-        Useful for resources like CPU, memory, disk.
-        """
-        problems = []
-
-        used = entity.get_property(used_property)
-        limit = entity.get_property(limit_property)
-
-        if used is None or limit is None:
-            return problems
-
-        try:
-            used = float(used)
-            limit = float(limit)
-        except (TypeError, ValueError):
-            return problems
-
-        if limit <= 0:
-            return problems
-
-        ratio = used / limit
-
-        # resolve per-entity-axiom override (sentinel key)
-        # before falling back to global AxiomParameters. ``used_property``
-        # serves as the indicator name in the (entity, indicator, axiom)
-        # lookup tuple. When no override is present, behavior is identical
-        # to previously — fallback unwrapped is the global params scalar.
-        warn_ratio, critical_ratio = resolve_axiom_threshold(
-            entity, used_property, "BOUNDEDNESS",
-            fallback=(
-                self.params.boundedness_warning_ratio,
-                self.params.boundedness_critical_ratio,
-            ),
-            bound="both",
-        )
-
-        if ratio >= critical_ratio:
-            problems.append(Problem.from_entity(
-                entity=entity,
-                problem_type='capacity_exhausted',
-                severity=Severity.CRITICAL,
-                reason=f"Capacity near exhaustion ({ratio*100:.1f}%)",
-                axiom=Axiom.BOUNDEDNESS,
-                source_layer=DetectionLayer.ONTOLOGY,
-                evidence={
-                    'used': used,
-                    'limit': limit,
-                    'ratio': ratio,
-                    'threshold': critical_ratio,
-                },
-                confidence=1.0,
-            ))
-        elif ratio >= warn_ratio:
-            problems.append(Problem.from_entity(
-                entity=entity,
-                problem_type='capacity_warning',
-                severity=Severity.WARNING,
-                reason=f"Capacity at {ratio*100:.1f}%",
-                axiom=Axiom.BOUNDEDNESS,
-                source_layer=DetectionLayer.ONTOLOGY,
-                evidence={
-                    'used': used,
-                    'limit': limit,
-                    'ratio': ratio,
-                    'threshold': warn_ratio,
-                },
-                confidence=1.0,
-            ))
-
-        return problems

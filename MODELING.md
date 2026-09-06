@@ -53,7 +53,14 @@ of their own — `conservation:` and `monotonicity:` appear below — and two of
 `role:` rather than guessing the kind of quantity from the name.
 
 **Two declarations exist because a name cannot carry the fact, and both are places a derivation is
-tempting.** `consistency: {agrees_with: [...]}` says two readings are redundant and must match.
+tempting.** `consistency: {agrees_with: [...]}` says two readings are redundant and must match,
+**within a tolerance you declare**: `tolerance:` is relative and `tolerance_absolute:` is in the
+reading's own units. **One of them is required.** Neither is guessed, for the same reason a setpoint
+without a tolerance does not get one: how far apart two readings may be before they disagree is a
+fact about your system, and an engine that supplied it would be answering a domain question. Declare
+neither and the pair declines `missing_config` naming the block to write, while every other rule on
+that indicator goes on reporting. `tolerance_absolute: 0` is the right declaration for two statements
+of one number that must be identical.
 Redundancy is a claim about the system, not an inference from naming: two channels of one part are
 the tempting pair and often the wrong one, because a temperature sensor exposing `Name` and `Name1`
 may be reporting its own die and an external diode, which differ by tens of degrees on a healthy
@@ -128,6 +135,104 @@ narrow it too far and fewer samples fall inside than the check needs, and it dec
 `insufficient_samples` instead of answering. Pick the span from how quickly a dead probe has to be
 noticed, then check the collection cadence still fills it — the two numbers are a pair, and a window
 chosen without the cadence beside it lands on one side or the other.
+
+**STABILITY's oscillation arm is period-2 by construction, and the slower kind is a second, declared
+question.** The shipped detector asks whether each value is close to the one two back and far from
+the one before — A-B-A-B. A quantity hunting on a four-, six- or eight-sample period scores exactly
+zero there and reads as maximally stable, which is a detector correctly answering the question it
+was built to answer. Declare `stability: {detect_slow_oscillation: true}` to ask the other one. It
+counts zero-crossings about the mean inside the window and reports the period it measured — *cycling
+on a period of about nine samples* is a sentence you can check against your own graph, which a
+dominant bin in a periodogram is not.
+
+**Declared rather than inferred, for the same reason `expect_variation` is.** A day/night thermal
+swing, a duty-cycled compressor and a batch process are all correctly periodic, and a checker that
+turned this on by itself would report the normal operation of every one of them. Two optional keys
+tune it: `min_amplitude` (default `0.05`, relative to the largest absolute value in the window, so
+one declaration works for a temperature in Kelvin and a ratio in zero-to-one) and `min_crossings`
+(default `4`). Below six samples the arm returns without reporting, because the period-2 arm above
+has already declined on a starved input and two records for one evaluation would break the
+denominator the envelope rests on.
+
+**A STATE indicator declares its vocabulary, and one half of it is checked.**
+`type: STATE` reads a categorical value rather than a number, and takes two lists:
+
+```yaml
+- name: phase
+  type: STATE
+  axioms: [STABILITY]
+  normal: [Running]
+  bad: [Failed, Unknown]
+```
+
+A current value in `bad:` is a finding -- `declared_bad_state`, at HIGH. **A value in
+neither list is not.** That asymmetry is deliberate and the shipped models are the argument
+for it: the vocabulary above leaves `Pending` and `Succeeded` in neither list, and both are
+ordinary. A rule firing on *not in `normal:`* would report every state a model did not
+happen to enumerate, which is noise on the majority to catch a case nobody has met.
+
+**So `normal:` decides nothing, and is reported rather than checked.** It appears in
+`model_describe` under `states`, and in the finding's evidence beside the state that fired,
+where it says what the model considered healthy. It is documentation the engine carries
+rather than a rule the engine applies -- and it is worth declaring for exactly that reason,
+because the next person to read your model learns the intended vocabulary from it.
+
+## Relationship indicators, and how a CONNECTIVITY check is declared
+
+Everything above measures a quantity. **CONNECTIVITY measures a shape**, and it is declared
+differently: `type: RELATIONSHIP`, no thresholds, and a small vocabulary of its own. This
+section exists because the axiom table below has listed CONNECTIVITY since the first version
+of this document while the format for declaring one appeared only in `water_tank.yaml` --
+so the only way to write one was to find the example and copy it, which is how a model
+shipped with a cardinality floor and no ceiling.
+
+```yaml
+- name: feeds_a_tank
+  type: RELATIONSHIP
+  axioms: [CONNECTIVITY]
+  target_type: Tank          # the entity type at the far end
+  relation_type: feeds       # the edge type, from `relationship_types:`
+  min_cardinality: 1         # fewer than this is a finding
+  max_cardinality: 2         # more than this is a finding
+  violation_severity: HIGH   # see below: this reaches ONE of three findings
+```
+
+**`target_type` and `relation_type` are both required, and they are different questions.**
+`relation_type` names the edge; `target_type` names what must be at the other end of it. An
+edge of the right type pointing at an entity of the wrong type does not count toward
+cardinality, and neither does an edge pointing at an id nothing declared -- **crediting a
+dangling reference toward a floor is how a phantom topology passes.** Omit `relation_type`
+and the indicator's own `name` is used, which is convenient and worth declaring anyway: the
+name is documentation and the edge type is a fact about the graph.
+
+**Declaring neither cardinality is legal and checks nothing.** The invariant is whatever you
+declare; an indicator with a `relation_type` and no bounds records that a relationship exists
+in the model, and evaluates to nothing.
+
+**Three findings come out of this one indicator, and `violation_severity` reaches one.**
+
+| finding | when | severity |
+|---|---|---|
+| `missing_relationship` | resolved edges are below `min_cardinality` | the declared `violation_severity` |
+| `excess_relationships` | resolved edges are above `max_cardinality` | `MEDIUM` |
+| `dangling_relationship` | an edge points at an id no entity claims | `MEDIUM` |
+
+The two fixed at `MEDIUM` are a deliberate distinction rather than an oversight: a missing
+edge is a fault in the system, and an excess or dangling one is a complaint about the model.
+**Stated here because a declaration that appears to set a severity, and sets it for one of
+three findings, is otherwise something you discover from a report you did not expect.**
+
+**`required_property` gates the check on the population, not on the entity.** Give it a
+property name, and the cardinality check runs only if **some** entity of this indicator's own
+type carries that property. If none does, the check declines `missing_property` and says so,
+rather than reporting every entity as missing a relationship.
+
+The reason is worth the sentence, because it is the difference between a real finding and a
+denominator that lies. A model naming a property nothing carries has either a typo or a
+population that has not been observed yet, and neither is a cardinality violation. Asked of
+one entity the two cases are identical; asked of the population they separate -- **a name the
+model supplies resolves on somebody, and a typo resolves nowhere.** Presence of the key is
+what counts, not its value: an entity carrying an empty one still carries it.
 
 ## The eight axioms
 

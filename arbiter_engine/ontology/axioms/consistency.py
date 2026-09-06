@@ -101,11 +101,15 @@ class ConsistencyChecker:
                 observations_count=seen or None,
             )
 
-        # which universal rules apply is a DECLARED role now, and the
-        # token rule is the fallback when no role is declared. A model
-        # saying `role: ratio` gets the ratio rule on an indicator called
-        # `product_temp_c_redundant`; before, only a name tokenising to the
-        # word `ratio` could reach it.
+        # which universal rules apply is a DECLARED role, and
+        # removed the token rule that used to stand in when none was
+        # declared. This comment went on calling that rule *the fallback* after
+        # it was deleted, which is the shape exactly: prose describing a
+        # mechanism outliving the mechanism, in the checker it misdescribes, and
+        # shipped in the wheel. With no `role:` the axiom declines `missing_role`
+        # and reads nothing from the name. A model saying `role: ratio` gets the
+        # ratio rule on an indicator called `product_temp_c_redundant`; before,
+        # only a name tokenising to the word `ratio` could reach it.
         applicable, matched_roles, role_source = roles.applies(
             Axiom.CONSISTENCY, indicator)
 
@@ -149,10 +153,15 @@ class ConsistencyChecker:
         # `apply_property_confidence` with everything else; a decline emitted on
         # a separate path is how return-shape drift starts.
         if agreement_declined is not None:
+            # The reason travels with the detail. It was hardcoded
+            # MISSING_PROPERTY when a missing peer was the only way this arm
+            # could decline; a second way arrived and a hardcoded reason would
+            # have reported the wrong remedy with full confidence.
+            declined_reason, declined_detail = agreement_declined
             return CheckOutcome(result).declined(
                 Axiom.CONSISTENCY, entity, indicator.name,
-                NotEvaluatedReason.MISSING_PROPERTY,
-                detail=agreement_declined,
+                declined_reason,
+                detail=declined_detail,
             )
 
         # every rule here is keyed on the indicator NAME tokenising to
@@ -186,7 +195,7 @@ class ConsistencyChecker:
     ) -> tuple:
         """compare this reading against the peers it must agree with.
 
-        Returns ``(problems, decline_detail_or_None)``.
+        Returns ``(problems, (reason, detail) or None)``.
 
         ``agrees_with`` names PROPERTIES, matching
         ``conservation.output_properties``. A checker holds an ``IndicatorSpec``
@@ -214,7 +223,26 @@ class ConsistencyChecker:
         tolerance = config.get("tolerance")
         absolute = config.get("tolerance_absolute")
         if tolerance is None and absolute is None:
-            tolerance = self.params.consistency_agreement_tolerance
+            # This used to fall back to a global 5% and answer. How far apart
+            # two readings may be before they disagree is a fact about the
+            # modelled system, and 5% is a wide silence wherever the numbers
+            # are money, counts of record, or a measurement and its check: a
+            # blind run put two statements of one contract total 1.9% apart --
+            # ninety thousand on four point eight million -- and this arm
+            # answered *they agree*, with no finding and no decline to read.
+            #
+            # The format already refuses this move one axiom over: a
+            # HOMEOSTASIS setpoint without a tolerance does not get a guessed
+            # one, it abandons the setpoint path and says so. COMPATIBILITY.md
+            # permits a patch to make a check DECLINE where it previously
+            # answered from a guess, when the guess was unsound.
+            return [], (
+                NotEvaluatedReason.MISSING_CONFIG,
+                f"declared redundant with "
+                f"{', '.join(str(p) for p in peers) or 'a peer'} and no "
+                f"tolerance was declared; how close two readings must be is a "
+                f"fact about the system, so declare `tolerance:` (relative) or "
+                f"`tolerance_absolute:` in the `consistency:` block")
 
         try:
             reading = float(value)
@@ -280,6 +308,7 @@ class ConsistencyChecker:
             # silence this engine exists to refuse, and `two of three agreed`
             # is not an answer about the third.
             return problems, (
+                NotEvaluatedReason.MISSING_PROPERTY,
                 f"declared redundant with {', '.join(missing)}, which this "
                 f"entity does not carry as a numeric property; agreement "
                 f"cannot be judged against a reading that is not there")

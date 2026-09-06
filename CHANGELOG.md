@@ -20,7 +20,197 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **A state the model declares as bad is now a finding.** `bad:` on a STATE
+  indicator loaded, landed on the spec, and was read by nothing: a model saying
+  `bad: [Failed]` about an entity whose phase was `Failed` produced an envelope
+  byte-identical to declaring nothing. Not a decline, not a dropped declaration --
+  silence, from a key the loader accepts. STABILITY now reports
+  `declared_bad_state` at HIGH when the current value is in the declared set.
+
+  **This is the policy's fire-where-it-was-silent case and is listed here for that
+  reason.** Any model already declaring `bad:` on a STATE indicator whose entities
+  are in one of those states will see findings it did not see before. Eleven such
+  declarations across three shipped domain files.
+
+  **Removing the key was the other candidate and the measurement ruled it out:**
+  twenty-nine STATE indicators across six domain files, so the vocabulary is in
+  use and means what it says.
+
+  **`normal:` is deliberately NOT checked against.** A value in neither list is not
+  a fault -- the shipped pod-phase vocabulary leaves `Pending` and `Succeeded` in
+  neither and both are ordinary -- so a rule firing on *not in normal* would be
+  noise on the majority. It is reported instead: `model_describe` gains a `states`
+  key on indicators that declare one, and the finding's evidence carries it beside
+  the state that fired.
+
+### Changed
+
+- **`gaps` is priority-ranked on one scale, and was not before.** It merges two
+  populations: structural gaps the builder finds at the entity, and gaps a walk
+  discovers. Structural ones carried a flat `0.5`, so the type weights applied to
+  none of them -- a missing edge and a missing property ranked identically.
+  Traversal ones were multiplied by the edge's `propagation_probability`, which is
+  fault-propagation dynamics and defaults to `0.3`.
+
+  **Measured, a `missing_node` two hops out scored `0.03` and sorted last**, below
+  every structural gap, while carrying the highest weight in the table -- the type
+  that says the topology itself is wrong.
+
+  A discovery question is not a fault forecast: how much it is worth asking about a
+  dangling reference does not depend on how strongly disturbances travel the edge
+  that led you to it. That factor is gone. What remains is **the type's weight,
+  decayed by how far the walk went**, and a structural gap is scored at hop zero
+  because that is where it was found. The same dangling reference now scores
+  `0.333`, and `1.0` when it is the start node.
+
+  Values are rounded to three places: this is a ranking key, not a measurement.
+  **The ORDER of `questions` remains outside the compatibility contract** -- sort
+  them yourself if you need determinism -- and these numbers are calibration in the
+  sense `AxiomParameters` defaults are.
+
+  `README.md` and `BRIDGES.md` state this scale; both described the previous
+  one, having been written to document it a few days before it changed.
+
+- **`agrees_with` declines instead of guessing a tolerance.** The block accepts
+  `tolerance:` (relative) or `tolerance_absolute:`. Declared neither, it used to
+  fall back to a global 5% and answer. **Now it declines `missing_config`,** naming
+  the block to write.
+
+  **Five percent is a wide silence** wherever the two numbers are money, counts of
+  record, or a measurement and its check. Measured on a blind run: two statements
+  of one contract total 1.9% apart -- ninety thousand on four point eight million
+  -- and this arm answered *they agree*, with no finding and no decline to read.
+  How close two readings must be is a fact about the modelled system, which is the
+  same reason a HOMEOSTASIS setpoint without a tolerance does not get a guessed one.
+
+  **The policy's decline-where-it-guessed case**, listed here as it requires. What
+  it does not do is go quiet: the cell still counts in `checked.invariants`, and
+  **every other rule on that indicator still runs and still reports** -- a value of
+  150 on a `role: percentage` indicator is still `impossible_value` whatever the
+  agreement arm could not judge. Withdrawing a working check to report a missing
+  one would be the worse trade.
+
+  `AxiomParameters.consistency_agreement_tolerance` is removed with it. That field
+  had exactly one reader and the reader was the guess; left in place it would have
+  been accepted, carried and read by nothing.
+
+- **Every sample-floor decline now says whether the floor can ever be met.**
+  `observations 0 of 10` reads as *collect more data*, and on a series sampled
+  sparser than the window that is permanently wrong. HOMEOSTASIS and MONOTONICITY
+  already carried the window, the total and the median interval;
+  **CONSERVATION and STABILITY declined with the bare counts**, so one starved
+  input produced an interpretable answer or an uninterpretable one depending on
+  which axiom reached it first. Both now carry the full set, and
+  `floor_unreachable_at_this_rate` states the conclusion with a remedy naming both
+  ways out.
+
+  **Each axiom counts against a different window and the decline reports its own.**
+  STABILITY reads the indicator's `window:`; CONSERVATION its own accounting
+  window; HOMEOSTASIS a baseline in days. A window copied from the wrong source
+  would be a precise wrong number, worse than the silence it replaced. CONSERVATION
+  also reports against the INPUT property rather than the indicator's, because the
+  input series is the one being counted.
+
+  **`sampling_context` learned to see a state series.** It reads numeric values
+  first, and STATE observations are stored apart from them -- so the state arm of
+  STABILITY would have reported `total_observations: 0` about a property with a
+  full history. It falls back to the state series rather than reporting a zero.
+
+  Unchanged: the helper still declines to guess. Fewer than two observations
+  yields no interval, and `floor_unreachable_at_this_rate` stays False, which is
+  the right default for a claim about impossibility.
+
+### Documentation
+
+- **The `questions` leg of the envelope, which shipped undocumented.** It is a
+  required member of every envelope and the thing `gaps` exists to fill: what the
+  model is MISSING. The distinction it carries is the one `not_checked` cannot --
+  a decline says the model asked for something this run did not have, and a
+  question says the model never asked.
+
+  **It was named in `schema/envelope.schema.json`, and in one line of
+  COMPATIBILITY.md about ordering, and in no prose in this repository.** The
+  README's envelope section listed three legs where the schema requires five, so
+  a reader learning this engine from its documents could not find the surface at
+  all. It surfaced while someone was drawing up what a new vertical would have to
+  build, and registered a capability that ships as one that was missing -- which
+  is the cost exactly: a shipped surface no document names is indistinguishable
+  from one that does not exist, and the reader who cannot find it pays for it
+  twice, once by not using it and once by building it again.
+
+  `README.md` now names the leg beside the other three and says which verb fills
+  it; `BRIDGES.md` carries what a bridge author does with it. And
+  `tests/test_the_envelope_legs_are_documented.py` derives the required members
+  from the schema and goes red if the README stops naming one, so a fifth leg
+  cannot arrive the same way this one did.
+
+- **How a CONNECTIVITY check is declared.** The axiom table has listed CONNECTIVITY
+  since this guide's first version while the format for declaring one appeared
+  only in `water_tank.yaml`, so the only way to write one was to find the example
+  and copy it. A new *Relationship indicators* section covers `target_type`,
+  `relation_type`, `min_cardinality`, `max_cardinality`, `required_property` and
+  `violation_severity`.
+
+  **Including which of the three findings the declared severity reaches**, which is
+  one of them. `missing_relationship` takes it; `excess_relationships` and
+  `dangling_relationship` are `MEDIUM` by a deliberate distinction -- a missing edge
+  is a fault in the system, an excess or dangling one a complaint about the model.
+  No severity changed; the scope is now stated where an author reads it rather than
+  discovered from an unexpected report.
+
+  **Five further keys the loader accepts remain undocumented on purpose**, each with
+  its reason held in `tests/test_the_indicator_keys_are_documented.py` rather than
+  in a comment: `plausible_range` was withdrawn from the guide deliberately and
+  teaching it again would reopen what that withdrawal closed; `normal` and `bad`
+  are read by nothing in the package; `transient` and `timeout` are read and
+  unreachable, because the check needs a state history the public feeder cannot
+  supply. That test derives the key set from the loader's own
+  `_KNOWN_INDICATOR_KEYS` and fails in both directions -- on a key that is neither
+  documented nor exempt, and on an exempt key the guide starts teaching.
+
+- **The `stability:` block, which a model could declare and the modelling guide
+  did not name.** Five per-axiom configuration blocks load from a domain model.
+  `MODELING.md` documented four. The missing one is the only one that is OFF until
+  declared -- the other four tune a check that runs anyway -- so a model author who
+  could not learn the key could not reach the slow-oscillation detector at all. It
+  shipped that way, working, and a period-8 cycle at 20% amplitude reports
+  correctly the moment the key is written.
+
+  The guide now carries the block, both tuning keys (`min_amplitude`, default 0.05
+  and relative to the window's largest absolute value; `min_crossings`, default 4)
+  and the six-sample floor below which the arm returns without reporting, because
+  the period-2 arm has already declined on a starved input.
+
+  **Guarded against the class rather than the instance.**
+  `tests/test_the_config_blocks_are_documented.py` derives the block set from the
+  indicator spec's own `*_config` fields, checks the guide names each, and
+  separately feeds each derived key through the loader -- so a documented key that
+  loads nothing fails too. Second instance of one shape in a week; the envelope's
+  `questions` leg was the first.
+
+### Removed
+
+- **`BoundednessChecker.check_capacity_ratio`.** The deep import path
+  `arbiter_engine.ontology.axioms.boundedness.BoundednessChecker.check_capacity_ratio`
+  no longer resolves. It computed a used/limit ratio and **nothing in the package
+  called it** -- only its own tests did, which is why it read as covered.
+
+  It held this checker's only call to `resolve_axiom_threshold`, so a per-entity
+  BOUNDEDNESS override was accepted and then ignored. The exported constant
+  `OVERRIDE_DECLARED_BUT_UNREACHABLE` said so, and **that constant is now empty**:
+  BOUNDEDNESS has moved to `OVERRIDE_NOT_CONSULTED`, which is a true statement
+  about the code rather than a promise about it. The constant stays, empty, because
+  an empty group is a checkable claim that no axiom is in that state.
+
+  **Deleted rather than wired, and the reason is the interesting half.** Wiring
+  means designing a declaration channel, a loader change, documentation and tests
+  for a capability no consumer has asked for -- a format addition, far harder to
+  withdraw than a method is to restore. The capability is wanted and is recorded as
+  wanted: a `capacity:` block naming the used and limit properties, declared and
+  never inferred from names. If a domain arrives needing it, that is the design to
+  do, not this method to bring back.
 
 ---
 

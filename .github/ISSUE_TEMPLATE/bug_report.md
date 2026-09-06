@@ -15,12 +15,16 @@ whole story.
 
 Three that account for most surprises:
 
-- **`not_applicable`** — `CONSISTENCY` and `RESPONSIVENESS` apply to a KIND of
-  quantity, and the model says which by declaring `role:` on the indicator. With
-  no `role:`, the engine falls back to reading the name — `count`,
-  `percent`/`pct`, `ratio` for one; `response` or `latency` for the other. If an
-  indicator you expected to be checked was not, declare its role rather than
-  renaming it. The fallback is for models written before the field existed.
+- **`missing_role`** — `CONSISTENCY` and `RESPONSIVENESS` apply to a KIND of
+  quantity, and the model is the only thing that says which: declare `role:` on
+  the indicator. **The engine does not read a role from the indicator's name**,
+  so renaming it will not help — it once did, and two indicators identical in
+  every declared respect were treated differently because of their spelling. If
+  an indicator you expected to be checked was not, this decline names it, and
+  `model_describe()` lists every declaration that cannot fire without running a
+  cycle. The role vocabulary is `count`, `percentage`, `ratio`, `latency`;
+  common spellings of those are accepted (`pct` is `percentage`), but they are
+  spellings of a role you WROTE, not a role read off the property.
 
   **If no role fits your quantity, that is the answer rather than a puzzle.**
   The vocabulary is `count`, `percentage`, `ratio`, `latency`; a temperature is

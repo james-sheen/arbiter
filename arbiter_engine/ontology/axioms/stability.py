@@ -23,6 +23,7 @@ from typing import List, Optional
 
 from ...clock import now_utc
 from ...interfaces import (
+    sampling_context,
     Entity,
     Problem,
     RelationshipGraph,
@@ -122,6 +123,21 @@ class StabilityChecker:
                 entity, indicator, history
             ))
 
+        # A state the model DECLARED as bad, which nothing read.
+        # `bad:` landed on the spec as `problematic_states` and had no consumer
+        # anywhere in the package: a model saying `bad: [Failed]` about an entity
+        # currently in `Failed` produced an envelope byte-identical to declaring
+        # nothing. Not a decline, not a dropped declaration -- silence, from a
+        # key the loader accepts.
+        #
+        # Twenty-nine STATE indicators across six shipped domain files declare
+        # STABILITY, and eleven of them declare `bad:`, so the vocabulary is in
+        # use and removing it was the wrong repair. The compatibility policy
+        # covers the other one in as many words: a check may fire where it was
+        # previously silent when the silence was a defect.
+        if indicator.indicator_type.value == 'state' and indicator.problematic_states:
+            problems.extend(self._check_declared_bad_state(entity, indicator))
+
         # fire counting moved to the dispatch boundary
         # (reasoner._record_fires), so all eight axioms are counted
         # uniformly rather than three by hand.
@@ -146,12 +162,17 @@ class StabilityChecker:
         # Get state history
         states = history.get_states(entity.id, indicator.property_name, window)
         if len(states) < window_size:
+            # Ask D, state arm. `sampling_context` reads numeric values first
+            # and falls back to the state series, so the interval here is the
+            # cadence of state RECORDS rather than a zero.
             return CheckOutcome(problems).declined(
                 Axiom.STABILITY, entity, indicator.name,
                 NotEvaluatedReason.INSUFFICIENT_SAMPLES,
                 detail="too few state observations to detect oscillation",
                 observations_count=len(states),
                 required_count=window_size,
+                **sampling_context(
+                    history, entity.id, indicator.property_name, window),
             )
 
         # Take the most recent window_size observations
@@ -307,12 +328,15 @@ class StabilityChecker:
         # Get value history
         values = history.get_values(entity.id, indicator.property_name, window)
         if len(values) < window_size:
+            # Ask D, numeric arm.
             return CheckOutcome(problems).declined(
                 Axiom.STABILITY, entity, indicator.name,
                 NotEvaluatedReason.INSUFFICIENT_SAMPLES,
                 detail="too few observations to detect oscillation",
                 observations_count=len(values),
                 required_count=window_size,
+                **sampling_context(
+                    history, entity.id, indicator.property_name, window),
             )
 
         # Take recent values
@@ -480,6 +504,56 @@ class StabilityChecker:
                 'min_crossings': min_crossings,
                 'observations': len(values),
                 'mean': mean,
+            },
+            confidence=1.0,
+        ))
+        return problems
+
+    def _check_declared_bad_state(
+        self,
+        entity: Entity,
+        indicator: IndicatorSpec,
+    ) -> List[Problem]:
+        """The model named this state as bad, and the entity is in it.
+
+        **`normal:` is deliberately not checked against.** Firing on a value that
+        is in neither list would report every state the vocabulary does not
+        enumerate, and the shipped models show why that is wrong: a pod phase
+        declaring `normal: [Running]` and `bad: [Failed, Unknown]` leaves
+        `Pending` and `Succeeded` in neither, and both are ordinary. A rule right
+        for one model and noisy on the rest is the shape this engine already
+        refused once, when a threshold declared per type fired on every entity of
+        it. So `normal:` is carried into the evidence and into the model
+        description, where a reader can see what was declared, and it decides
+        nothing.
+
+        A missing current value returns rather than declining, for the reason
+        `_check_frozen_series` records: the arms above have already declined on a
+        starved input, and two records for one evaluation break the denominator
+        the envelope rests on.
+        """
+        problems: List[Problem] = []
+        current_value = entity.get_property(indicator.property_name)
+        if current_value is None:
+            return problems
+        if str(current_value) not in indicator.problematic_states:
+            return problems
+
+        problems.append(Problem.from_entity(
+            entity=entity,
+            problem_type=f'declared_bad_state:{indicator.name}',
+            severity=Severity.HIGH,
+            reason=(f"{indicator.name} is '{current_value}', which this model "
+                    f"declares as a problematic state"),
+            axiom=Axiom.STABILITY,
+            source_layer=DetectionLayer.ONTOLOGY,
+            evidence={
+                'indicator': indicator.name,
+                'state': str(current_value),
+                'problematic_states': list(indicator.problematic_states),
+                # carried so the finding says what the model considered healthy,
+                # which is the only consumer `normal:` has and is enough of one
+                'normal_states': list(indicator.normal_states or ()),
             },
             confidence=1.0,
         ))

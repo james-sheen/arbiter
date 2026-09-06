@@ -13,13 +13,47 @@ testable*.
 
 ## The envelope
 
-A detection pass returns findings, declines, and a denominator:
+A detection pass returns findings, declines, and a denominator -- and a fourth leg for what the
+model never declared at all:
 
 ```
 findings              what was found
 not_checked           what was NOT evaluated, and why
 checked.invariants    how many (axiom, entity, indicator) evaluations were tried
+questions             what the model is MISSING -- in words, typed and located
 ```
+
+**`questions` is the leg for what you never declared.** The distinction it carries is the one
+`not_checked` cannot: a decline says the model asked for something this run did not have, and a
+question says the model never asked. Both are required members of every envelope; the four legs
+above are what every verb satisfies identically.
+
+**This leg shipped for several releases named only in
+[`schema/envelope.schema.json`](schema/envelope.schema.json) and in one line of `COMPATIBILITY.md`
+about ordering -- in no prose here at all**, and this section listed three legs where the schema
+required five. Nothing was broken and every test passed; the surface was simply unfindable by anyone
+learning the engine from its documents, and it was registered as a capability to be built by someone
+who had read them. `tests/test_the_envelope_legs_are_documented.py` now derives the required members
+from the schema and fails if this section stops naming one.
+
+**`gaps` is the verb that fills it.** `check` and `model_describe` return it empty; `traverse` fills
+it only when a start node is absent from the topology. Each entry carries the `question` in words, a
+`gap_type` from a closed set of six -- `missing_node`, `missing_edge`, `missing_property`,
+`missing_threshold`, `missing_dynamics`, `missing_declaration` -- the `location` it is about, a
+`priority`, and the `context_path` that reached it. Entries are deduplicated on `(gap_type,
+location)`.
+
+**Empty and absent are different here too, and `meta.source` is where you tell them apart.** A
+session with no topology answers `source: unavailable` and no questions, which is not the same
+statement as a model with nothing missing.
+
+**`priority` is a distance, not a severity, and both populations it ranks are on one scale.** A
+question carries its `gap_type`'s weight decayed by `1 / (1 + hops)` from the walk's start, so the
+same gap ranks lower the further the engine had to go to find it -- measured, one dangling edge
+scored 1.0 as its own start node and 0.333 two hops out. Structural gaps, which the builder computes
+rather than a walk finding, are scored at hop zero and so carry their type's full weight: 0.8 for a
+missing edge, 0.6 for a missing property. The ORDER of `questions` is not part of the compatibility
+contract, so sort it yourself if you need it fixed.
 
 **Every envelope carries `meta.schema_version`.** It names the WIRE SHAPE, not the package
 version, and it moves only when a reader that worked stops working — adding a key does not move it.

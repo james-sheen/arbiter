@@ -193,15 +193,18 @@ one is inferred from an unknown.
 
 ---
 
-## 3. The three verbs that are not `check`
+## 3. The read surface that is not `check`
 
 The vocabulary above is everything the engine refuses to **judge**. It is not
 everything the engine can tell you about your model, and the rest of it lives on
 a small read surface that a bridge built only around `check` never calls.
 
-You need all three, and you need them most if you **generate** your model rather
+You need all of it, and you need it most if you **generate** your model rather
 than writing it by hand — because then the model is your output, and nothing else
 is going to read it.
+
+*This heading used to count the items under it. A number in a heading is a pin
+that expires when the next item lands, and one did.*
 
 **`model_describe`, and the `unread_fields` on it.** Two questions, one answer
 shape. A field you declared that no axiom on that indicator reads: you wrote it,
@@ -225,10 +228,51 @@ denominator quietly smaller than you expected.
 **`unread_properties`.** The same question one level down, about properties on an
 entity rather than whole series.
 
-None of the three is a verdict, and none belongs in your exit code by itself.
-They are how you check the artifact you just generated before you draw
-conclusions from what it produced. The decline vocabulary is your requirements
-document; this is the proofreader.
+**`questions`, filled by `gaps`.** The other three tell you what is wrong with the
+model you wrote. This one tells you what is not in it. The decline vocabulary is
+the list of facts your feed owes the engine; `questions` is the list of facts your
+**model** owes it, and the two are answered by different people on most teams.
+
+The entries are typed. `gap_type` is a closed set of six — `missing_node`,
+`missing_edge`, `missing_property`, `missing_threshold`, `missing_dynamics`,
+`missing_declaration` — and each carries the `location` it is about, the question
+in words, the `context_path` that reached it, and a `priority`. They are
+deduplicated on `(gap_type, location)`.
+
+**Three things about this leg that will cost you a day each if you learn them by
+experiment.**
+
+*It is a required member of every envelope and only one verb fills it.* `check`
+and `model_describe` return it empty. `traverse` fills it only when a start node
+is absent from the topology. `gaps` is the one that discovers; a bridge that calls
+`check` alone will see the key, always empty, and reasonably conclude it does
+nothing.
+
+*Empty and absent are different, and `meta.source` is where you tell them apart.*
+A session with no topology answers `source: unavailable` with no questions, which
+is not the statement *nothing is missing*. Read the two together or you will
+report a model as complete on the strength of never having built one.
+
+*`priority` is a distance, not a severity, and both populations are on one
+scale.* It is the `gap_type`'s weight decayed by `1 / (1 + hops)` from the
+traversal's start, so the same gap ranks lower the further the walk had to go —
+measured, one dangling edge scored `1.0` as its own start node and `0.333` two
+hops out. Structural gaps, which the builder computes rather than a walk finding,
+are scored at hop zero and carry their type's full weight: `0.8` for a missing
+edge, `0.6` for a missing property. **The order of `questions` is not part of the
+compatibility contract**, so sort it yourself if you need it fixed.
+
+**For a vertical whose product is a question list, this leg is the product.** A
+bridge over firmware wants findings, and the questions are scaffolding for the
+model. A bridge over a document — a proposal, a contract, an engagement scope —
+is usually engaged to produce exactly *what is missing, where, and what to ask
+next*. If that is your domain, build the model so that `gaps` answers well, and
+read `check` second.
+
+None of these is a verdict, and none belongs in your exit code by itself. They
+are how you check the artifact you just generated before you draw conclusions
+from what it produced. The decline vocabulary is your requirements document;
+this is the proofreader.
 
 ---
 

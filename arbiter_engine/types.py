@@ -300,7 +300,13 @@ class AxiomParameters:
     # Relative, and the same 5% the conservation loss margin uses — not because
     # the two quantities are related but because a fallback nobody chose should
     # at least be the one already in the file.
-    consistency_agreement_tolerance: float = 0.05
+    # `consistency_agreement_tolerance` was removed here. It was this field's
+    # only reader that made `agrees_with` answer from a guess, and with the
+    # guess gone the field would have been accepted, carried and read by
+    # nothing -- the exact shape and the `bad:` work spent this week
+    # closing. A parameter that decides a domain question globally is the
+    # wrong shape for the question anyway: how close two readings must be is
+    # a fact about one pair in one system, and it is now declared per pair.
 
     # CONSERVATION
     conservation_loss_margin: float = 0.05      # 5% acceptable loss

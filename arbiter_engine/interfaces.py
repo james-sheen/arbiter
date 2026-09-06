@@ -102,7 +102,19 @@ def sampling_context(history, entity_id: str, property_name: str,
             entity_id, property_name, timedelta(days=3650))
     except Exception:  # noqa: BLE001 — a history that cannot answer is not an
         return out    # error here; the decline is still worth emitting.
-    if everything is None:
+    if not everything:
+        # A STATE series is stored apart from numeric values, and `get_values`
+        # cannot see it. Without this fallback the state arm of STABILITY would
+        # report `total_observations: 0` about a property with a full state
+        # history -- a wrong number where none was the honest answer, which is
+        # the failure this whole diagnostic exists to avoid. Same
+        # `(timestamp, value)` shape, so everything below is unchanged.
+        try:
+            everything = history.get_states(
+                entity_id, property_name, timedelta(days=3650))
+        except Exception:  # noqa: BLE001
+            everything = None
+    if not everything:
         return out
     out["total_observations"] = len(everything)
     stamps = sorted(t for t, _ in everything)

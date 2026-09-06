@@ -246,7 +246,27 @@ class TestUnreachableIsNotTheSameAsAbsent:
     runs; `axiom_never_consults` says it does not ask at all. They look
     identical from outside -- nothing happens -- and the remedies differ, so
     the source is what tells them apart.
+
+    **The unreachable group is empty as of, and the two tests below
+    that iterate it therefore collect nothing.** pytest turns an empty
+    parametrisation into one SKIP rather than zero tests, so without
+    `test_the_group_is_empty_and_that_is_a_claim` this class would report two
+    skips and assert nothing -- an assertion of the form *every member is X* is
+    true of no members, and the skip is the only trace. The empty group is the
+    claim the constant exists to carry, so it is asserted directly.
     """
+
+    def test_the_group_is_empty_and_that_is_a_claim(self):
+        """Fails on the day an axiom enters this state, which is when somebody
+        should be asked why the shape recurred -- off-ramp 3 of the ruling."""
+        assert OVERRIDE_DECLARED_BUT_UNREACHABLE == {}, (
+            f"an axiom is accepted-and-ignored again: "
+            f"{sorted(OVERRIDE_DECLARED_BUT_UNREACHABLE)}")
+        covered = (set(OVERRIDE_CONSULTED_BY) | set(OVERRIDE_NOT_CONSULTED)
+                   | set(OVERRIDE_DECLARED_BUT_UNREACHABLE))
+        assert len(covered) == 8, (
+            f"the three groups partition the axioms and cover {len(covered)} "
+            f"of 8; emptying one must not lose a member")
 
     def _calls_the_resolver(self, axiom):
         # The package is reached by a real import, not by a package path in a
@@ -362,7 +382,12 @@ class TestTheReport:
             "fires on good input is one people learn to skip")
 
     @pytest.mark.parametrize("axiom,indicator,reason", [
-        ("BOUNDEDNESS", "v", "axiom_unreachable"),
+        # executed 2026-09-06: BOUNDEDNESS held the only entry in
+        # the unreachable group, its resolver call sat inside a method
+        # nothing invoked, and the ruling deleted the method rather than
+        # wiring it. The axiom now genuinely never asks, so the reason a
+        # reader gets is the one that names the right remedy.
+        ("BOUNDEDNESS", "v", "axiom_never_consults"),
         ("CONNECTIVITY", "v", "axiom_never_consults"),
         ("STABILITY", "typo", "undeclared_indicator"),
     ])
