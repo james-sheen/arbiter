@@ -47,6 +47,35 @@ useful-looking document and the less trustworthy one.
 
 ### Changed
 
+- **No axiom checker decides anything by asking which domain it is in.** Two of
+  the eight carried a block of Kubernetes-shaped checks behind a comparison of
+  the entity's domain id against a literal. `BRIDGES.md` states the rule those
+  broke -- and states it as a check a reader should run against the version they
+  pin -- so the package now passes its own litmus rather than documenting it.
+
+  **Who this changes anything for: almost nobody, and the exception is
+  specific.** The checks were reachable only by an entity carrying
+  `metadata={"domain_id": "kubernetes"}`, and nothing in this package ever
+  writes that key -- `EngineSession.add_entity` gives no way to set it. So a
+  caller had to construct `Entity` themselves and stamp it. If you did that and
+  relied on the RESPONSIVENESS ones -- slow startup, health-probe failures,
+  request timeout -- they no longer fire. **The five HOMEOSTASIS ones were never
+  reachable at all**: the method holding them had no caller anywhere in the
+  package, in any release that shipped it.
+
+  **What replaced it is what should have been carrying it.** Domain-specific
+  checks belong to a domain, and there is already a registry that scopes them by
+  the domain the entity declares. The removed block was a second implementation
+  of the same eight checks and the weaker one: it scoped them with a single flat
+  set of entity type names, where a declaration scopes each check to its own.
+  Nothing was moved out of this package; a duplicate was deleted.
+
+  **The registry is not on the supported surface** -- it is a deep import, and
+  COMPATIBILITY.md puts those outside the contract at any version. Read that as
+  the honest position rather than an oversight: shipping one domain's checks in
+  an engine that claims to have none was the defect, and a supported API for
+  doing it again is not the fix.
+
 - **This engine no longer invents indicators for a type you did not declare.** An
   entity type with no declared indicators fell back to a hardcoded Kubernetes set,
   keyed on the type's NAME. A model declaring a domain with nothing to do with

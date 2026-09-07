@@ -655,8 +655,20 @@ class HomeostasisChecker:
         return problems
 
     # =========================================================================
-    # K8s-specific HOMEOSTASIS Checks (kept for backward compatibility,
-    # also registered via K8sHomeostasisExtension)
+    # Kubernetes-shaped HOMEOSTASIS checks, reached ONLY by declaration.
+    #
+    # The Kubernetes domain file names each of these under `domain_checks` with
+    # its own `entity_types`; the platform builds an extension from that and
+    # registers it, and `check_all` runs it. Nothing in this class asks which
+    # domain it is in.
+    #
+    # This header twice carried a claim that was not true. It said the checks
+    # were also registered via an extension class named for this axiom -- no
+    # such class was ever written, and the name appeared in this comment and
+    # nowhere else, which made the fallback beside it read as a harmless copy of
+    # something that would keep working without it. Naming the identifier again
+    # here would leave it greppable as though it existed, so it is described
+    # rather than spelled.
     # =========================================================================
 
     def check_replica_mismatch(
@@ -971,40 +983,34 @@ class HomeostasisChecker:
         """
         Run all HOMEOSTASIS checks on an entity.
 
-        Runs domain extension checks first, then K8s defaults as fallback.
+        Domain-specific checks arrive through the extension registry, scoped by
+        the entity's declared domain. This method decides nothing by asking
+        which domain it is in.
+
+        **The hardcoded fallback is gone (Option C, 2026-09-07.)** It
+        ran the same five checks this class exposes, gated on the entity's
+        domain id matching one literal and on a flat entity-type set, whenever
+        the declared path returned nothing. The comparison is described rather
+        than quoted: the inventory pin scans this file, and prose that spells
+        the pattern gets counted as an instance of it. One behaviour had two implementations,
+        which is the configuration where both are green on the day they
+        disagree -- and the hardcoded one was the weaker: it could not express
+        the per-check entity scoping the declaration does.
+
+        The record that kept it said eliminating it meant moving these checks
+        into the domain YAML, "a larger change". Measured, the declaration was
+        already there: the Kubernetes domain file names all five under
+        `domain_checks`, each with its own `entity_types`, and the platform
+        builds an extension from that. Nothing was moved here; a duplicate was
+        removed.
+
+        `desired_config` stays on the signature: it is the declared path's
+        parameter for `check_config_drift`, not the fallback's.
         """
         # Run domain-specific checks via extension registry
         # Extract domain_id from entity metadata to scope extension checks.
         _domain_id = getattr(entity, 'metadata', {}).get('domain_id', '') if hasattr(entity, 'metadata') else ''
         domain_problems = self.run_domain_checks(entity, history, domain_id=_domain_id)
         problems = list(domain_problems)
-
-        # Fall back to built-in K8s checks if domain checks returned
-        # nothing for THIS entity. Previously checked global extension_registry.domains
-        # which broke multi-domain deployments (K8s checks skipped when any domain registered).
-        # Only run K8s fallback checks for actual K8s entity types.
-        # Non-K8s entities (BMC sensors, network devices) should NOT trigger K8s-specific
-        # checks like replica_mismatch or config_drift — those produce false positives.
-        _K8S_HOMEOSTASIS_TYPES = {
-            'Deployment', 'ReplicaSet', 'StatefulSet', 'Pod',
-            'DaemonSet', 'Job', 'CronJob', 'Node',
-        }
-        entity_type_str = getattr(entity.type, 'value', str(entity.type))
-        # Gate K8s fallback behind domain_id to prevent false positives
-        # for non-K8s domains that happen to have matching type names.
-        #
-        # see the twin of this comment in responsiveness.py. The
-        # `not _domain_id` clause treated an unstamped entity as Kubernetes,
-        # so a `Deployment` or `Node` in any other domain silently received
-        # replica-mismatch and config-drift checks. It compensated for the
-        # stamping gap that an internal ruling fixed; absent now means absent.
-        _is_k8s_domain = _domain_id == 'kubernetes'
-        if not domain_problems and _is_k8s_domain and entity_type_str in _K8S_HOMEOSTASIS_TYPES:
-            problems.extend(self.check_replica_mismatch(entity))
-            if desired_config:
-                problems.extend(self.check_config_drift(entity, desired_config))
-            problems.extend(self.check_self_healing(entity, history))
-            problems.extend(self.check_oscillating_recovery(entity, history))
-            problems.extend(self.check_persistent_degradation(entity, history))
 
         return problems

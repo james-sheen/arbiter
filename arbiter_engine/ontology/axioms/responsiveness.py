@@ -484,7 +484,9 @@ class ResponsivenessChecker:
         return problems
 
     # =========================================================================
-    # Built-in Checks (domain-agnostic + K8s-specific kept for compatibility)
+    # Built-in checks: domain-agnostic, plus Kubernetes-shaped ones the
+    # Kubernetes domain file names under `domain_checks` and reaches by
+    # declaration through the extension registry -- never by a branch here.
     # =========================================================================
 
     def check_queue_buildup(
@@ -767,7 +769,9 @@ class ResponsivenessChecker:
         """
         Run all RESPONSIVENESS checks on an entity.
 
-        Runs domain extension checks first, then built-in checks.
+        Two domain-agnostic checks always run. Everything domain-specific
+        arrives through the extension registry, scoped by the entity's declared
+        domain. This method decides nothing by asking which domain it is in.
         """
         # Domain-agnostic checks always run
         problems = []
@@ -781,32 +785,12 @@ class ResponsivenessChecker:
         domain_problems = self.run_domain_checks(entity, history, domain_id=_domain_id)
         problems.extend(domain_problems)
 
-        # Fall back to built-in K8s checks if domain checks returned nothing for THIS entity
-        # Only run K8s fallback checks for actual K8s entity types.
-        # Non-K8s entities should NOT trigger K8s probe/startup checks.
-        _K8S_RESPONSIVENESS_TYPES = {
-            'Pod', 'Container', 'Service', 'Ingress', 'Node',
-            'Deployment', 'StatefulSet', 'DaemonSet',
-        }
-        entity_type_str = getattr(entity.type, 'value', str(entity.type))
-        # Gate K8s fallback behind domain_id to prevent false positives
-        # for non-K8s domains that happen to have matching type names.
-        #
-        # this read `not _domain_id or _domain_id == 'kubernetes'`, so
-        # an entity with NO domain stamp was treated as Kubernetes. A library
-        # user with an entity typed `Service` or `Node` silently received probe
-        # and startup checks they never declared — the ten-second grep against
-        # a package calling itself domain-agnostic.
-        #
-        # The `not _domain_id` clause was compensating for unreliable stamping,
-        # not expressing an intent: an internal ruling found the registry lookup that
-        # should resolve `Pod -> kubernetes` never consulted the declaration,
-        # so entities arrived unstamped and this clause kept K8s detection
-        # alive. With that fixed, absent means absent.
-        _is_k8s_domain = _domain_id == 'kubernetes'
-        if not domain_problems and _is_k8s_domain and entity_type_str in _K8S_RESPONSIVENESS_TYPES:
-            problems.extend(self.check_slow_startup(entity))
-            problems.extend(self.check_health_probe_failures(entity, history))
-            problems.extend(self.check_request_timeout(entity, history))
-
+        # Option C, 2026-09-07. The hardcoded fallback that ran the
+        # three Kubernetes-shaped checks below is gone. It was gated on
+        # `_domain_id` matching one literal and on a flat entity-type set, and
+        # it fired whenever the declared path above returned nothing -- so one
+        # behaviour had two implementations, and this was the weaker of them:
+        # the declaration scopes each check to its own entity types, this could
+        # not. The twin in homeostasis.py went in the same change, and so did
+        # the two records that pinned them.
         return problems
