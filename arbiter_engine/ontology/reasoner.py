@@ -131,9 +131,15 @@ class UnifiedAxiomReasoner(OntologyReasonerInterface):
         family_registry: Optional[Any] = None,
         derived_engine: Optional[Any] = None,
         overlay: Optional[Any] = None,
+        builtin_k8s_indicators: bool = False,
     ):
         self.params = params or AxiomParameters()
-        self.loader = OntologyLoader()
+        # Same default as the loader, and threaded rather than read
+        # from anywhere: this class is one of the curated public names, so its
+        # default IS the engine's behaviour for a caller who never heard of the
+        # seed. The platform passes True at its own composition roots.
+        self.loader = OntologyLoader(
+            builtin_k8s_indicators=builtin_k8s_indicators)
         # domain-configurable readiness thresholds (axiom_value -> min_obs)
         self._readiness_thresholds = readiness_thresholds or {}
         self._family_registry = family_registry

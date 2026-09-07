@@ -47,6 +47,38 @@ useful-looking document and the less trustworthy one.
 
 ### Changed
 
+- **This engine no longer invents indicators for a type you did not declare.** An
+  entity type with no declared indicators fell back to a hardcoded Kubernetes set,
+  keyed on the type's NAME. A model declaring a domain with nothing to do with
+  Kubernetes, carrying a type called `Pod`, `Node`, `Service` or `Deployment`, was
+  judged against indicators it never declared.
+
+  **This is the policy's stop-where-it-was-firing case, and it is the inverse of
+  the one above.** If your model declares one of those four type names WITHOUT an
+  indicator block, you will see fewer findings than before and a smaller
+  `checked.invariants`. Both numbers were wrong: measured, a proposals domain
+  received a finding on `restartCount`, and a denominator of seven where the model
+  declared one.
+
+  **The denominator is the worse half and the reason this is listed as a change
+  rather than a fix.** A false finding is visible and arguable. `checked` is the
+  count this engine publishes to show what it did not skip, and six of those seven
+  invariants were never asked for by anyone. All four names inflated it; only one
+  of them also produced a finding, so the visible half understated the defect.
+
+  The seed is now opt-in: `UnifiedAxiomReasoner(builtin_k8s_indicators=True)`
+  restores it for a caller who genuinely wants it. Nothing else changes -- a
+  declared indicator is evaluated exactly as before, and a type name that never
+  collided was never affected.
+
+  **Why it lasted.** Every example model that ships here avoids all four names, so
+  every fixture agreed with the engine. The collision is with ordinary nouns: a
+  factory line has a `Node`, an engagement has a `Service`. The fixtures were
+  lucky rather than representative, and
+  `tests/test_the_engine_invents_no_indicators.py` now asserts the outcome --
+  the denominator equals what the model declared -- so a seed returning by any
+  mechanism is caught.
+
 - **`gaps` is priority-ranked on one scale, and was not before.** It merges two
   populations: structural gaps the builder finds at the entity, and gaps a walk
   discovers. Structural ones carried a flat `0.5`, so the type weights applied to

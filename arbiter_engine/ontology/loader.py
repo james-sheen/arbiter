@@ -49,16 +49,27 @@ class OntologyLoader:
     - Extracting threshold and state configurations
     """
 
-    def __init__(self, builtin_k8s_indicators: bool = True):
+    def __init__(self, builtin_k8s_indicators: bool = False):
         """
         Args:
-            builtin_k8s_indicators: whether an entity type with no
-                declared indicators falls back to the hardcoded Kubernetes set
-                (``Pod``/``restartCount``, ``Node``/``cpuUsage``,...).
-                Defaults ``True`` so the platform is unchanged. **The extracted
-                engine sets this ``False``**: a library that invents indicators
-                its user never declared cannot claim to be domain-agnostic, and
-                the seed is domain-specific behaviour in a shared component.
+            builtin_k8s_indicators:, inverted by whether an
+                entity type with no declared indicators falls back to the
+                hardcoded Kubernetes set (``Pod``/``restartCount``,
+                ``Node``/``cpuUsage``,...). Defaults ``False``: a library that
+                invents indicators its user never declared cannot claim to be
+                domain-agnostic, and the seed is domain-specific behaviour in a
+                shared component. The platform opts in at its own composition
+                roots; the engine's own ``api`` path does not.
+
+                **It defaulted ``True`` for the platform's benefit, and the
+                platform did not need it.** Measured over the shipped domain
+                files, exactly one reached the seed: a Docker Swarm domain whose
+                ``Node`` and ``Service`` types carry no indicator block, and
+                which was therefore being judged against Kubernetes indicators.
+                The Kubernetes domain declares all four seeded types itself, so
+                nothing it relies on ever came from here. The default was
+                protecting a dependency that did not exist and creating a
+                misattribution that did.
         """
         if not HAS_RDFLIB:
             # `info`, not `warning`, and worded as a configuration
