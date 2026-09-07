@@ -665,8 +665,16 @@ class HomeostasisChecker:
         for check_fn in extension_registry.get_homeostasis_checks(domain_id=domain_id):
             try:
                 result = check_fn(entity, history)
-                if result:
-                    outcome.extend(result)
+                # `if result:` used to guard this, and a CheckOutcome
+                # carrying only declines is falsy -- zero problems in a list
+                # subclass -- so a check that declined had its record dropped
+                # here. Extending with an empty list is a no-op, so the guard
+                # bought nothing and cost the records. `not_evaluated` is not
+                # list contents, so it is carried across explicitly or not at
+                # all.
+                outcome.extend(result)
+                outcome.not_evaluated.extend(
+                    getattr(result, "not_evaluated", ()))
             except Exception as e:
                 # Named, so the record and the message identify WHICH check
                 # failed. The callables arrive from an extension and are often
@@ -717,8 +725,12 @@ class HomeostasisChecker:
         """
         problems = []
 
-        if entity.type not in ('Deployment', 'ReplicaSet', 'StatefulSet'):
-            return problems
+        # The entity types this check applies to are DECLARED, in the domain
+        # file's `domain_checks` entry, and enforced by the wrapper the platform
+        # builds from it. A literal list here was a second copy of that scope:
+        # a domain naming a type this list omitted was accepted, bound, called,
+        # and silently returned nothing. Removed. Four of the eight
+        # checks k8s.yaml declares never carried one.
 
         desired = entity.get_property('replicas', 0)
         ready = entity.get_property('readyReplicas', 0)
@@ -783,8 +795,21 @@ class HomeostasisChecker:
         """
         problems = []
 
+        # opened the channel this uses; is why it matters.
+        # A bare `return problems` here is an empty list, and an empty list from
+        # a declared check reads as *evaluated, nothing wrong* -- the same shape
+        # `check()` above had three of before they became declines. Nothing in
+        # the loader, the core or the domain schema supplies a desired
+        # configuration, so today this decline is what a shipped domain file
+        # gets for declaring `config_drift`, every time. That is the honest
+        # answer and it is not the whole fix: an internal ruling holds the question of
+        # where a specification should come from.
         if not desired_config:
-            return problems
+            return CheckOutcome(problems).declined(
+                Axiom.HOMEOSTASIS, entity, 'config_drift',
+                NotEvaluatedReason.MISSING_CONFIG,
+                detail=('no desired configuration was supplied, so there is '
+                        'nothing to compare the current one against'))
 
         current_config = entity.properties
         drifts = []
@@ -909,31 +934,35 @@ class HomeostasisChecker:
                 confidence=0.9,
             ))
 
-        # Also check restart count for pods
-        if entity.type == 'Pod':
-            restart_count = entity.get_property('restartCount', 0)
-            if restart_count >= max_recovery_attempts:
-                # Check if restarts happened recently
-                restart_history = history.get_values(entity.id, 'restartCount', window)
-                if restart_history:
-                    first_count = restart_history[0][1] if restart_history else 0
-                    recent_restarts = restart_count - first_count
+        # The entity types this check applies to are DECLARED, in the domain
+        # file's `domain_checks` entry, and enforced by the wrapper the platform
+        # builds from it. A literal list here was a second copy of that scope:
+        # a domain naming a type this list omitted was accepted, bound, called,
+        # and silently returned nothing. Removed; the restart tail below was its body. Four of the eight
+        # checks k8s.yaml declares never carried one.
+        restart_count = entity.get_property('restartCount', 0)
+        if restart_count >= max_recovery_attempts:
+            # Check if restarts happened recently
+            restart_history = history.get_values(entity.id, 'restartCount', window)
+            if restart_history:
+                first_count = restart_history[0][1] if restart_history else 0
+                recent_restarts = restart_count - first_count
 
-                    if recent_restarts >= max_recovery_attempts:
-                        problems.append(Problem.from_entity(
-                            entity=entity,
-                            problem_type='excessive_restarts',
-                            severity=Severity.CRITICAL,
-                            reason=f"{int(recent_restarts)} restarts in {window_hours} hour(s)",
-                            axiom=Axiom.HOMEOSTASIS,
-                            source_layer=DetectionLayer.ONTOLOGY,
-                            evidence={
-                                'recent_restarts': recent_restarts,
-                                'total_restarts': restart_count,
-                                'threshold': max_recovery_attempts,
-                            },
-                            confidence=0.95,
-                        ))
+                if recent_restarts >= max_recovery_attempts:
+                    problems.append(Problem.from_entity(
+                        entity=entity,
+                        problem_type='excessive_restarts',
+                        severity=Severity.CRITICAL,
+                        reason=f"{int(recent_restarts)} restarts in {window_hours} hour(s)",
+                        axiom=Axiom.HOMEOSTASIS,
+                        source_layer=DetectionLayer.ONTOLOGY,
+                        evidence={
+                            'recent_restarts': recent_restarts,
+                            'total_restarts': restart_count,
+                            'threshold': max_recovery_attempts,
+                        },
+                        confidence=0.95,
+                    ))
 
         return problems
 
@@ -1053,8 +1082,22 @@ class HomeostasisChecker:
         builds an extension from that. Nothing was moved here; a duplicate was
         removed.
 
-        `desired_config` stays on the signature: it is the declared path's
-        parameter for `check_config_drift`, not the fallback's.
+        **`desired_config` is on this signature and reaches nothing, and the
+        sentence that used to sit here had it exactly backwards.** It read that
+        the parameter was the declared path's rather than the fallback's.
+        Measured against the parent commit: its only use in this method was
+        inside the removed block, guarded by the same condition, so it WAS the
+        fallback's and it went inert when the fallback did.
+
+        The declared path cannot carry it. An extension check is called
+        `(entity, history)` and there is no third slot; `check_config_drift`
+        names its second parameter `desired_config`, so the binder supplies the
+        entity alone and the comparison is always against nothing. Nothing in
+        the loader, the core or the domain schema declares a desired
+        configuration anywhere, so there is no value for a slot to carry.
+
+        The consequence is recorded rather than quietly repaired, because the
+        repair is a choice about what a declared-but-unfeedable check should do:
         """
         # Run domain-specific checks via extension registry
         # Extract domain_id from entity metadata to scope extension checks.

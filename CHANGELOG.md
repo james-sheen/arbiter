@@ -20,6 +20,46 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+## [0.1.13] — 2026-09-07
+
+### Fixed
+
+- **Four axiom checks no longer refuse an entity type their domain file
+  declared.** `check_replica_mismatch`, `check_oscillating_recovery`,
+  `check_slow_startup` and `check_health_probe_failures` each compared the
+  entity's type against a hardcoded list of Kubernetes type names, on top of the
+  scope the domain file's `domain_checks` entry already declares and the platform
+  already applies. A domain naming a type the literal omitted was accepted at
+  load, bound, called, and got nothing back -- silently.
+
+  **This is a fire-where-it-was-silent change.** A model declaring one of these
+  four for a type outside the old literal will now see findings it did not see
+  before. Four of the eight checks a shipped domain file declares never carried
+  such a literal, which is what showed the other four's to be redundant rather
+  than load-bearing.
+
+- **A decline recorded by a registered domain check now survives.**
+  `run_domain_checks` collected results under `if result:`, and a result carrying
+  only declines is falsy -- it is a list of problems holding none -- so the whole
+  outcome was skipped and the record with it. Nothing shipped had ever returned
+  one, so no released version lost a real decline; the entry below is the first
+  path that would have.
+
+### Changed
+
+- **`config_drift` declines `missing_config` where it used to return nothing.**
+  Asked whether an entity has drifted from a specification when no specification
+  was supplied, it answered with an empty list, which in this engine reads as
+  *evaluated, nothing wrong*. It now says which of the two it means.
+
+  **A consumer reading `not_checked` will see one more record**, of a reason
+  already in the published closed vocabulary. No schema version moves.
+
+  **The wider gap is open and is not fixed here**: nothing in the loader or the
+  domain schema supplies a desired configuration at all, so this decline is what
+  a domain file declaring `config_drift` gets today, every time. Reporting that
+  honestly is a smaller thing than making it work, and it is what changed.
+
 ## [0.1.12] — 2026-09-07
 
 ### Added

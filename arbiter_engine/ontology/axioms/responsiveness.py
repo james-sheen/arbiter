@@ -486,8 +486,16 @@ class ResponsivenessChecker:
         for check_fn in extension_registry.get_responsiveness_checks(domain_id=domain_id):
             try:
                 result = check_fn(entity, history)
-                if result:
-                    outcome.extend(result)
+                # `if result:` used to guard this, and a CheckOutcome
+                # carrying only declines is falsy -- zero problems in a list
+                # subclass -- so a check that declined had its record dropped
+                # here. Extending with an empty list is a no-op, so the guard
+                # bought nothing and cost the records. `not_evaluated` is not
+                # list contents, so it is carried across explicitly or not at
+                # all.
+                outcome.extend(result)
+                outcome.not_evaluated.extend(
+                    getattr(result, "not_evaluated", ()))
             except Exception as e:
                 # Named, so the record and the message identify WHICH check
                 # failed. The callables arrive from an extension and are often
@@ -648,9 +656,12 @@ class ResponsivenessChecker:
         """
         problems = []
 
-        # Check if entity is a Pod/Container
-        if entity.type not in ('Pod', 'Container'):
-            return problems
+        # The entity types this check applies to are DECLARED, in the domain
+        # file's `domain_checks` entry, and enforced by the wrapper the platform
+        # builds from it. A literal list here was a second copy of that scope:
+        # a domain naming a type this list omitted was accepted, bound, called,
+        # and silently returned nothing. Removed. Four of the eight
+        # checks k8s.yaml declares never carried one.
 
         phase = entity.get_property('phase')
         if phase not in ('Pending', 'ContainerCreating'):
@@ -703,8 +714,12 @@ class ResponsivenessChecker:
         """
         problems = []
 
-        if entity.type not in ('Pod', 'Container'):
-            return problems
+        # The entity types this check applies to are DECLARED, in the domain
+        # file's `domain_checks` entry, and enforced by the wrapper the platform
+        # builds from it. A literal list here was a second copy of that scope:
+        # a domain naming a type this list omitted was accepted, bound, called,
+        # and silently returned nothing. Removed. Four of the eight
+        # checks k8s.yaml declares never carried one.
 
         # Check liveness probe failures
         liveness_failures = entity.get_property('livenessProbeFailures', 0)
