@@ -110,7 +110,7 @@ class ConsistencyChecker:
         # and reads nothing from the name. A model saying `role: ratio` gets the
         # ratio rule on an indicator called `product_temp_c_redundant`; before,
         # only a name tokenising to the word `ratio` could reach it.
-        applicable, matched_roles, role_source = roles.applies(
+        applicable, matched_roles, _role_source = roles.applies(
             Axiom.CONSISTENCY, indicator)
 
         # Rule 1: Count fields must be non-negative
@@ -179,12 +179,8 @@ class ConsistencyChecker:
                 NotEvaluatedReason.MISSING_ROLE,
                 detail=roles.explain_absence(Axiom.CONSISTENCY, indicator),
             )
-        if role_source == "inferred":
-            logger.debug(
-                "CONSISTENCY applied to %r via a role INFERRED from its name "
-                "(%s); declare `role:` to make it explicit",
-                indicator.name, ", ".join(sorted(matched_roles)),
-            )
+        # a branch keyed on a third role source was removed here: the
+        # role module returns two, so it could never fire and nothing could go red.
         return result
 
     def _check_agreement(

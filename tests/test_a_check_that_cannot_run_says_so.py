@@ -77,10 +77,19 @@ def registered():
         extension_registry.unregister(DOMAIN)
 
 
-@pytest.mark.parametrize("checker_cls,module", [
-    (HomeostasisChecker, "arbiter_engine.ontology.axioms.homeostasis"),
-    (ResponsivenessChecker, "arbiter_engine.ontology.axioms.responsiveness"),
-])
+@pytest.fixture
+def module(checker_cls):
+    """The logger name, DERIVED from the checker rather than written beside it.
+
+    Each checker logs to `getLogger(__name__)`, so the class already carries the
+    answer. Spelling it out here would put the source package name in a string
+    the build rewrites in place, leaving a published sentence that reads like an
+    import path but was produced by substitution.
+    """
+    return checker_cls.__module__
+
+
+@pytest.mark.parametrize("checker_cls", [HomeostasisChecker, ResponsivenessChecker])
 class TestTheFailureReachesAReader:
     def test_it_is_reported_at_warning_not_debug(self, registered, caplog,
                                                  checker_cls, module):

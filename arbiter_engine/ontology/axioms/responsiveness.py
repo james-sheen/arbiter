@@ -111,7 +111,7 @@ class ResponsivenessChecker:
         # name-substring rule kept as the fallback for models written before
         # the field existed. `role: latency` makes this evaluate an indicator
         # called `pulldown_error_c`; before, only English decided.
-        name_matches, _matched, role_source = roles.applies(
+        name_matches, _matched, _role_source = roles.applies(
             Axiom.RESPONSIVENESS, indicator)
         if name_matches:
             # the decline has to be raised HERE, not inside the
@@ -194,16 +194,8 @@ class ResponsivenessChecker:
                 NotEvaluatedReason.MISSING_ROLE,
                 detail=roles.explain_absence(Axiom.RESPONSIVENESS, indicator),
             )
-        if role_source == "inferred":
-            # Announced, not silent. The check DID run, and it ran because the
-            # engine guessed from the name — a guess that happened to be right
-            # is still a guess, and the author should be able to see it and
-            # replace it with a declaration.
-            logger.debug(
-                "RESPONSIVENESS applied to %r via a role INFERRED from its "
-                "name; declare `role: latency` to make it explicit",
-                indicator.name,
-            )
+        # a branch keyed on a third role source was removed here: the
+        # role module returns two, so it could never fire and nothing could go red.
         return result
 
     def _check_latency_threshold(

@@ -20,6 +20,8 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+## [0.1.12] — 2026-09-07
+
 ### Added
 
 - **A state the model declares as bad is now a finding.** `bad:` on a STATE
@@ -319,6 +321,21 @@ useful-looking document and the less trustworthy one.
   separately feeds each derived key through the loader -- so a documented key that
   loads nothing fails too. Second instance of one shape in a week; the envelope's
   `questions` leg was the first.
+
+- **The engine described a role inference it no longer performs, in the package
+  itself.** The rule that read a role from an indicator's NAME was removed earlier
+  in this cycle; a comment in `consistency.py` went on calling it *the fallback*,
+  in the checker it misdescribes, and shipped that way in 0.1.11. Two checkers also
+  carried a branch keyed on a role source the engine had stopped producing --
+  neither could fire, so no test could go red on either, and each logged that the
+  axiom had applied via a role read from the indicator's name.
+
+  **Nothing behaves differently.** The branches were unreachable and the comment is
+  prose. Both are gone because a package asserting a mechanism it does not have is
+  read as a specification by whoever writes against it, and this one was asserted
+  in three places a reader reaches before the code. With no `role:` declared the
+  axiom declines `missing_role` and reads nothing from the name, exactly as it
+  already did.
 
 ### Removed
 
