@@ -14,11 +14,18 @@ parameter is required and is not the one the binder inspects, so the binder
 called it with too few arguments, every time, for as long as both existed. The
 TypeError landed in that debug line and no surface said anything.
 
-WHAT THIS DOES NOT CLAIM. A log level is a poor channel for this and the test
-says so by asserting only what the current shape can deliver. The right home is
-a decline in the envelope -- `run_domain_checks` returns a plain list and has
-nowhere to put one. That gap is recorded in the method's own docstring rather
-than closed here.
+AND IT REACHES THE ENVELOPE, WHICH IS THE POINT. An earlier version of this
+file said a log level was the only channel available, because
+`run_domain_checks` returned a plain list with nowhere to put a decline. It
+returns a `CheckOutcome` now, and the record travels: the reason is
+`checker_error`, which was in the closed decline vocabulary from the start and
+had never once been emitted by any path. A reason a schema advertises and no
+code produces is indistinguishable, from outside, from a reason that cannot
+happen.
+
+So the assertions below are two-sided on purpose. The log is for the operator
+watching a process; the decline is for the consumer reading a result, and only
+one of those is machine-readable.
 """
 from __future__ import annotations
 
@@ -93,6 +100,42 @@ class TestTheFailureReachesAReader:
         assert "desired_config" in text, (
             "the underlying error is not in the message, so a reader learns a "
             "check failed but not which argument it wanted")
+
+
+class TestItReachesTheEnvelope:
+    """The half a log line cannot do. `checked` counts what was attempted and
+    `not_checked` says why something was not judged -- a consumer reading the
+    envelope has no access to the process's log, and this is the difference
+    between a result they can act on and one they can only wonder about."""
+
+    def test_the_decline_is_recorded_with_the_declared_reason(self, registered):
+        outcome = HomeostasisChecker().run_domain_checks(
+            _entity(), InMemoryObservationHistory(), domain_id=DOMAIN)
+        reasons = [n.reason for n in getattr(outcome, "not_evaluated", ())]
+        assert reasons, (
+            "the failure produced no decline record; it exists only in the log, "
+            "where a consumer of the envelope cannot see it")
+        assert any(getattr(r, "value", r) == "checker_error" for r in reasons), (
+            f"the decline used {reasons!r} rather than the vocabulary's own name "
+            f"for this case")
+
+    def test_it_survives_check_all_rather_than_being_dropped(self, registered):
+        """The seam. Building a plain list from a `CheckOutcome` keeps the
+        problems and drops the declines, so a record written one frame down is
+        thrown away at the return line unless the method carries it."""
+        outcome = ResponsivenessChecker().check_all(
+            _entity(), InMemoryObservationHistory())
+        assert getattr(outcome, "not_evaluated", None), (
+            "check_all returned no declines; the record was made and then lost "
+            "at the boundary, which is the failure this seam is known for")
+
+    def test_the_detail_names_what_went_wrong(self, registered):
+        outcome = HomeostasisChecker().run_domain_checks(
+            _entity(), InMemoryObservationHistory(), domain_id=DOMAIN)
+        details = " ".join(str(getattr(n, "detail", "")) 
+                           for n in getattr(outcome, "not_evaluated", ()))
+        assert "desired_config" in details, (
+            "the decline records that something failed but not what it wanted")
 
 
 class TestTheSurvivingChecksStillRun:

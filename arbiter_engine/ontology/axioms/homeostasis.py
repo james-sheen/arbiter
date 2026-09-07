@@ -661,23 +661,31 @@ class HomeostasisChecker:
         than closed here.
         """
         from .extensions import extension_registry
-        problems = []
+        outcome = CheckOutcome()
         for check_fn in extension_registry.get_homeostasis_checks(domain_id=domain_id):
             try:
                 result = check_fn(entity, history)
                 if result:
-                    problems.extend(result)
+                    outcome.extend(result)
             except Exception as e:
-                # Named, so the message identifies WHICH check failed. The
-                # callables arrive from an extension and are often lambdas, so
-                # `__name__` is frequently `<lambda>`; the qualname of what it
-                # closes over is the useful half when it is there.
+                # Named, so the record and the message identify WHICH check
+                # failed. The callables arrive from an extension and are often
+                # lambdas, so `__name__` is frequently `<lambda>`; the qualname
+                # of what it closes over is the useful half when it is there.
                 _named = getattr(check_fn, "__qualname__", None) or repr(check_fn)
+                # `checker_error` was in the closed decline vocabulary from the
+                # start and had never once been emitted -- a reason this engine
+                # advertises it can return, that no path produced. It is the
+                # exact name for this case, so the case now uses it.
+                outcome.declined(
+                    Axiom.HOMEOSTASIS, entity, _named,
+                    NotEvaluatedReason.CHECKER_ERROR,
+                    detail=f"the registered check raised and produced nothing: {e}")
                 logger.warning(
                     "domain homeostasis check %s could not run and produced "
                     "nothing: %s. A declared check that cannot be called is "
                     "not a check that found nothing.", _named, e)
-        return problems
+        return outcome
 
     # =========================================================================
     # Kubernetes-shaped HOMEOSTASIS checks, reached ONLY by declaration.
@@ -1052,6 +1060,12 @@ class HomeostasisChecker:
         # Extract domain_id from entity metadata to scope extension checks.
         _domain_id = getattr(entity, 'metadata', {}).get('domain_id', '') if hasattr(entity, 'metadata') else ''
         domain_problems = self.run_domain_checks(entity, history, domain_id=_domain_id)
-        problems = list(domain_problems)
-
-        return problems
+        # the seam, closed here rather than described. `list(outcome)`
+        # keeps the problems and silently drops the declines, because that is
+        # what building a plain list from a list subclass does -- so a check
+        # that could not run was recorded one frame down and thrown away at
+        # this line. The reasoner reads `not_evaluated` off what this returns,
+        # so carrying it is the whole distance between a record and a report.
+        return CheckOutcome(
+            list(domain_problems),
+            not_evaluated=list(getattr(domain_problems, "not_evaluated", ())))

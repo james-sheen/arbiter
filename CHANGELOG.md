@@ -47,6 +47,32 @@ useful-looking document and the less trustworthy one.
 
 ### Changed
 
+- **`checker_error` is emitted. It was in the decline vocabulary from the start
+  and no path had ever produced it.** The vocabulary is closed and published as
+  the list of reasons this engine can refuse to judge -- a bridge author reads it
+  as their requirements document. A reason on that list that nothing emits is,
+  from outside, indistinguishable from one that cannot happen, and this one had
+  been in that state since the vocabulary existed.
+
+  It now carries the case the entry above describes: a check supplied by a
+  registered extension raised, so it produced nothing, and *produced nothing*
+  and *found nothing* are different answers. The record names the check and
+  carries the error.
+
+  **Who sees a new decline: only a caller with a registered extension whose
+  check raises.** Measured against the previous release on a model with no
+  extension, the envelope is byte-identical -- same `checked`, same
+  `not_checked`. If you register nothing, nothing changed.
+
+  **A second, quieter repair came with it.** Building a plain list from a
+  `CheckOutcome` keeps the problems and drops the declines, because that is what
+  `list()` does -- so a record written inside a helper was discarded at the
+  method's return line. That seam was documented as a known limitation and is
+  now closed in both checkers that had it. The README's published count of
+  decline call sites moves from 35 to 37 for the two new ones; that number is
+  derived from the checkers by a test rather than transcribed, which is how the
+  change was noticed.
+
 - **A domain check that cannot run now says so.** Extensions supply callables and
   this engine runs them inside a `try`, so that one bad extension cannot take out
   the others in the same pass. That part is unchanged and deliberate. What

@@ -490,23 +490,31 @@ class ResponsivenessChecker:
         than closed here.
         """
         from .extensions import extension_registry
-        problems = []
+        outcome = CheckOutcome()
         for check_fn in extension_registry.get_responsiveness_checks(domain_id=domain_id):
             try:
                 result = check_fn(entity, history)
                 if result:
-                    problems.extend(result)
+                    outcome.extend(result)
             except Exception as e:
-                # Named, so the message identifies WHICH check failed. The
-                # callables arrive from an extension and are often lambdas, so
-                # `__name__` is frequently `<lambda>`; the qualname of what it
-                # closes over is the useful half when it is there.
+                # Named, so the record and the message identify WHICH check
+                # failed. The callables arrive from an extension and are often
+                # lambdas, so `__name__` is frequently `<lambda>`; the qualname
+                # of what it closes over is the useful half when it is there.
                 _named = getattr(check_fn, "__qualname__", None) or repr(check_fn)
+                # `checker_error` was in the closed decline vocabulary from the
+                # start and had never once been emitted -- a reason this engine
+                # advertises it can return, that no path produced. It is the
+                # exact name for this case, so the case now uses it.
+                outcome.declined(
+                    Axiom.RESPONSIVENESS, entity, _named,
+                    NotEvaluatedReason.CHECKER_ERROR,
+                    detail=f"the registered check raised and produced nothing: {e}")
                 logger.warning(
                     "domain responsiveness check %s could not run and produced "
                     "nothing: %s. A declared check that cannot be called is "
                     "not a check that found nothing.", _named, e)
-        return problems
+        return outcome
 
     # =========================================================================
     # Built-in checks: domain-agnostic, plus Kubernetes-shaped ones the
@@ -798,10 +806,18 @@ class ResponsivenessChecker:
         arrives through the extension registry, scoped by the entity's declared
         domain. This method decides nothing by asking which domain it is in.
         """
-        # Domain-agnostic checks always run
+        # Domain-agnostic checks always run.
+        #
+        # Each `extend` keeps the problems and drops any declines the callee
+        # recorded -- the known seam. The declines are collected
+        # alongside so this method can return them, which is why the results
+        # are bound before being extended rather than extended inline.
         problems = []
-        problems.extend(self.check_queue_buildup(entity, history))
-        problems.extend(self.check_throughput_degradation(entity, history))
+        declines = []
+        for outcome in (self.check_queue_buildup(entity, history),
+                        self.check_throughput_degradation(entity, history)):
+            problems.extend(outcome)
+            declines.extend(getattr(outcome, "not_evaluated", ()))
 
         # Run domain-specific checks via extension registry
         # check per-entity results instead of global registry
@@ -809,6 +825,7 @@ class ResponsivenessChecker:
         _domain_id = getattr(entity, 'metadata', {}).get('domain_id', '') if hasattr(entity, 'metadata') else ''
         domain_problems = self.run_domain_checks(entity, history, domain_id=_domain_id)
         problems.extend(domain_problems)
+        declines.extend(getattr(domain_problems, "not_evaluated", ()))
 
         # Option C, 2026-09-07. The hardcoded fallback that ran the
         # three Kubernetes-shaped checks below is gone. It was gated on
@@ -818,4 +835,4 @@ class ResponsivenessChecker:
         # the declaration scopes each check to its own entity types, this could
         # not. The twin in homeostasis.py went in the same change, and so did
         # the two records that pinned them.
-        return problems
+        return CheckOutcome(problems, not_evaluated=declines)
