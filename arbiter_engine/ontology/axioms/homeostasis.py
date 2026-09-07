@@ -642,6 +642,23 @@ class HomeostasisChecker:
         Accept domain_id to filter extension checks to the correct
         domain. Without this, multi-domain deployments run ALL registered
         extensions on every entity, causing K8s checks on BMC entities.
+
+        **A check that cannot run is reported, not dropped (2026-09-07).** This
+        swallowed every exception into a debug line, which is the one log level
+        nobody reads in production. Measured, that hid a declared check which
+        could never run at all: the domain file names it, the binder calls it
+        with the wrong arity because its second parameter is not the one the
+        binder looks for, and the TypeError landed here and vanished. It had
+        been declared and unrunnable for as long as both existed, and no
+        surface said so.
+
+        `warning`, not `raise`. One extension raising must not take out the
+        others in the same pass -- that is why the try is here. But *ran and
+        found nothing* and *could not be called* are different answers, and a
+        log level is the only place this function can currently tell them
+        apart: it returns a plain list and has no decline channel to put the
+        distinction in. That is the narrower gap, and it is recorded rather
+        than closed here.
         """
         from .extensions import extension_registry
         problems = []
@@ -651,7 +668,15 @@ class HomeostasisChecker:
                 if result:
                     problems.extend(result)
             except Exception as e:
-                logger.debug(f"Domain homeostasis check error: {e}")
+                # Named, so the message identifies WHICH check failed. The
+                # callables arrive from an extension and are often lambdas, so
+                # `__name__` is frequently `<lambda>`; the qualname of what it
+                # closes over is the useful half when it is there.
+                _named = getattr(check_fn, "__qualname__", None) or repr(check_fn)
+                logger.warning(
+                    "domain homeostasis check %s could not run and produced "
+                    "nothing: %s. A declared check that cannot be called is "
+                    "not a check that found nothing.", _named, e)
         return problems
 
     # =========================================================================
@@ -727,15 +752,31 @@ class HomeostasisChecker:
     def check_config_drift(
         self,
         entity: Entity,
-        desired_config: Dict[str, Any]
+        desired_config: Optional[Dict[str, Any]] = None
     ) -> List[Problem]:
         """
         Check for configuration drift from desired state.
 
         Detects:
         - Config values that differ from desired specification
+
+        **`desired_config` became optional on 2026-09-07, and that repaired a
+        declaration rather than relaxing a contract.** It was required and
+        positional, and the extension binder routes on whether a check's second
+        parameter is named `history` -- so this one was called with the entity
+        alone, raised, and the TypeError was swallowed. A shipped domain file
+        declared this check; it could not run, and nothing said so.
+
+        No desired configuration is not an error, it is the ordinary state of a
+        model that never declared one, and the answer to *has this drifted from
+        a specification* when there is no specification is nothing -- not a
+        finding, and not an exception either. Supply one and the comparison is
+        exactly as it was.
         """
         problems = []
+
+        if not desired_config:
+            return problems
 
         current_config = entity.properties
         drifts = []

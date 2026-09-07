@@ -47,6 +47,31 @@ useful-looking document and the less trustworthy one.
 
 ### Changed
 
+- **A domain check that cannot run now says so.** Extensions supply callables and
+  this engine runs them inside a `try`, so that one bad extension cannot take out
+  the others in the same pass. That part is unchanged and deliberate. What
+  changed is where the failure went: a debug line, which in production is
+  indistinguishable from the check having run and found nothing.
+
+  *Ran, found nothing* is a result. *Could not be called* is a check that is not
+  happening, and a caller who registered it has every reason to believe it is.
+  The message is now a warning and names which check failed and why.
+
+  **This was measured, not imagined.** A check shipped here took a second
+  required argument that the calling convention does not supply, so it raised on
+  every entity and the exception vanished into that debug line. It had been
+  declared and unrunnable for as long as both existed, and no surface said
+  anything. That check's second argument is now optional and it returns nothing
+  when there is no desired state to compare against -- *has this drifted from a
+  specification* has no answer when there is no specification, and that is not an
+  exception. Supply one and the comparison is exactly as it was.
+
+  **What this still cannot do, stated because a log level is a poor place for
+  it.** The function returns a plain list and has no decline channel, so the
+  distinction between *found nothing* and *could not run* currently lives only in
+  the logs. Putting it in the envelope, where the rest of this engine puts
+  refusals, is the right home and is not done here.
+
 - **No axiom checker decides anything by asking which domain it is in.** Two of
   the eight carried a block of Kubernetes-shaped checks behind a comparison of
   the entity's domain id against a literal. `BRIDGES.md` states the rule those

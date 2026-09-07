@@ -471,6 +471,23 @@ class ResponsivenessChecker:
         Accept domain_id to filter extension checks to the correct
         domain. Without this, multi-domain deployments run ALL registered
         extensions on every entity.
+
+        **A check that cannot run is reported, not dropped (2026-09-07).** This
+        swallowed every exception into a debug line, which is the one log level
+        nobody reads in production. Measured, that hid a declared check which
+        could never run at all: the domain file names it, the binder calls it
+        with the wrong arity because its second parameter is not the one the
+        binder looks for, and the TypeError landed here and vanished. It had
+        been declared and unrunnable for as long as both existed, and no
+        surface said so.
+
+        `warning`, not `raise`. One extension raising must not take out the
+        others in the same pass -- that is why the try is here. But *ran and
+        found nothing* and *could not be called* are different answers, and a
+        log level is the only place this function can currently tell them
+        apart: it returns a plain list and has no decline channel to put the
+        distinction in. That is the narrower gap, and it is recorded rather
+        than closed here.
         """
         from .extensions import extension_registry
         problems = []
@@ -480,7 +497,15 @@ class ResponsivenessChecker:
                 if result:
                     problems.extend(result)
             except Exception as e:
-                logger.debug(f"Domain responsiveness check error: {e}")
+                # Named, so the message identifies WHICH check failed. The
+                # callables arrive from an extension and are often lambdas, so
+                # `__name__` is frequently `<lambda>`; the qualname of what it
+                # closes over is the useful half when it is there.
+                _named = getattr(check_fn, "__qualname__", None) or repr(check_fn)
+                logger.warning(
+                    "domain responsiveness check %s could not run and produced "
+                    "nothing: %s. A declared check that cannot be called is "
+                    "not a check that found nothing.", _named, e)
         return problems
 
     # =========================================================================
