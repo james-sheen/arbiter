@@ -124,6 +124,24 @@ useful-looking document and the less trustworthy one.
 
 ### Documentation
 
+- **`BRIDGES.md` said this engine contains no domain noun, which certifies a tree
+  rather than stating the division.** That guide's own opening refuses to carry
+  measurements of engine behaviour, on the ground that a behaviour written into
+  prose is a second copy of a fact and second copies drift. That sentence was one,
+  and it drifted: an engine extracted from a running deployment can carry
+  checkers, written before the extraction, that still decide behaviour by
+  comparing a domain identifier against a constant.
+
+  **So the sentence is gone rather than corrected to a smaller number.** *The
+  division* now says where domain nouns belong. The *Engine litmus* says the
+  document certifies no tree, names that shape, and tells the reader to run the
+  check against the version they pin -- which is what a litmus was always for. A
+  count would expire on the next site added or removed; the shape does not.
+
+  The litmus itself is unchanged and already distinguished the case that is not a
+  violation: a domain identifier used as a lookup key a caller supplied is not a
+  branch, and one axiom resolves thresholds that way.
+
 - **The `questions` leg of the envelope, which shipped undocumented.** It is a
   required member of every envelope and the thing `gaps` exists to fill: what the
   model is MISSING. The distinction it carries is the one `not_checked` cannot --

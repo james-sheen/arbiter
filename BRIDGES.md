@@ -18,7 +18,7 @@ you pin (C3 below), and keep the measurement in code that re-runs.
 
 **The engine owns** the axiom set and its mathematics, the closed vocabulary of
 reasons it refuses to judge, the schema its results are emitted in, and a small
-read surface. It contains no domain noun.
+read surface. Domain nouns belong on the bridge's side of that line.
 
 **The bridge owns** what exists, what things are, what is deliberately left out
 and why, what only an operator can know, what gets fed and when, and how a
@@ -32,6 +32,13 @@ engine returns hits on its own explanatory comments, and a check that fires on
 its own documentation gets switched off. The predicate that works is structural:
 an identifier naming the domain, compared against a constant. An opt-in flag a
 caller sets is not a domain branch.
+
+**Run it against the version you pin; this document certifies no tree.** An
+engine extracted from a running deployment can carry checkers, written before
+the extraction, that still decide behaviour by comparing a domain identifier
+against a constant. Where one survives it is a defect with a fix owed — not a
+precedent for adding another, and not something a reader should have to find by
+being surprised.
 
 **Bridge litmus** — the bridge computes no invariant verdicts of its own. It may
 implement presence logic, which is pre-engine. It never re-implements axiom
