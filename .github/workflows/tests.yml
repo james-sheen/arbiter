@@ -110,6 +110,12 @@ jobs:
       # of `test_*.py`, ignored, or dropped by a narrowed `testpaths` stops
       # being collected while every other check stays green.
       #
+      # It counts what it found and refuses an empty set, because the first
+      # version of it did not. A set difference against nothing is empty, so a
+      # `git ls-files` that returned nothing here -- a refusal this file cannot
+      # foresee -- would have compared no files and reported the same green as
+      # a comparison that held. The log now carries the number it compared.
+      #
       # The second is the count, and it is the half that rotted. The floor it
       # replaces was set in the commit that first gave this engine tests of its
       # own and was never re-derived after; by the time anyone read it back, it
@@ -126,8 +132,16 @@ jobs:
           COLLECTED=$(tail -1 "$OUT" | grep -oE '^[0-9]+')
           echo "collected: $COLLECTED"
 
+          TRACKED=$(git ls-files 'tests/test_*.py' | sort -u)
+          COUNT=$(printf '%s\n' "$TRACKED" | grep -c .)
+          echo "tracked test files: $COUNT"
+          if [ "$COUNT" -eq 0 ]; then
+            echo "::error::no tracked test files were found, so the comparison below would have compared nothing and passed"
+            exit 1
+          fi
+
           MISSING=$(comm -23 \
-            <(git ls-files 'tests/test_*.py' | sort -u) \
+            <(printf '%s\n' "$TRACKED") \
             <(grep -oE '^tests/[A-Za-z0-9_./-]+\.py' "$OUT" | sort -u))
           if [ -n "$MISSING" ]; then
             echo "::error::tracked test files that were not collected:"
