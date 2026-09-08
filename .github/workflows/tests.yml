@@ -102,15 +102,45 @@ jobs:
           exit "$rc"
 
       # Asserts the outcome, not the mechanism. The step above could pass with
-      # a handful of tests if collection silently narrowed, so the count is
-      # read back and held against a floor. A bare count would be a number to
-      # maintain; a floor only ever goes red when coverage SHRINKS.
+      # a handful of tests if collection silently narrowed, so what was
+      # collected is read back and held against two claims.
+      #
+      # The first carries the weight and has no number in it: every test file
+      # the repository tracks must appear in the collection. A file renamed out
+      # of `test_*.py`, ignored, or dropped by a narrowed `testpaths` stops
+      # being collected while every other check stays green.
+      #
+      # The second is the count, and it is the half that rotted. The floor it
+      # replaces was set in the commit that first gave this engine tests of its
+      # own and was never re-derived after; by the time anyone read it back, it
+      # would have sat green through the loss of nine tests in ten. The
+      # assertion was maintained and its tolerance was not. So the band is now
+      # two-sided: growing out of it fails and names the number to write. That
+      # is a nuisance once per fifth of growth, and it is the only version of
+      # this guard that cannot go slack without saying so.
       - name: The suite is not quietly shrinking
         run: |
           set +e
-          COLLECTED=$(pytest --collect-only -q 2>/dev/null | tail -1 | grep -oE '^[0-9]+')
+          OUT="${RUNNER_TEMP:-/tmp}/collected.txt"
+          pytest --collect-only -q 2>/dev/null > "$OUT"
+          COLLECTED=$(tail -1 "$OUT" | grep -oE '^[0-9]+')
           echo "collected: $COLLECTED"
-          if [ -z "$COLLECTED" ] || [ "$COLLECTED" -lt 60 ]; then
-            echo "::error::collected ${COLLECTED:-0} tests; the suite has lost coverage"
+
+          MISSING=$(comm -23 \
+            <(git ls-files 'tests/test_*.py' | sort -u) \
+            <(grep -oE '^tests/[A-Za-z0-9_./-]+\.py' "$OUT" | sort -u))
+          if [ -n "$MISSING" ]; then
+            echo "::error::tracked test files that were not collected:"
+            echo "$MISSING"
+            exit 1
+          fi
+
+          FLOOR=700
+          if [ -z "$COLLECTED" ] || [ "$COLLECTED" -lt "$FLOOR" ]; then
+            echo "::error::collected ${COLLECTED:-0} against a floor of ${FLOOR}; the suite has lost coverage"
+            exit 1
+          fi
+          if [ "$FLOOR" -lt $(( COLLECTED * 4 / 5 )) ]; then
+            echo "::error::the floor is ${FLOOR} and the suite collects ${COLLECTED}; raise FLOOR to ${COLLECTED} here, or it goes slack the way the last one did"
             exit 1
           fi
