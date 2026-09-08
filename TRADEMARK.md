@@ -42,4 +42,4 @@ This policy may be updated as the project matures. Material changes will be anno
 
 ---
 
-Copyright (c) 2023-2026 Arbiter Project. This trademark policy text is itself licensed under [Apache 2.0](LICENSE) — adapt, redistribute, and reuse as you wish, modulo accurate attribution.
+Copyright (c) 2025-2026 The Arbiter Project Authors. This trademark policy text is itself licensed under [Apache 2.0](LICENSE) — adapt, redistribute, and reuse as you wish, modulo accurate attribution.
