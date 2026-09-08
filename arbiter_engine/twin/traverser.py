@@ -61,7 +61,7 @@ _FLOW_OUT_TOKENS: FrozenSet[str] = frozenset({'out', 'output', 'sent'})
 def suggest_flow_direction(prop_name: str) -> Optional[str]:
     """PROPOSE 'in', 'out', or None for a property name. Never assert on it.
 
-     renamed this from ``classify_flow_direction`` and took its output
+    An internal ruling renamed this from ``classify_flow_direction`` and took its output
     off the assertion path. The rename is the change: *classify* reads as a
     verdict, and the verdict was wrong often enough to manufacture conservation
     deficits out of nothing. Its only caller now writes candidates into a
@@ -123,14 +123,14 @@ class TopologyTraverser:
         # (wired it, and they are read there now). `degradation_fitter`
         # was checked against the same test and fails it:
         #
-        # - `DegradationFitter.fit(observations, failure_threshold)` needs a
-        # per-indicator threshold. `project_values` walks
-        # `entity.properties` and never consults the domain model, so the
-        # traverser has no threshold to give it.
-        # - Its output is remaining useful life — a time-to-threshold.
-        # `ProjectedValue` carries value / confidence / horizon_s / model,
-        # a *value at a horizon*. There is no field for a RUL and adding
-        # one is a schema decision, not a wiring.
+        #   - `DegradationFitter.fit(observations, failure_threshold)` needs a
+        #     per-indicator threshold. `project_values` walks
+        #     `entity.properties` and never consults the domain model, so the
+        #     traverser has no threshold to give it.
+        #   - Its output is remaining useful life — a time-to-threshold.
+        #     `ProjectedValue` carries value / confidence / horizon_s / model,
+        #     a *value at a horizon*. There is no field for a RUL and adding
+        #     one is a schema decision, not a wiring.
         # - The capability is already live elsewhere: an internal ruling wired it into
         # the full system, which does have thresholds.
         #

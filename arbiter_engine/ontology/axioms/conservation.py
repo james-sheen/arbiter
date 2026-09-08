@@ -136,7 +136,7 @@ class ConservationChecker:
         # removed from the reasoner: readiness reported the axiom evaluable and
         # the checker returned before evaluating anything.
         if len(input_values) < self.params.conservation_min_samples:
-            # same shape as MONOTONICITY above: corrected
+            # same shape as MONOTONICITY above: an internal ruling corrected
             # this default from 10 to the derived floor of 1 after it had been
             # silently suppressing evaluation.
             return CheckOutcome(problems).declined(
@@ -182,7 +182,7 @@ class ConservationChecker:
         # reported as a HIGH-severity finding ABOUT THE SYSTEM while the fault
         # was a property name the model got wrong. Measured against a control:
         # a block naming `outfow` for `outflow` produced
-        # `conservation_violation. 100.0% deficit` with nothing on any
+        # `conservation_violation ... 100.0% deficit` with nothing on any
         # surface saying the model was at fault. Worse than a missed detection
         # -- it sends somebody to the plant to look for a leak that is a typo.
         total_output = 0.0

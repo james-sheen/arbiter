@@ -63,11 +63,11 @@ reason all three exist: the describe payload's nesting moved once between releas
 all, and a consumer who had written against the earlier layout got `None` back from a lookup — which
 reads as *this engine does not support that* rather than *this moved*.
 
-`not_checked` entries carry a reason from a closed vocabulary of twelve — `not_applicable`,
+`not_checked` entries carry a reason from a closed vocabulary of thirteen — `not_applicable`,
 `insufficient_samples`, `missing_property`, `no_current_value`, `missing_config`,
-`missing_entity_type`, `missing_role`, `no_threshold`, `precondition_unmet`,
-`undefined_for_values`, `wrong_indicator_type`, `checker_error` — so a decline is data,
-not a log line.
+`missing_entity_type`, `missing_role`, `no_rule_for_role`, `no_threshold`,
+`precondition_unmet`, `undefined_for_values`, `wrong_indicator_type`, `checker_error` — so a
+decline is data, not a log line.
 
 Three of them will account for most of what you see. `insufficient_samples` reports both the
 count it had and the count it needed, so it tells you how much longer to collect.
@@ -75,6 +75,12 @@ count it had and the count it needed, so it tells you how much longer to collect
 percentage, a ratio, a latency — and the model never said. Declare `role:` on the indicator. The
 engine does not guess it from the indicator's NAME, so this decline is about the declaration and
 never about the spelling.
+
+`no_rule_for_role` is its opposite and the two are worth telling apart before you act on either.
+Here the model DID say, correctly, and the axiom has no rule for that kind of quantity —
+CONSISTENCY has rules for counts, percentages and ratios, and none for a latency. Nothing is owed
+and nothing needs declaring; the pair simply does not evaluate. Until 0.1.14 both answers arrived
+as `missing_role`, which sent an author who had already declared a role looking for one.
 
 `no_current_value` is the newest and the reason it exists is worth stating. A threshold axiom reads
 `Entity.properties`; a temporal axiom reads observation history. Feed only the second and the value

@@ -91,7 +91,7 @@ if DT_PRODUCTION_TRAVERSAL_SEVERITY_FLOOR not in KNOWN_PRODUCTION_TRAVERSAL_SEVE
 
 # ---------- traversal_severity derivation ----------
 
-# Normalization basis: 16 axes *10000 ring records (same shape as
+# Normalization basis: 16 axes * 10000 ring records (same shape as
 # tenant_severity + pack_severity).
 _TRAVERSAL_SEVERITY_NORM_BASE: float = math.log(16 * 10000 + 1)
 

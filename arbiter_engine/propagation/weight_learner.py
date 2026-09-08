@@ -6,12 +6,12 @@ Learns empirical propagation weights from historical problem co-occurrence.
 For each pair of entities (source → target) connected in the relationship
 graph, the learner watches whether a problem on the source entity is
 followed by a problem on the target entity within a configurable time
-window. After sufficient observations it computes:
+window.  After sufficient observations it computes:
 
-  - ``probability`` — P(target_problem | source_problem)
-  - ``avg_delay_s`` — mean seconds between source and target problem
-  - ``std_delay_s`` — spread of the delay distribution
-  - ``confidence`` — reliability of the estimate (function of sample size)
+  - ``probability``   — P(target_problem | source_problem)
+  - ``avg_delay_s``   — mean seconds between source and target problem
+  - ``std_delay_s``   — spread of the delay distribution
+  - ``confidence``    — reliability of the estimate (function of sample size)
 
 These weights are consumed by :class:`ImpactEstimator` to forecast the
 expected downstream impact of newly detected problems.
@@ -41,14 +41,14 @@ class LearnedWeight:
 
     Attributes
     ----------
-    observed_co_occurrences: Number of times the target had a problem after
+    observed_co_occurrences:    Number of times the target had a problem after
                                 the source.
-    total_source_occurrences: Total number of source problem events observed.
-    probability: Fraction of source events followed by a target event.
-    avg_delay_s: Mean delay in seconds (source → target problem).
-    std_delay_s: Standard deviation of the delay.
-    confidence: Reliability score (0–1), grows with sample size.
-    last_updated: UTC timestamp of the last learning call.
+    total_source_occurrences:   Total number of source problem events observed.
+    probability:                Fraction of source events followed by a target event.
+    avg_delay_s:                Mean delay in seconds (source → target problem).
+    std_delay_s:                Standard deviation of the delay.
+    confidence:                 Reliability score (0–1), grows with sample size.
+    last_updated:               UTC timestamp of the last learning call.
     """
     observed_co_occurrences: int = 0
     total_source_occurrences: int = 0
@@ -73,7 +73,7 @@ class PropagationWeightLearner:
 
     Parameters
     ----------
-    co_occurrence_window: Maximum delay between source and target problems
+    co_occurrence_window:  Maximum delay between source and target problems
                            for them to count as co-occurring.
     min_confidence_samples: Minimum source occurrences for ``confidence=1.0``.
     """
@@ -103,8 +103,8 @@ class PropagationWeightLearner:
 
         Parameters
         ----------
-        problems: All historical :class:`Problem` instances, in any order.
-        graph: Relationship graph defining entity connectivity.
+        problems:  All historical :class:`Problem` instances, in any order.
+        graph:     Relationship graph defining entity connectivity.
 
         Returns
         -------
@@ -124,7 +124,7 @@ class PropagationWeightLearner:
         window_s = self.co_occurrence_window.total_seconds()
 
         # Track per-pair delays for this learning run.
-        # (source_id, target_id) → [delay_s,...]
+        # (source_id, target_id) → [delay_s, ...]
         delay_records: Dict[Tuple[str, str], List[float]] = defaultdict(list)
         source_counts: Dict[Tuple[str, str], int] = defaultdict(int)
 

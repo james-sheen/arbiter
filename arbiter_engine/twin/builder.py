@@ -3,7 +3,7 @@ Topology Builder — construct DigitalTwinTopology from domain YAML,
 RelationshipGraph, and Entity dict.
 
 Two entry points:
-  build_from_yaml() — full enrichment from YAML indicators,
+  build_from_yaml()               — full enrichment from YAML indicators,
                                      relationship rules, temporal store
   build_from_relationship_graph() — minimal migration path (no YAML)
 """
@@ -321,7 +321,7 @@ class TopologyBuilder:
     def _index_rules(
         self, rules: List[Dict],
     ) -> Dict[Tuple[str, str, str], Dict]:
-        """Index relationship rules (source_type, target_type, type)."""
+        """Index relationship rules by (source_type, target_type, type)."""
         index: Dict[Tuple[str, str, str], Dict] = {}
         for rule in rules:
             key = (

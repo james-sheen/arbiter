@@ -8,7 +8,7 @@ version = "0.1.14.dev0"
 description = "A detection engine that reports what it did not check."
 requires-python = ">=3.10"
 license = "Apache-2.0"
-license-files = ["LICENSE", "NOTICE", "TRADEMARK.md"]
+license-files = ["LICENSE", "NOTICE"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -22,7 +22,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 readme = "README.md"
-authors = [{name = "James Sheen"}, {name = "The Arbiter Project Authors"}]
+authors = [{name = "James Sheen"}, {name = "Arbiter Project"}]
 keywords = ["anomaly-detection", "invariants", "ontology", "digital-twin", "observability", "detection-engine"]
 dependencies = [
     "numpy>=1.21",

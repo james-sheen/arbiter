@@ -64,10 +64,10 @@ class RootCauseCandidate:
 
     Attributes
     ----------
-    entity_id: The candidate root entity.
-    coverage: Set of anomalous entity IDs explained by this root.
-    probability: Joint propagation probability to reach covered entities.
-    avg_path_length: Average hop distance to covered entities.
+    entity_id:        The candidate root entity.
+    coverage:         Set of anomalous entity IDs explained by this root.
+    probability:      Joint propagation probability to reach covered entities.
+    avg_path_length:  Average hop distance to covered entities.
     """
     entity_id: str
     coverage: FrozenSet[str] = field(default_factory=frozenset)
@@ -82,11 +82,11 @@ class RootCauseResult:
 
     Attributes
     ----------
-    root_causes: Ordered list of identified root causes (most impactful first).
-    anomaly_count: Total number of input anomalies.
-    explained_count: Number of anomalies explained by the identified roots.
-    coverage_ratio: explained_count / anomaly_count.
-    generated_at: UTC timestamp.
+    root_causes:       Ordered list of identified root causes (most impactful first).
+    anomaly_count:     Total number of input anomalies.
+    explained_count:   Number of anomalies explained by the identified roots.
+    coverage_ratio:    explained_count / anomaly_count.
+    generated_at:      UTC timestamp.
     """
     root_causes: List[RootCauseCandidate] = field(default_factory=list)
     anomaly_count: int = 0
@@ -304,11 +304,11 @@ class RootCauseIdentifier:
 
     Parameters
     ----------
-    max_hops: Maximum BFS depth for computing propagation footprint.
-    min_probability: Minimum cumulative probability for a propagation path
+    max_hops:            Maximum BFS depth for computing propagation footprint.
+    min_probability:     Minimum cumulative probability for a propagation path
                          to count as "covering" an anomaly.
-    min_coverage: Stop when coverage ratio reaches this threshold.
-    max_roots: Maximum number of root causes to identify.
+    min_coverage:        Stop when coverage ratio reaches this threshold.
+    max_roots:           Maximum number of root causes to identify.
     """
 
     def __init__(
@@ -353,7 +353,7 @@ class RootCauseIdentifier:
         learned_weights:
             Propagation weights from :class:`PropagationWeightLearner`.
         candidate_roots:
-            Optional restricted set of candidate root entities. If ``None``,
+            Optional restricted set of candidate root entities.  If ``None``,
             all entities with outgoing edges are considered.
 
         Returns

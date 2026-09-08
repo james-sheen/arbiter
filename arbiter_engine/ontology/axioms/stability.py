@@ -9,7 +9,7 @@ Detects:
 - Failure to converge
 
 Mathematical formula:
-    oscillation(t, w) = (1/(w-2)) *Σ[i=t-w+2 to t] 𝟙[d(Sᵢ, Sᵢ₋₂) < ε ∧ d(Sᵢ, Sᵢ₋₁) > δ]
+    oscillation(t, w) = (1/(w-2)) * Σ[i=t-w+2 to t] 𝟙[d(Sᵢ, Sᵢ₋₂) < ε ∧ d(Sᵢ, Sᵢ₋₁) > δ]
 
 Parameters:
 - w (window_size) = 10: Number of observations

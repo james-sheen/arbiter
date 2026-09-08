@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 # the canonical table moved to ``arbiter_engine/types.py``, beside the
 # enum it keys on. Two of its eight values had drifted from the copies in
 # ``ontology/reasoner.py``; one definition removes the class of bug.
-# Re-exported above so existing ``...readiness import AXIOM_MINIMUMS``
+# Re-exported above so existing ``from ...readiness import AXIOM_MINIMUMS``
 # imports keep working.
 
 
@@ -222,7 +222,7 @@ class AxiomReadinessTracker:
                 'ready_count': ready,
                 'not_ready_count': not_ready,
                 'ready_percentage': (ready / total * 100) if total > 0 else 0,
-                #.get() for the same reason as the per-entity loop: a 9th enum
+                # .get() for the same reason as the per-entity loop: a 9th enum
                 # member added without a minimums entry should narrow the report,
                 # not KeyError the summary. The per-entity path was guarded and
                 # this one was missed — the guard is only as good as its coverage.

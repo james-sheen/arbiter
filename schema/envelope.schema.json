@@ -75,7 +75,8 @@
             "enum": ["insufficient_samples", "missing_property",
                      "no_current_value", "missing_entity_type",
                      "missing_config", "no_threshold", "wrong_indicator_type",
-                     "missing_role", "precondition_unmet",
+                     "missing_role",
+            "no_rule_for_role", "precondition_unmet",
                      "undefined_for_values",
                      "not_applicable", "checker_error"]
           },

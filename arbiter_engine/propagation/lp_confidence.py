@@ -3,7 +3,7 @@ LP Relaxation for Root Cause Confidence Scores — Strategy 3.
 
 Formulates root cause identification as an Integer Linear Program (ILP),
 relaxes to LP, and uses fractional solution values as calibrated confidence
-scores. The LP optimal provides a tighter bound than greedy alone.
+scores.  The LP optimal provides a tighter bound than greedy alone.
 
 Uses scipy.optimize.linprog (interior-point method).
 """
@@ -27,7 +27,7 @@ def compute_lp_confidence(
     """Compute LP-relaxation confidence scores for root cause candidates.
 
     The LP relaxation of the set cover ILP provides fractional values
-    x_i in [0, 1] for each candidate. These fractional values serve as
+    x_i in [0, 1] for each candidate.  These fractional values serve as
     calibrated confidence scores: x_i = 0.83 means "83% confidence that
     entity i is a root cause."
 

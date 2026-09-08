@@ -6,7 +6,7 @@ arbiter_engine/history/observation.py (InMemoryObservationHistory).
 
 Per the sibling-within-package precedent:
 history/ dir hosts observation.py + readiness.py sibling modules with no
-single shared parent module suitable for sibling extension. ships
+single shared parent module suitable for sibling extension. An internal ruling ships
 substrate at new standalone module sibling-within-package (parent =
 `arbiter_engine/history/`, sibling to `observation.py` + `readiness.py`) rather
 than mutate any individual foundation module: a sibling substrate at
@@ -229,7 +229,8 @@ def record_observation(
 
     Returns the stored ProductionObservation when gate enabled AND
     emit_policy admits the event; returns None when gate off OR
-    emit_policy suppressed OR hybrid mode rejects (source-health-transition OR freshness_age > threshold) gate.
+    emit_policy suppressed OR hybrid mode rejects per
+    (source-health-transition OR freshness_age > threshold) gate.
 
     Hybrid mode gate: admits if (a) prior health-state for source_id
     differs from current (derived from freshness_age vs threshold), OR

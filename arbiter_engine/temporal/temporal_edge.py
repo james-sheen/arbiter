@@ -109,7 +109,7 @@ class TemporalEdge:
 
 @dataclass
 class TemporalAnnotationStore:
-    """Store for temporal edge annotations, keyed (source_type, target_type, relation)."""
+    """Store for temporal edge annotations, keyed by (source_type, target_type, relation)."""
 
     _edges: Dict[Tuple[str, str, str], TemporalEdge] = field(default_factory=dict)
 

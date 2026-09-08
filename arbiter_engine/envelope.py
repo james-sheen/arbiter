@@ -236,7 +236,7 @@ def _question_to_dict(question: Any) -> Dict[str, Any]:
     Accepts the engine's own ``TopologyQuestion`` and plain dicts, because the
     gap surface is optional and a caller may supply its own.
 
-     corrected the field names here. The first version read
+    An internal ruling corrected the field names here. The first version read
     ``question`` and ``gap_type`` off the object; ``TopologyQuestion`` actually
     carries ``question_text`` and a nested ``gap`` whose ``gap_type`` is the
     enum. Both lookups fell through to ``getattr`` defaults, so a real

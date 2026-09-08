@@ -49,7 +49,7 @@ class PropertyMetadata:
     confidence: float = 1.0        # 0.0-1.0, certainty of value
     staleness_seconds: float = 0   # age of reading
     source: str = "direct"         # provenance: direct, sensor, estimate,
-                                   # opinion, algorithm, derived
+                                   #   opinion, algorithm, derived
     resolution: float = 0          # measurement granularity
 
 
@@ -58,7 +58,7 @@ def modulate_severity(base_severity: Severity, confidence: float) -> Severity:
 
     CRITICAL @ confidence 0.7 → HIGH
     CRITICAL @ confidence 0.4 → MEDIUM
-    HIGH @ confidence 0.7 → MEDIUM
+    HIGH     @ confidence 0.7 → MEDIUM
     etc.
 
     Returns the same severity when confidence >= 0.95 (near-certain).
@@ -395,9 +395,9 @@ class RelationshipGraph:
     builders) can look it up via ``get_edge_metadata``. The graph
     layer no longer silently drops Relationship metadata.
     """
-    # entity_id -> [(relation_type, target_id),...]
+    # entity_id -> [(relation_type, target_id), ...]
     edges: Dict[str, List[Tuple[str, str]]] = field(default_factory=dict)
-    # Reverse index: target_id -> [(relation_type, source_id),...]
+    # Reverse index: target_id -> [(relation_type, source_id), ...]
     reverse_edges: Dict[str, List[Tuple[str, str]]] = field(default_factory=dict)
     # parallel edge metadata. Keyed (source_id, relation_type,
     # target_id). Carries the ``Relationship.properties / strength /
@@ -833,7 +833,7 @@ class IndicatorSpec:
     # to a degenerate name-matching path, and ``axioms: [MONOTONICITY]``
     # silently assumed ``increasing`` / ``allow_reset=True``. Eight declarable
     # axioms were six, and the two that did not work were the two whose
-    # floors had just corrected.
+    # floors that an internal ruling had just corrected.
     #
     # Populated from nested ``conservation:`` / ``monotonicity:`` blocks on
     # the indicator. Nested rather than flat because these carry a list
@@ -848,7 +848,7 @@ class IndicatorSpec:
     # The structural CONSERVATION path in ``twin/traverser.py`` summed an
     # entity's properties into an inflow total and an outflow total by matching
     # their NAMES against English tokens — `in`, `input`, `received` against
-    # `out`, `output`, `sent`. narrowed that from substring to token
+    # `out`, `output`, `sent`. An internal ruling narrowed that from substring to token
     # matching after it swept `material_integrity`, `policy_intent` and six
     # others into the inflow total, and its own docstring named the residual it
     # could not fix: `engage_human_in_loop`, `bad_actor_input` and

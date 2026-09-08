@@ -17,6 +17,36 @@ from ...interfaces import Entity, Problem, ObservationHistory
 logger = logging.getLogger(__name__)
 
 
+def binder_must_supply(*names: str) -> Callable:
+    """Declare parameters a check DECIDES BY, so a binder can refuse it.
+
+    A platform binds a declared check and calls it with the entity, and with
+    the history when that is the second parameter. Everything else keeps its
+    default for the life of the process. A check whose answer depends on one of
+    those extra parameters is therefore declarable, bindable, callable, and
+    unable to do its job -- and every layer reports success.
+
+    NOTHING IN A SIGNATURE SEPARATES THAT FROM A KNOB. Measured on this
+    package: `check_config_drift(entity, desired_config=None)` cannot work
+    without its second argument, and `check_replica_mismatch(entity,
+    tolerance_seconds=60.0)` is correct with its default. Same shape -- second
+    parameter, not `history`, defaulted -- and no rule over names, types or
+    defaults tells them apart. Only the author of the method knows, so this is
+    where the author says it.
+
+        @binder_must_supply("desired_config")
+        def check_config_drift(self, entity, desired_config=None): ...
+
+    A binder reads the attribute and refuses the declaration, at load, naming
+    the parameter. Reading it is optional; declaring it costs one line and is
+    the only thing that makes the refusal possible.
+    """
+    def mark(fn: Callable) -> Callable:
+        fn.binder_must_supply = names
+        return fn
+    return mark
+
+
 class AxiomExtension(ABC):
     """Base class for domain-specific axiom checks."""
 

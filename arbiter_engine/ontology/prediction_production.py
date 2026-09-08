@@ -22,7 +22,7 @@ An internal ruling added cluster stamping.
 
 **The one thing the banner claimed that is no longer true**: it described a
 sibling-within-an-existing-module shape, preserving the foundation class in the
-same file. That was the decision and reversed it. The foundation
+same file. That was the decision, which an internal ruling reversed. The foundation
 `UnifiedAxiomReasoner` stays in `reasoner`, and this is a module of its own,
 because the suffix-aliased imports the old shape required were an internal ticket
 number visible in shipped code.

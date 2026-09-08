@@ -6,7 +6,7 @@ These are engine-level, not transport-level. Every import below is inside the
  Option B cut, so this module ships with ``arbiter-engine`` and
 depends on no protocol.
 
- moved it here from ``arbiter_mcp/tools.py``, where it was filed
+An internal ruling moved it here from ``arbiter_mcp/tools.py``, where it was filed
 because MCP is where it was first needed. The misfiling was visible from
 outside: an engine demo had to import from a package named for a protocol it
 does not use, and the leak pin fired on exactly that. Left alone,
@@ -530,7 +530,7 @@ def check(session: EngineSession) -> Envelope:
     session._last_result = result
     envelope = build_envelope(result)
     # the one report this verb owes, and the only one carried here.
-    # withdrew a check: a numeric property no indicator declares used to
+    # An internal ruling withdrew a check: a numeric property no indicator declares used to
     # be judged by the words in its name. COMPATIBILITY.md permits withdrawing a
     # check in a patch and forbids doing it QUIETLY, because a check withdrawn
     # without a word is indistinguishable from one that passed -- measured

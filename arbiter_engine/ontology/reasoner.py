@@ -73,9 +73,9 @@ def _record_fires(
 ) -> None:
     """count axiom fires at the dispatch boundary.
 
-    An internal ruling decided all eight checkers should report fire counts; had
-    wired a mixin into three of them, at each individual problem-creation
-    site. Recording here instead of inside the checkers is deliberate:
+    All eight checkers are required to report fire counts. The earlier
+    attempt at that was a mixin, wired into three of them at each individual
+    problem-creation site. Recording here instead of inside the checkers is deliberate:
 
     - **Uniform by construction.** Every checker reached through the
       dispatcher is counted. The mixin required an explicit call per problem

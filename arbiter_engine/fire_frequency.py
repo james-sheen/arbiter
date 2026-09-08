@@ -76,7 +76,7 @@ class FireFrequencyTracker:
         self._fires: DefaultDict[Tuple[str, str, str], Deque[datetime]] = (
             defaultdict(deque)
         )
-        # WARN cadence tracking — count (date_iso, axiom, domain) bucket.
+        # WARN cadence tracking — count per (date_iso, axiom, domain) bucket.
         self._warn_counts: TypedCounter = Counter()
 
     @staticmethod

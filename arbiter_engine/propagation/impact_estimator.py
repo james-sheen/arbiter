@@ -7,7 +7,7 @@ affected, when impact arrives (time-to-impact), how probable it is, and
 what severity to expect.
 
 Uses a combination of:
-  - :class:`~.weight_learner.LearnedWeight` — empirical P(downstream|upstream)
+  - :class:`~.weight_learner.LearnedWeight`       — empirical P(downstream|upstream)
   - :class:`~..temporal.temporal_edge.TemporalEdge` — physics-based timing model
   - BFS over the :class:`~..interfaces.RelationshipGraph`
 
@@ -39,12 +39,12 @@ class DownstreamImpact:
 
     Attributes
     ----------
-    entity_id: Downstream entity identifier.
-    hop_distance: Number of relationship hops from the source entity.
-    probability: P(this entity experiences a problem) given the source event.
-    expected_delay_s: Expected seconds until impact arrives.
-    severity: Expected problem severity at this entity.
-    path: Entity IDs along the propagation path (source → this).
+    entity_id:         Downstream entity identifier.
+    hop_distance:      Number of relationship hops from the source entity.
+    probability:       P(this entity experiences a problem) given the source event.
+    expected_delay_s:  Expected seconds until impact arrives.
+    severity:          Expected problem severity at this entity.
+    path:              Entity IDs along the propagation path (source → this).
     """
     entity_id: str
     hop_distance: int
@@ -85,13 +85,13 @@ class ImpactForecast:
 
     Attributes
     ----------
-    source_problem: The triggering :class:`Problem`.
+    source_problem:     The triggering :class:`Problem`.
     downstream_impacts: Ordered list of :class:`DownstreamImpact`, highest-
                         probability first.
-    total_affected: Number of distinct downstream entities potentially
+    total_affected:     Number of distinct downstream entities potentially
                         affected.
-    max_hop_distance: Furthest entity reached by the BFS.
-    generated_at: UTC timestamp when this forecast was produced.
+    max_hop_distance:   Furthest entity reached by the BFS.
+    generated_at:       UTC timestamp when this forecast was produced.
     """
     source_problem: Problem
     downstream_impacts: List[DownstreamImpact] = field(default_factory=list)
@@ -108,7 +108,7 @@ class ImpactForecast:
 
         Parameters
         ----------
-        entity_registry: Optional mapping of entity_id → :class:`Entity`.
+        entity_registry:  Optional mapping of entity_id → :class:`Entity`.
         """
         registry = entity_registry or {}
         problems: List[Problem] = []
@@ -174,9 +174,9 @@ class ImpactEstimator:
 
     Parameters
     ----------
-    max_hops: Maximum BFS depth (prevents unbounded traversal).
-    min_probability: Prune paths below this probability threshold.
-    default_delay_s: Fallback delay (seconds) when no learned weight exists.
+    max_hops:            Maximum BFS depth (prevents unbounded traversal).
+    min_probability:     Prune paths below this probability threshold.
+    default_delay_s:     Fallback delay (seconds) when no learned weight exists.
     default_probability: Fallback propagation probability per hop when unlearned.
     """
 
@@ -205,9 +205,9 @@ class ImpactEstimator:
 
         Parameters
         ----------
-        problem: The triggering source problem.
-        graph: Relationship graph for topology traversal.
-        temporal_edges: Optional :class:`TemporalAnnotationStore` for timing.
+        problem:         The triggering source problem.
+        graph:           Relationship graph for topology traversal.
+        temporal_edges:  Optional :class:`TemporalAnnotationStore` for timing.
         learned_weights: Optional mapping from :meth:`PropagationWeightLearner.learn_from_history`.
 
         Returns

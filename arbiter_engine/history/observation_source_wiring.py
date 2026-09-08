@@ -101,7 +101,7 @@ def get_source_count_for_entity(entity_id: str) -> Optional[int]:
 def get_observation_source_wired_entity_count() -> int:
     """Aggregate count of source-wired entities.
 
-    Dashboard-data defensive-accessor entry point. Returns 0 when gate off.
+    Dashboard-data defensive-accessor entry point. Returns 0 when    gate off.
     """
     if not DT_OBSERVATION_SOURCE_WIRING_ENABLED:
         return 0

@@ -322,7 +322,7 @@ class HypothesisGenerator:
             )
         except (TypeError, ValueError):
             # production substrate signature may diverge during landing —
-            # don't crash; owns reconciliation
+            # don't crash; an internal ruling owns reconciliation
             pass
         return hypothesis
 
@@ -333,9 +333,9 @@ class HypothesisGenerator:
 #
 # Mirrors NLTraversalTranslator3Tier discipline applied to
 # hypothesis-verdict surface. 3-tier escalation:
-# Tier 1 — auto-translate NL → typed VerdictRequest (no operator action)
-# Tier 2 — LLM-ambiguity-resolution candidate-presentation (2-3 picks)
-# Tier 3 — operator-confirmation (cross-tenant OR HIGH+/CRITICAL severity)
+#   Tier 1 — auto-translate NL → typed VerdictRequest (no operator action)
+#   Tier 2 — LLM-ambiguity-resolution candidate-presentation (2-3 picks)
+#   Tier 3 — operator-confirmation (cross-tenant OR HIGH+/CRITICAL severity)
 #
 # Per the kernel-as-atom design centre, Lever 4.
 # ---------------------------------------------------------------------------

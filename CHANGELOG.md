@@ -20,6 +20,75 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+### Added
+
+- **`no_rule_for_role`, a thirteenth `not_checked[].reason`.** A model that
+  declares `role: count` on an indicator and asks CONSISTENCY about it has
+  declared correctly and gets an answer; ask RESPONSIVENESS and there is no rule
+  for counts, so the pair does not evaluate. That state used to report
+  `missing_role`.
+
+  **The two are opposites on the axis this vocabulary was split along** -- who
+  owes something. An indicator with no role owes a declaration. One whose
+  declared role an axiom has no rule for owes nothing: the model is right and
+  the axiom does not cover that kind of quantity. Reporting the second as
+  `missing_role` sent an author who had already declared a role looking for one,
+  and only the decline `detail` said otherwise -- a field this policy declares
+  unsupported for matching, which is what made it the vocabulary's problem
+  rather than the reader's.
+
+  **A consumer counting `missing_role` will see the count fall**, with the
+  difference arriving under the new member. `not_applicable` is unchanged and
+  was not reused: it means no checker was registered for the axiom, and pointing
+  this at it would report a broken engine where none is.
+
+
+- **`binder_must_supply`, a decorator a check uses to declare the arguments it
+  decides by.** A platform that binds a declared check calls it with the entity,
+  and with the history when that is the second parameter; everything else keeps
+  its default forever. A check whose answer depends on one of those extras is
+  declarable, bindable, callable, and unable to do its job -- with every layer
+  reporting success.
+
+  **No signature separates that from a knob**, which is why this is declared
+  rather than inferred. In this package `check_config_drift(entity,
+  desired_config=None)` cannot work without its second argument and
+  `check_replica_mismatch(entity, tolerance_seconds=60.0)` is correct with its
+  default: same shape, opposite meaning, and no rule over names, types or
+  defaults tells them apart. Only the author of the method knows, so the author
+  says it, and a binder that reads the attribute can refuse the declaration at
+  load and name the parameter.
+
+  `check_config_drift` carries it. Nothing in the package reads the attribute --
+  the binder that does is not part of this distribution -- so this is a
+  contract a consumer's own binder can honour, not a behaviour change here.
+
+### Removed — BREAKING
+
+- **`HomeostasisChecker.check_all` no longer accepts `desired_config`.** It
+  forwarded the value nowhere. Its only reader was the hardcoded fallback that
+  0.1.13 removed, so passing one has changed nothing since that release --
+  while the signature went on saying otherwise. A caller who passes it now gets
+  a `TypeError` rather than a silent no-op, which is the whole reason to take it
+  off rather than leave it.
+
+- **Drift detection is no longer offered through a domain declaration.**
+  0.1.13 made this state audible: a declared `config_drift` bound, was called,
+  and declined `missing_config` every time, because extensions are called with
+  an entity and its history, there is no third slot, and nothing in the loader,
+  the core or the domain schema declares a specification to compare against.
+  That entry called the wider gap open. It is now closed by withdrawal rather
+  than by building a declaration surface for it -- **the same call, and for the
+  same reason, as `check_capacity_ratio` in 0.1.12**: a format addition is far
+  harder to withdraw than a method is to restore, and no consumer has asked for
+  one.
+
+  **`check_config_drift` is unchanged and stays.** A caller holding a
+  specification of their own passes it directly and gets exactly the comparison
+  it always did. What is withdrawn is the claim that a domain file could supply
+  one. If a model arrives that needs to declare a desired configuration, that
+  declaration is the design to do -- not this path to re-enable.
+
 ## [0.1.13] — 2026-09-07
 
 ### Fixed

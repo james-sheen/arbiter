@@ -45,7 +45,7 @@ from ...types import (
 # — resolve_axiom_threshold at the primary firing-gate
 # read-site (correlation_drop_threshold). The other 2 calibration scalars
 # (latency_spike_factor + max_lag_seconds) stay as global params —
-# sentinel key only has 1 override slot (indicator, axiom) tuple, so
+# sentinel key only has 1 override slot per (indicator, axiom) tuple, so
 # only the primary threshold gets the per-entity override. Same carve-out
 # rationale as MONOTONICITY's reversal_threshold + STABILITY's epsilon/delta.
 # The override is read off ``output_entity.properties`` (the entity carrying
@@ -178,20 +178,28 @@ class ResponsivenessChecker:
         #
         # A declared axiom that silently evaluates nothing is worse than an
         # undeclared one: the domain model says the invariant is being
-        # checked. Note the matching itself is a hidden domain assumption —
-        # an indicator named `queue_depth` or `p99` is plainly a
-        # responsiveness measure and is skipped anyway. Reporting it is this
-        # CD's scope; replacing name-matching with a declared property is not.
+        # checked. This paragraph used to end by noting that the matching was
+        # itself a hidden domain assumption -- an indicator named `queue_depth`
+        # or `p99` is plainly a responsiveness measure and was skipped anyway --
+        # and that replacing name-matching with a declared property was out of
+        # scope. It was done: applicability is decided by the model's declared
+        # `role:` and nothing here reads a name.
         if not name_matches:
-            # the decline now names the REMEDY rather than the rule.
-            # The sentence this replaces was true and unhelpful: it described
-            # the engine's name test, leaving the reader to conclude that
-            # renaming their domain concept was the fix. Renaming a concept to
-            # satisfy a checker is the wrong remedy; saying what the concept is
-            # is the right one.
+            # the decline names the REMEDY rather than the rule. The
+            # sentence this replaces was true and unhelpful: it described the
+            # engine's name test, leaving the reader to conclude that renaming
+            # their domain concept was the fix. Renaming a concept to satisfy a
+            # checker is the wrong remedy; saying what the concept is is the
+            # right one.
+            #
+            # and WHICH remedy depends on which of the two states
+            # this is. `_role_source` is the engine's own answer: `declared`
+            # means the model said what this indicator is and this axiom has no
+            # rule for that kind of quantity, so nobody owes anything.
             return CheckOutcome(result).declined(
                 Axiom.RESPONSIVENESS, entity, indicator.name,
-                NotEvaluatedReason.MISSING_ROLE,
+                NotEvaluatedReason.NO_RULE_FOR_ROLE if _role_source == "declared"
+                else NotEvaluatedReason.MISSING_ROLE,
                 detail=roles.explain_absence(Axiom.RESPONSIVENESS, indicator),
             )
         # a branch keyed on a third role source was removed here: the

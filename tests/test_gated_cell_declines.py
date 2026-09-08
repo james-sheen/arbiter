@@ -155,8 +155,33 @@ class TestTheVocabularyGrew:
     def test_the_reason_is_in_the_closed_set(self):
         assert NotEvaluatedReason.PRECONDITION_UNMET.value == "precondition_unmet"
 
-    def test_it_is_the_twelfth(self):
-        """The count is asserted because the README states one, and two records
-        of a number drift. `test_decline_vocabulary_cd1658` holds the README to
-        this enum; this holds the enum to the closure that grew it."""
-        assert len(list(NotEvaluatedReason)) == 12
+    #: Every reason that has shipped. Removing one is a breaking change by the
+    #: compatibility policy's own list; adding one is a patch. So this is a
+    #: FLOOR, and a new member is expected to walk past it.
+    SHIPPED = frozenset({
+        "insufficient_samples", "missing_property", "no_current_value",
+        "missing_entity_type", "missing_config", "no_threshold",
+        "wrong_indicator_type", "missing_role", "undefined_for_values",
+        "not_applicable", "checker_error", "precondition_unmet",
+    })
+
+    def test_no_reason_that_has_shipped_has_been_removed(self):
+        """This asserted the enum held exactly TWELVE members.
+
+        The count expired the first time the vocabulary grew for a good reason,
+        which is what a count pin does -- it fails on the next legitimate
+        change rather than on a defect. Its stated job was keeping the README
+        and the enum from drifting apart, and that is already done, better, one
+        test over: `test_decline_vocabulary_cd1658` DERIVES the README's number
+        from this enum, in both directions.
+
+        What is left worth pinning is the direction. Adding a member is a patch
+        release; removing one is breaking. So this fails on a removal and stays
+        quiet on an addition.
+        """
+        present = {r.value for r in NotEvaluatedReason}
+        missing = self.SHIPPED - present
+        assert not missing, (
+            f"{sorted(missing)} left the vocabulary. Removing a member of "
+            f"`not_checked[].reason` is a breaking change, and a consumer "
+            f"switching on it does not get told")

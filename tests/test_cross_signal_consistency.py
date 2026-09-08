@@ -162,7 +162,7 @@ class TestTheRuleDoesNotNeedARole:
         model = model_describe(session).to_dict()["model"]
         assert model["unreachable_declarations"] != []
         records = declines_for(envelope, "CONSISTENCY")
-        # split this arm off NOT_APPLICABLE: a roleless indicator is a
+        # An internal ruling split this arm off NOT_APPLICABLE: a roleless indicator is a
         # MISSING DECLARATION, not an inapplicable axiom. The remedy the loader
         # already prints (declare a `role:`) is what makes the two different.
         assert records[0]["reason"] == NotEvaluatedReason.MISSING_ROLE.value

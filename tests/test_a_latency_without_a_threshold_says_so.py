@@ -124,7 +124,7 @@ class TestTheSilentCell:
 
 
 class TestZeroIsADeclaredThreshold:
-    """`if indicator.critical_threshold and...` is falsy at zero, so a bound
+    """`if indicator.critical_threshold and ...` is falsy at zero, so a bound
     the model states was skipped without a word. Zero is legitimate for a
     latency that must be immediate."""
 

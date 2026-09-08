@@ -55,7 +55,7 @@ _MAX_SAMPLE_COUNT = 10000
 # Per decision: this is the threshold downstream consumers
 # (ACTIVE-mode auto-approval) read from `P(action_clears_problem)`.
 # Surfaced here for inspection + tests; the actual ACTIVE-mode policy
-# owns the decision of whether to use it.
+# An internal ruling owns the decision of whether to use it.
 ACTIVE_MODE_AUTO_APPROVE_THRESHOLD = 0.85
 
 
@@ -671,7 +671,7 @@ def make_real_perturbation_simulation_step_v2(
 # ===========================================================================
 # — Reference detection_callable factory for v2 substrate.
 #
-# ships the deep-copy + threshold-extraction substrate (sync,
+# An internal ruling ships the deep-copy + threshold-extraction substrate (sync,
 # caller-supplied detection_callable). An internal ruling wires a reference
 # `detection_callable` builder that operators can use to plug a real
 # `LayeredDetector` into the v2 perturbation factory. Substrate-only
@@ -829,27 +829,27 @@ async def make_layered_detector_runtime_callable_async(
 # ===========================================================================
 # — Canonical AxiomParameters threshold_injector.
 #
-# ships the v2 substrate hook (`threshold_injector: Optional[Callable]`)
-# on the reference detection_callable factory; an internal ruling lands the canonical
-# injector mapping the `Dict[(entity_type, indicator, axiom),
+# The v2 substrate hook (`threshold_injector: Optional[Callable]`) is already
+# on the reference detection_callable factory. What lands here is the canonical
+# injector, mapping the `Dict[(entity_type, indicator, axiom),
 # Tuple[warn, critical]]` shape onto a concrete target.
 #
 # Architectural choice: option (b) scope #1 — snapshot
 # entity-property mutation under a sentinel key
 # ``__axiom_threshold_overrides__``. Rationale:
 # - Preserves AxiomParameters dataclass shape (option (a) would require
-# N-field schema extension; high-surface change rippling through every
-# axiom checker that reads global params).
+#   N-field schema extension; high-surface change rippling through every
+#   axiom checker that reads global params).
 # - Per-(entity_type, indicator, axiom) granularity preserved at the
-# per-entity level (each entity carries its own perturbed thresholds).
+#   per-entity level (each entity carries its own perturbed thresholds).
 # - Per-sample isolation guaranteed via the `deepcopy_snapshot` —
-# the mutation happens on the snapshot_copy, NEVER the original.
+#   the mutation happens on the snapshot_copy, NEVER the original.
 # - Sentinel key under entity.properties avoids polluting the
-# ``axiom_thresholds`` namespace (which downstream might use for
-# non-perturbation purposes).
+#   ``axiom_thresholds`` namespace (which downstream might use for
+#   non-perturbation purposes).
 #
 # this block said the injector's write was NOT consumed. It is.
-# The paragraph described the state on the day shipped the helper and
+# The paragraph described the state on the day that an internal ruling shipped the helper and
 # the factory and left the checker-side read to; the integration has
 # since landed, moved the resolver to `arbiter_engine/axiom_thresholds.py`,
 # and five of the eight checkers consult it. MEASURED, not read: injecting
@@ -990,9 +990,9 @@ def make_entity_properties_threshold_injector() -> Callable[
 #
 # Each axiom-checker that integrates override (scope items
 # #1/#2/#3) calls this helper at every threshold read-site. Precedence:
-# 1. entity.properties["__axiom_threshold_overrides__"][(indicator, axiom)]
+#   1. entity.properties["__axiom_threshold_overrides__"][(indicator, axiom)]
 # — per-sample perturbed override from injector
-# 2. axiom_param_value — global AxiomParameters fallback
+#   2. axiom_param_value — global AxiomParameters fallback
 #
 # Bound selector — each tuple is (warn, critical); callers pass which side
 # they want via the `bound` arg: "warn" / "critical" / "both" (returns the

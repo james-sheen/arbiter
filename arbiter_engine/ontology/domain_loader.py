@@ -143,13 +143,13 @@ def is_domain_model(source: Union[str, Path, Dict[str, Any]]) -> bool:
         # directory scan does not need exceptions for control flow, and it was
         # raising two kinds anyway:
         #
-        # - `load_domain` treats a newline-free string as a *path*, so any
-        # short string that is not a filename raised `FileNotFoundError`
-        # straight through the filter. A scan racing a deleted file got
-        # the same.
-        # - Malformed YAML raised `yaml.YAMLError`, which is precisely the
-        # case a caller most wants answered with False rather than a
-        # traceback.
+        #   - `load_domain` treats a newline-free string as a *path*, so any
+        #     short string that is not a filename raised `FileNotFoundError`
+        #     straight through the filter. A scan racing a deleted file got
+        #     the same.
+        #   - Malformed YAML raised `yaml.YAMLError`, which is precisely the
+        #     case a caller most wants answered with False rather than a
+        #     traceback.
         #
         # Both mean the same thing to a caller: `load_domain` would not accept
         # this. That is what the docstring promises, so it is what is returned.
@@ -269,7 +269,7 @@ class DomainModel:
     def unread_fields(self) -> List[Dict[str, Any]]:
         """Declared FIELDS whose consuming axiom is not declared.
 
-        Reported from outside as issue #5, against the field had added
+        Reported from outside as issue #5, against the field that an internal ruling had added
         the day before. `expect_variation: true` on an indicator whose `axioms:`
         omits STABILITY is accepted, never read, and reported nowhere -- so a
         frozen sensor produced an envelope byte-identical to a live one, which
@@ -691,7 +691,7 @@ def _resolve_axioms(raw: Any, unresolved: Optional[dict] = None) -> List[Axiom]:
 def _resolve_threshold(raw: Any) -> Optional[float]:
     """Absent threshold becomes None.
 
-     reverses a documented decision, so the reasoning is recorded
+    An internal ruling reverses a documented decision, so the reasoning is recorded
     rather than replaced. This returned ``0.0`` and said so deliberately:
     *"checkers read these as floats and a None here would surface as a
     TypeError deep in an axiom check rather than as a load error."*

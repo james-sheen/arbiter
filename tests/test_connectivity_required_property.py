@@ -118,7 +118,7 @@ class TestTheLegitimateSkipSurvives:
 
     The claim these controls were written to protect is that a legitimately
     gated entity does not ALARM, and that its gate is not mistaken for the typo
-     reports. Both survive. What changed is that the skip now says so.
+    that an internal ruling reports. Both survive. What changed is that the skip now says so.
     """
 
     def _gate_reasons(self, env, entity_id):

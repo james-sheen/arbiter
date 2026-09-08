@@ -66,13 +66,14 @@ declined.
 | [`missing_property`](#missing_property) | `NotEvaluatedReason.MISSING_PROPERTY` |
 | [`missing_role`](#missing_role) | `NotEvaluatedReason.MISSING_ROLE` |
 | [`no_current_value`](#no_current_value) | `NotEvaluatedReason.NO_CURRENT_VALUE` |
+| [`no_rule_for_role`](#no_rule_for_role) | `NotEvaluatedReason.NO_RULE_FOR_ROLE` |
 | [`no_threshold`](#no_threshold) | `NotEvaluatedReason.NO_THRESHOLD` |
 | [`not_applicable`](#not_applicable) | `NotEvaluatedReason.NOT_APPLICABLE` |
 | [`precondition_unmet`](#precondition_unmet) | `NotEvaluatedReason.PRECONDITION_UNMET` |
 | [`undefined_for_values`](#undefined_for_values) | `NotEvaluatedReason.UNDEFINED_FOR_VALUES` |
 | [`wrong_indicator_type`](#wrong_indicator_type) | `NotEvaluatedReason.WRONG_INDICATOR_TYPE` |
 
-12 reasons. The set is closed, and this table is generated from the engine in this repository rather than transcribed -- a guide that disagreed with it would not have been published.
+13 reasons. The set is closed, and this table is generated from the engine in this repository rather than transcribed -- a guide that disagreed with it would not have been published.
 
 One section per reason follows. Each says what the refusal means and what your
 bridge owes because of it.
@@ -145,6 +146,21 @@ Exclude it in the model and name the exclusion in the manifest — the differenc
 between *we chose not to watch this* and *we forgot it exists* is the whole value
 of an audit.
 
+**It also arrives on indicators you were right to declare, and there that remedy
+is wrong.** An axiom with more than one arm can have one arm undeclared while the
+others do real work: `MONOTONICITY` declines this from its rate arm when no rate
+is declared, and the reversal arm beside it still runs and still reports its
+findings. Excluding that indicator throws away a check that was working. Declare
+the rate if you have a number for it; otherwise let the reason report and keep
+the arm you did declare.
+
+**Classify it before a release emits it.** A bridge whose exit contract maps a
+fixed set of reasons reads an unrecognised one as a defect in its own model. When
+this reason first reached the rate arm, two published bridges went from clean to
+non-zero over corpora that had not changed — the engine got more honest and its
+consumers scored that as a fault. A reason your contract does not name is a
+verdict you have not made.
+
 ### `wrong_indicator_type`
 
 The axiom was pointed at a kind of value it cannot reason about. A modelling
@@ -157,6 +173,33 @@ The axiom would apply, and the model never said what this indicator *is* to it.
 Somebody owes a declaration, and this is the arm of a decline you can put on a
 backlog. Reading it as *the axiom does not apply here* retires a check that was
 one line of model away from running.
+
+### `no_rule_for_role`
+
+The mirror of the one above, and the difference is who owes something. Here the
+model **did** say what the indicator is, and the axiom has no rule for that kind
+of quantity — so nobody owes anything. The model is right and the axiom does not
+cover it. Two axioms are role-gated and the rest always apply: `RESPONSIVENESS`
+has a rule for `latency`, and `CONSISTENCY` for `count`, `percentage` and
+`ratio`. Declare `role: count` alongside `axioms: [RESPONSIVENESS]` and this is
+what comes back, naming the roles that axiom does cover.
+
+**Do not route it to the backlog `missing_role` goes to.** A bridge that
+collapses the two sends an author to declare a role that is already declared,
+looking for something that is already there — which is the reason these are two
+reasons and not one. Treat this one as a design-time fact about your generator:
+either that axiom does not belong on that indicator, or the role does not.
+
+**You do not have to run a cycle to find them.** The pair is unreachable under
+any input, so `model_describe` lists it in `unreachable_declarations` at load
+time with the same remedy string, carrying `declared_role` beside the axiom. An
+empty list is the target, and a generated model is the case that fills it — the
+combination is easy to emit from a template and impossible to see by reading one
+indicator at a time.
+
+`CONSISTENCY` has a second way out that the role table does not show: declaring
+`consistency: {agrees_with: [...]}` makes it applicable whatever the role, and
+the decline's own detail says so.
 
 ### `precondition_unmet`
 
@@ -351,7 +394,8 @@ manifest names everything excluded, with a reason. The second half is not
 optional. One entity type per real-world unit; never fold a value into a slot
 that means something else; exclude templated names before generation, not after.
 A generated model is your output and nothing else will proofread it — read it
-back through the verbs in Section 3 before you trust anything it produced.
+back through the verbs in *The read surface that is not `check`* before you
+trust anything it produced.
 
 **C3 — Measure the engine you pin; do not read it.** Derive what it will judge,
 decline, or excuse by running every arm of every relevant axiom against the exact
@@ -362,7 +406,7 @@ that re-runs, never as a table in a document.
 **C4 — An operator-knowledge channel.** Some facts are physics, law, or contract,
 and no schema contains them. Carry a channel where an operator states them, and
 require every statement to carry a **basis**: what the declarer actually looked
-at. Then gate it (Section 6).
+at. Then gate it — see *The review gate*.
 
 **C5 — Ingestion layering.** Feed only what stage one classified as present and
 reading. Keep the engine's missing-property decline as the belt to that brace.
@@ -527,12 +571,15 @@ These are complete programs built to it, source and tests readable in full:
 - [`fleet-sensor-baseline`](https://github.com/james-sheen/fleet-sensor-baseline)
   — built on the first one's published formats rather than on this engine
   directly, which is the other shape a downstream package takes.
+- [`factory-line-audit`](https://github.com/james-sheen/factory-line-audit) — a
+  discrete-manufacturing line read over OPC UA, and the vertical whose vocabulary
+  shares no nouns with the other two. Its `FINDINGS.md` is the report this
+  section asks for: what did not survive contact with this document, including
+  two findings withdrawn when re-measurement did not reproduce them.
 
-**Both are by this engine's author, and that is a limit on what they prove.**
-They are worked examples, not independent adoption. The method has since been
-carried into a vertical sharing no vocabulary with these two — a factory
-production line — and several of the corrections in this document came from
-what did not survive that contact. But it was done by the same author, as a
-deliberate exam, so it moves only one of the two limits. Nobody outside has
-done it. If you are the first, the parts that do not survive contact are worth
+**All three are by this engine's author, and that is a limit on what they prove.**
+They are worked examples, not independent adoption. The third was a deliberate
+exam of this document, and several of the corrections here came from what did not
+survive it — but the same author wrote both sides, so it moves only one of the
+two limits. Nobody outside has done it. If you are the first, the parts that do not survive contact are worth
 more to this document than the parts that do.

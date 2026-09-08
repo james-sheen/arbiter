@@ -6,7 +6,7 @@ BOUNDEDNESS / CONSISTENCY / CONSERVATION / CAUSALITY / PREDICTION_QUALITY).
 
 Per sibling-within-module precedent: axioms/ dir hosts 8
 sibling checker modules with no single shared parent module suitable for
-sibling extension. ships substrate at new standalone module
+sibling extension. An internal ruling ships substrate at new standalone module
 (parent = `arbiter_engine/ontology/`, sibling to `axioms/` package) rather
 than mutate any individual checker. The sibling-substrate
 discipline preserved (substrate sibling at axis-parent level rather than

@@ -35,6 +35,9 @@ from ...clock import as_naive_utc, now_utc
 # the difference would only ever surface as a model that loads here and
 # not there.
 from ..domain_loader import parse_duration
+# Module-level rather than the local import used further down: the marker is a
+# decorator, so it has to exist when the class body runs.
+from .extensions import binder_must_supply
 from ...interfaces import (
     Entity,
     Problem,
@@ -769,6 +772,7 @@ class HomeostasisChecker:
 
         return problems
 
+    @binder_must_supply("desired_config")
     def check_config_drift(
         self,
         entity: Entity,
@@ -780,30 +784,32 @@ class HomeostasisChecker:
         Detects:
         - Config values that differ from desired specification
 
-        **`desired_config` became optional on 2026-09-07, and that repaired a
-        declaration rather than relaxing a contract.** It was required and
-        positional, and the extension binder routes on whether a check's second
-        parameter is named `history` -- so this one was called with the entity
-        alone, raised, and the TypeError was swallowed. A shipped domain file
-        declared this check; it could not run, and nothing said so.
+        **CALL THIS DIRECTLY. It is not reachable through a domain file, and
+        that became deliberate on 2026-09-08.** It needs a
+        specification to compare against; an extension is called with an entity
+        and a history and has no slot for one; nothing in the loader, the core
+        or the domain schema declares such a specification anywhere. Declared,
+        it bound and was called and could only answer *nothing to compare
+        against*, so the shipped domain file stopped declaring it rather than a
+        new declaration surface being invented for it.
 
-        No desired configuration is not an error, it is the ordinary state of a
-        model that never declared one, and the answer to *has this drifted from
-        a specification* when there is no specification is nothing -- not a
-        finding, and not an exception either. Supply one and the comparison is
-        exactly as it was.
+        The comparison itself was never the broken part and is unchanged: pass a
+        mapping of the values a model is supposed to hold and every key that
+        differs is reported.
+
+        No specification is not an error. It is the ordinary state of a model
+        that never wrote one down, and the answer to *has this drifted* when
+        there is nothing to drift from is neither a finding nor an exception --
+        it is the decline below.
         """
         problems = []
 
-        # opened the channel this uses; is why it matters.
-        # A bare `return problems` here is an empty list, and an empty list from
-        # a declared check reads as *evaluated, nothing wrong* -- the same shape
-        # `check()` above had three of before they became declines. Nothing in
-        # the loader, the core or the domain schema supplies a desired
-        # configuration, so today this decline is what a shipped domain file
-        # gets for declaring `config_drift`, every time. That is the honest
-        # answer and it is not the whole fix: an internal ruling holds the question of
-        # where a specification should come from.
+        # A bare `return problems` here is an empty list, and an empty list
+        # reads as *evaluated, nothing wrong* -- the same shape `check()` above
+        # had three of before they became declines. This one now answers a
+        # direct caller who omitted the argument rather than a declaration that
+        # could never supply it, which is a much smaller population; it is kept
+        # because the distinction it draws is the same one either way.
         if not desired_config:
             return CheckOutcome(problems).declined(
                 Axiom.HOMEOSTASIS, entity, 'config_drift',
@@ -1055,8 +1061,7 @@ class HomeostasisChecker:
     def check_all(
         self,
         entity: Entity,
-        history: ObservationHistory,
-        desired_config: Optional[Dict[str, Any]] = None
+        history: ObservationHistory
     ) -> List[Problem]:
         """
         Run all HOMEOSTASIS checks on an entity.
@@ -1077,27 +1082,29 @@ class HomeostasisChecker:
 
         The record that kept it said eliminating it meant moving these checks
         into the domain YAML, "a larger change". Measured, the declaration was
-        already there: the Kubernetes domain file names all five under
-        `domain_checks`, each with its own `entity_types`, and the platform
-        builds an extension from that. Nothing was moved here; a duplicate was
+        already there: the Kubernetes domain file named every one of them
+        under `domain_checks`, each with its own `entity_types`, and the
+        platform builds an extension from that. Nothing was moved here; a duplicate was
         removed.
 
-        **`desired_config` is on this signature and reaches nothing, and the
-        sentence that used to sit here had it exactly backwards.** It read that
-        the parameter was the declared path's rather than the fallback's.
-        Measured against the parent commit: its only use in this method was
-        inside the removed block, guarded by the same condition, so it WAS the
-        fallback's and it went inert when the fallback did.
+        **This signature lost a third parameter on 2026-09-08, and
+        it is a breaking change for anyone who passed one.** It carried an
+        optional desired configuration, forwarded it nowhere, and went inert
+        when the hardcoded fallback above was removed -- its only reader was
+        inside that block. Passing it changed nothing; accepting it said
+        otherwise.
 
-        The declared path cannot carry it. An extension check is called
-        `(entity, history)` and there is no third slot; `check_config_drift`
-        names its second parameter `desired_config`, so the binder supplies the
-        entity alone and the comparison is always against nothing. Nothing in
-        the loader, the core or the domain schema declares a desired
-        configuration anywhere, so there is no value for a slot to carry.
+        A declared check cannot be given one either. Extensions are called with
+        the entity and its history, there is no third slot, and nothing in the
+        loader, the core or the domain schema declares such a specification
+        anywhere -- so there was no value for a slot to carry. The ruling was to
+        stop advertising the capability rather than to invent a surface for it:
+        the shipped domain file no longer declares drift detection, and this
+        method no longer accepts an argument it could not use.
 
-        The consequence is recorded rather than quietly repaired, because the
-        repair is a choice about what a declared-but-unfeedable check should do:
+        `check_config_drift` remains, and remains callable directly by anyone
+        holding a specification of their own. What is gone is the pretence that
+        the declared path could reach it.
         """
         # Run domain-specific checks via extension registry
         # Extract domain_id from entity metadata to scope extension checks.

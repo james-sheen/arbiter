@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 #
 # `check_entity` walked every property of an entity, split each key into word
 # tokens, and applied the count / percentage / ratio rules to whatever matched.
-# had narrowed the matching from substrings to whole tokens, which fixed
+# An internal ruling had narrowed the matching from substrings to whole tokens, which fixed
 # `observed_generation` reading as a ratio and left the shape intact.
 #
 # Two reasons, and the second is the one that settles it. It derived an
@@ -164,19 +164,27 @@ class ConsistencyChecker:
                 detail=declined_detail,
             )
 
-        # every rule here is keyed on the indicator NAME tokenising to
-        # count / percent / pct / ratio. An indicator named anything else —
-        # `temperature`, `flow_in`, `queue_depth` — matched no rule and reached
+        # every rule here WAS keyed on the indicator NAME tokenising
+        # to count / percent / pct / ratio. An indicator named anything else --
+        # `temperature`, `flow_in`, `queue_depth` -- matched no rule and reached
         # this return having evaluated nothing, returning an empty list that
-        # read as a clean pass. This is the dominant case rather than the edge
-        # one: most indicator names are not count/percent/ratio words.
+        # read as a clean pass, and that was the dominant case rather than the
+        # edge one. Names are no longer read: the rules key on the model's
+        # declared `role:`, and this return is now reached by a model that
+        # declared none or declared one this axiom has no rule for.
         if not applicable:
             # names the remedy (declare a role) rather than the rule
             # (your name did not tokenise), which pointed the reader at
             # renaming a domain concept to satisfy a checker.
+            #
+            # and there are two remedies, because there are two
+            # states. `_role_source` says which: `declared` means the model
+            # named this indicator's kind and CONSISTENCY has no rule for that
+            # kind, which is nobody's debt.
             return CheckOutcome(result).declined(
                 Axiom.CONSISTENCY, entity, indicator.name,
-                NotEvaluatedReason.MISSING_ROLE,
+                NotEvaluatedReason.NO_RULE_FOR_ROLE if _role_source == "declared"
+                else NotEvaluatedReason.MISSING_ROLE,
                 detail=roles.explain_absence(Axiom.CONSISTENCY, indicator),
             )
         # a branch keyed on a third role source was removed here: the

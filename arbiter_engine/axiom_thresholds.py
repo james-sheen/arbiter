@@ -54,7 +54,7 @@ AXIOM_THRESHOLD_OVERRIDES_KEY = "__axiom_threshold_overrides__"
 # resolver, and ONE of those calls sits on a path nothing invokes -- so setting
 # an override for that one is silent and always has been.
 #
-# corrected this from four/two on 2026-08-28. RESPONSIVENESS was filed
+# An internal ruling corrected this from four/two on 2026-08-28. RESPONSIVENESS was filed
 # as unreachable and is not: `check_io_pair` runs, fires, and honours the
 # override, on any session given I/O relationships through the public
 # `session.reasoner.set_io_relationships(...)`. Undocumented is not
@@ -142,9 +142,11 @@ def resolve_axiom_threshold(
 
     Integration pattern at an axiom-checker read site:
 
-        warn = resolve_axiom_threshold(entity, "cpu", "BOUNDEDNESS",
+        warn = resolve_axiom_threshold(
+            entity, "cpu", "BOUNDEDNESS",
             fallback=self.params.boundedness_warning_ratio,
-            bound="warn")
+            bound="warn",
+        )
 
     Args:
         entity: Detection Entity (real or test fixture). Read via

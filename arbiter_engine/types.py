@@ -394,14 +394,14 @@ class NotEvaluatedReason(str, Enum):
     # reading the decline vocabulary backwards, and this reason was the one entry
     # where the mapping is not a function. Told apart:
     #
-    # MISSING_ROLE the model never said what this indicator IS to the
-    # axiom. Somebody owes a declaration.
-    # UNDEFINED_FOR_VALUES the axiom applies and its quantity has no value on
-    # the data present -- a zero total, a zero spread.
-    # Nobody owes anything, and tomorrow it may evaluate.
-    # NOT_APPLICABLE what is left: no checker was registered for the
-    # axiom. An engine-side fault, unreachable while all
-    # eight are registered.
+    #   MISSING_ROLE          the model never said what this indicator IS to the
+    #                         axiom. Somebody owes a declaration.
+    #   UNDEFINED_FOR_VALUES  the axiom applies and its quantity has no value on
+    #                         the data present -- a zero total, a zero spread.
+    #                         Nobody owes anything, and tomorrow it may evaluate.
+    #   NOT_APPLICABLE        what is left: no checker was registered for the
+    #                         axiom. An engine-side fault, unreachable while all
+    #                         eight are registered.
     #
     # Fourth instance of the shape `NO_CURRENT_VALUE` records above, and the same
     # remedy: a closed enum missing a member does not raise, it reclassifies into
@@ -416,6 +416,27 @@ class NotEvaluatedReason(str, Enum):
     MISSING_ROLE = "missing_role"
     UNDEFINED_FOR_VALUES = "undefined_for_values"
     NOT_APPLICABLE = "not_applicable"
+    # the FIFTH answer that split did not produce, found by asking
+    # the engine both questions instead of one. A model declaring `role: count`
+    # and asking RESPONSIVENESS about it reported `MISSING_ROLE`: a role IS
+    # declared, correctly, and the detail beside it said so.
+    #
+    # On the axis above -- who owes something -- the two are opposites. An
+    # undeclared indicator owes a declaration. A correctly declared one whose
+    # role this axiom has no rule for owes NOTHING: the model is right and the
+    # axiom does not cover that kind of quantity. Telling that author to add a
+    # declaration sends them looking for something already there.
+    #
+    # `NOT_APPLICABLE` was not the answer either. The split above narrowed it to
+    # an engine-side fault, so reusing it would re-merge two states one release
+    # after separating them, and would report a broken engine where none is.
+    #
+    # Fifth instance of the shape `NO_CURRENT_VALUE` records. The engine already
+    # computed the distinction -- `roles.applies()` returns `declared` or `none`
+    # as its third value, and `explain_absence` writes two different sentences
+    # from it. Only the machine-readable field collapsed them, which is the one
+    # a consumer filters on.
+    NO_RULE_FOR_ROLE = "no_rule_for_role"
     CHECKER_ERROR = "checker_error"
     # a cell skipped by a DECLARED gate was counted in
     # `checked.invariants` and appeared in no row, making it byte-identical to a

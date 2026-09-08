@@ -2,11 +2,11 @@
 Gap Resolution Pipeline — three-tier escalation: Auto -> LLM -> Human.
 
 Maps to the confidence gates from ConfidenceGatedDetector:
-  MISSING_NODE -> entity_type_min (0.6)
-  MISSING_EDGE -> relationship_min (0.5)
-  MISSING_PROPERTY -> indicator_min (0.7)
-  MISSING_THRESHOLD-> indicator_min (0.7)
-  MISSING_DYNAMICS -> relaxed (0.5)
+  MISSING_NODE     -> entity_type_min  (0.6)
+  MISSING_EDGE     -> relationship_min (0.5)
+  MISSING_PROPERTY -> indicator_min    (0.7)
+  MISSING_THRESHOLD-> indicator_min    (0.7)
+  MISSING_DYNAMICS -> relaxed          (0.5)
   MISSING_DECLARATION -> not auto-resolvable (1.0)
 """
 

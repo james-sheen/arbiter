@@ -131,11 +131,11 @@ class TrendProjection:
         # archetype as — surface the tie via
         # tuple key.
         # Tiebreak order:
-        # 1. r_squared (primary — best fit).
-        # 2. -confidence_interval (tighter forecast = better; negate
-        # so max() picks the smaller interval).
-        # 3. r.model.value (alphabetical for full determinism on
-        # all-tied).
+        #   1. r_squared (primary — best fit).
+        #   2. -confidence_interval (tighter forecast = better; negate
+        #      so max() picks the smaller interval).
+        #   3. r.model.value (alphabetical for full determinism on
+        #      all-tied).
         best_r2 = max(r.r_squared for r in results)
         tied = [r for r in results if r.r_squared == best_r2]
         if len(tied) > 1:
@@ -175,7 +175,7 @@ class TrendProjection:
         horizon_s: float,
         threshold: Optional[float],
     ) -> Optional[TrendResult]:
-        """Linear: y = slope *t + intercept."""
+        """Linear: y = slope * t + intercept."""
         if len(t) < 2:
             return None
 
@@ -220,7 +220,7 @@ class TrendProjection:
         horizon_s: float,
         threshold: Optional[float],
     ) -> Optional[TrendResult]:
-        """Exponential: y = a *exp(b *t) + c."""
+        """Exponential: y = a * exp(b * t) + c."""
         if len(t) < 3:
             return None
 
