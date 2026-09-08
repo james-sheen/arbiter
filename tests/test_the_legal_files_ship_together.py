@@ -31,6 +31,7 @@ DISTRIBUTION = "arbiter-engine"
 _URL = re.compile(r"\w+://\S+")
 _FILENAME = re.compile(r"\b[A-Za-z0-9_-]+\.[a-z]{2,4}\b")
 _COPYRIGHT = re.compile(r"Copyright\s+(?:\(c\)\s+)?(\d{4}(?:-\d{4})?)\s+([^.\n]+)")
+_MARK_OWNER = re.compile(r"trademarks?\s+of\s+([^.\n]+)")
 
 
 def _files_named_in(text: str) -> set:
@@ -108,3 +109,23 @@ def test_the_copyright_lines_do_not_disagree():
     assert len(claims) == 1, (
         "the shipped legal files disagree about who holds copyright, or over "
         "what years: " + "; ".join(f"{k!r} in {sorted(v)}" for k, v in claims.items()))
+
+
+def test_the_marks_and_the_copyright_name_one_party():
+    """The copyright holder moved and the ownership sentence did not, which put
+    two different owners in one shipped file for as long as it took somebody to
+    read both. Compared against the copyright holder rather than a literal --
+    a literal would be the third record, and three drift faster than two."""
+    shipped = _shipped_legal_files()
+    owners, holders = set(), set()
+    for entry in shipped.values():
+        text = entry.read_text()
+        owners.update(owner.strip() for owner in _MARK_OWNER.findall(text))
+        holders.update(holder.strip() for _, holder in _COPYRIGHT.findall(text))
+    assert owners, (
+        "no shipped file says who owns the marks. If that sentence was "
+        "reworded, teach the pattern above or delete this test -- as it "
+        "stands it is green because it read nothing")
+    assert owners == holders, (
+        f"the marks are owned by {sorted(owners)} and the copyright is held "
+        f"by {sorted(holders)}. One party, or two records of it that disagree")
