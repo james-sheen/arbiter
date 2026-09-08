@@ -22,7 +22,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 readme = "README.md"
-authors = [{name = "James Sheen"}, {name = "Arbiter Project"}]
+authors = [{name = "James Sheen"}, {name = "The Arbiter Project Authors"}]
 keywords = ["anomaly-detection", "invariants", "ontology", "digital-twin", "observability", "detection-engine"]
 dependencies = [
     "numpy>=1.21",
