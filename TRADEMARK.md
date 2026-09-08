@@ -1,6 +1,6 @@
 # Arbiter Trademark Policy
 
-"Arbiter" and the Arbiter project name are unregistered trademarks of the Arbiter Project. This policy clarifies how the name may be used and complements the Apache License 2.0 that covers the source code and documentation. Apache 2.0 Section 6 already withholds any grant of trademark rights; this policy states what use of the name **is** permitted.
+"Arbiter" and the Arbiter project name are unregistered trademarks of The Arbiter Project Authors. This policy clarifies how the name may be used and complements the Apache License 2.0 that covers the source code and documentation. Apache 2.0 Section 6 already withholds any grant of trademark rights; this policy states what use of the name **is** permitted.
 
 ## Short version
 
@@ -42,4 +42,4 @@ This policy may be updated as the project matures. Material changes will be anno
 
 ---
 
-Copyright (c) 2023-2026 Arbiter Project. This trademark policy text is itself licensed under [Apache 2.0](LICENSE) — adapt, redistribute, and reuse as you wish, modulo accurate attribution.
+Copyright (c) 2025-2026 The Arbiter Project Authors. This trademark policy text is itself licensed under [Apache 2.0](LICENSE) — adapt, redistribute, and reuse as you wish, modulo accurate attribution.
