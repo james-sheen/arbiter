@@ -440,9 +440,14 @@ the schema reference, `kubernetes_node.yaml` is the smallest domain where a band
 `factory_line.yaml` is a manufacturing cell whose vocabulary shares no nouns with the other three.
 
 **Built on this engine**: [`bmc-sensor-audit`](https://github.com/james-sheen/bmc-sensor-audit)
-audits firmware sensor coverage; [`fleet-sensor-baseline`](https://github.com/james-sheen/fleet-sensor-baseline)
-aggregates its output across a fleet. Both are by this author rather than independent adopters, so
-take them as worked examples of the shape in `BRIDGES.md` and not as evidence anyone else has done it.
+audits firmware sensor coverage, and
+[`factory-line-audit`](https://github.com/james-sheen/factory-line-audit) bridges a
+discrete-manufacturing line read over OPC UA — the one whose vocabulary shares no nouns with the
+others. Both call the engine directly.
+[`fleet-sensor-baseline`](https://github.com/james-sheen/fleet-sensor-baseline) is a step further
+out: it aggregates `bmc-sensor-audit`'s output across a fleet and never calls the engine at all.
+All three are by this author rather than independent adopters, so take them as worked examples of
+the shape in `BRIDGES.md` and not as evidence anyone else has done it.
 
 Evidence and technical write-ups live in `evidence/` — architecture, deployment runbook,
 fault-scenario catalogue, and the observation logs from the closed-loop alpha, including the
