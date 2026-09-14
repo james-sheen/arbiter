@@ -218,6 +218,11 @@ def _not_evaluated_to_dict(record: NotEvaluated) -> Dict[str, Any]:
         out["total_observations"] = record.total_observations
     if record.sampling_interval_seconds is not None:
         out["sampling_interval_seconds"] = record.sampling_interval_seconds
+    # Which arms ran, when only some did. Emitted rather than left to the
+    # `detail` sentence: a floor keyed on prose is the thing the decline
+    # vocabulary exists to make unnecessary.
+    if record.arms_checked:
+        out["arms_checked"] = list(record.arms_checked)
     if record.floor_unreachable_at_this_rate:
         out["floor_unreachable_at_this_rate"] = True
         out["remedy"] = (

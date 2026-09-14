@@ -69,11 +69,12 @@ declined.
 | [`no_rule_for_role`](#no_rule_for_role) | `NotEvaluatedReason.NO_RULE_FOR_ROLE` |
 | [`no_threshold`](#no_threshold) | `NotEvaluatedReason.NO_THRESHOLD` |
 | [`not_applicable`](#not_applicable) | `NotEvaluatedReason.NOT_APPLICABLE` |
+| [`partially_checked`](#partially_checked) | `NotEvaluatedReason.PARTIALLY_CHECKED` |
 | [`precondition_unmet`](#precondition_unmet) | `NotEvaluatedReason.PRECONDITION_UNMET` |
 | [`undefined_for_values`](#undefined_for_values) | `NotEvaluatedReason.UNDEFINED_FOR_VALUES` |
 | [`wrong_indicator_type`](#wrong_indicator_type) | `NotEvaluatedReason.WRONG_INDICATOR_TYPE` |
 
-13 reasons. The set is closed, and this table is generated from the engine in this repository rather than transcribed -- a guide that disagreed with it would not have been published.
+14 reasons. The set is closed, and this table is generated from the engine in this repository rather than transcribed -- a guide that disagreed with it would not have been published.
 
 One section per reason follows. Each says what the refusal means and what your
 bridge owes because of it.
@@ -146,13 +147,10 @@ Exclude it in the model and name the exclusion in the manifest — the differenc
 between *we chose not to watch this* and *we forgot it exists* is the whole value
 of an audit.
 
-**It also arrives on indicators you were right to declare, and there that remedy
-is wrong.** An axiom with more than one arm can have one arm undeclared while the
-others do real work: `MONOTONICITY` declines this from its rate arm when no rate
-is declared, and the reversal arm beside it still runs and still reports its
-findings. Excluding that indicator throws away a check that was working. Declare
-the rate if you have a number for it; otherwise let the reason report and keep
-the arm you did declare.
+**That remedy is wrong for an indicator you were right to declare, and that case
+now has its own reason.** An axiom with more than one arm can have one arm
+undeclared while the others do real work. It used to arrive here; it arrives as
+`partially_checked` below.
 
 **Classify it before a release emits it.** A bridge whose exit contract maps a
 fixed set of reasons reads an unrecognised one as a defect in its own model. When
@@ -160,6 +158,28 @@ this reason first reached the rate arm, two published bridges went from clean to
 non-zero over corpora that had not changed — the engine got more honest and its
 consumers scored that as a fault. A reason your contract does not name is a
 verdict you have not made.
+
+### `partially_checked`
+
+Part of the axiom produced a verdict and part of it had nothing to judge against.
+**This is not a model defect, and it is the distinction this reason exists to
+make.** `MONOTONICITY` declines it from the rate arm when no rate is declared,
+while the reversal arm beside it runs and reports what it finds — so one envelope
+can carry a real violation in `findings` and this reason in `not_checked`, about
+the same indicator, both true.
+
+**Floor it where you floor a clean run, not where you floor a broken model.**
+This was `no_threshold` until the reason existed, and `no_threshold` usually does
+mean somebody owes a declaration — so a bridge routing by reason sent a correct
+model reporting a genuine reversal to could-not-complete. The arithmetic was
+right and the code was wrong.
+
+**`arms_checked` names what ran**, as a list, beside the reason. Read it rather
+than the `detail` sentence: prose is not a contract, and a floor keyed on a
+sentence breaks the first time the sentence is improved.
+
+The remedy for the declined arm is the same as ever: declare the rate if you have
+a number for it. Excluding the indicator throws away a check that was working.
 
 ### `wrong_indicator_type`
 

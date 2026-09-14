@@ -1183,6 +1183,7 @@ class CheckOutcome(List["Problem"]):
         window_seconds: Optional[float] = None,
         total_observations: Optional[int] = None,
         sampling_interval_seconds: Optional[float] = None,
+        arms_checked: tuple = (),
     ) -> "CheckOutcome":
         """Record a declined evaluation and return self, for use in a
         checker's early-return line: ``return CheckOutcome().declined(...)``.
@@ -1201,6 +1202,7 @@ class CheckOutcome(List["Problem"]):
             window_seconds=window_seconds,
             total_observations=total_observations,
             sampling_interval_seconds=sampling_interval_seconds,
+            arms_checked=tuple(arms_checked),
         ))
         return self
 

@@ -96,7 +96,7 @@ class TestUndeclaredIsDeclinedNotGuessed:
         """At 0.1/s and above this used to produce a finding, and below it a
         silent pass. Both were answers to a question nobody asked."""
         envelope = _run("", _ramp(per_second))
-        assert [row["reason"] for row in _declines(envelope)] == ["no_threshold"]
+        assert [row["reason"] for row in _declines(envelope)] == ["partially_checked"]
         assert "monotonicity_rate:heartbeat" not in _kinds(envelope)
 
     def test_the_cell_is_still_counted(self):
@@ -112,7 +112,7 @@ class TestUndeclaredIsDeclinedNotGuessed:
         assert "basis" in detail
 
     def test_the_decline_says_the_other_arm_ran(self):
-        """Otherwise a reader takes `no_threshold` to mean MONOTONICITY was not
+        """Otherwise a reader takes the decline to mean MONOTONICITY was not
         checked at all, and retires a reversal check that is running."""
         assert "reversal arm ran" in _declines(_run("", _ramp(50.0)))[0]["detail"]
 
@@ -125,7 +125,7 @@ class TestTheReversalArmIsUntouched:
     def test_a_reversal_still_fires_while_the_rate_declines(self):
         envelope = _run("", _with_reversals(3))
         assert "monotonicity_reversal:heartbeat" in _kinds(envelope)
-        assert [row["reason"] for row in _declines(envelope)] == ["no_threshold"]
+        assert [row["reason"] for row in _declines(envelope)] == ["partially_checked"]
 
     def test_a_clean_counter_reports_neither_finding(self):
         """The control. Without it the test above passes against a checker that

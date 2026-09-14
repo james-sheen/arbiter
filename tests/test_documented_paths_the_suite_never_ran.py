@@ -73,13 +73,13 @@ def _reversals(direction, series):
 def _not_the_rate_arm(declined):
     """Reasons other than the rate arm's.
 
-    MONOTONICITY's rate arm declines `no_threshold` when no rate is
+    MONOTONICITY's rate arm declines `partially_checked` when no rate is
     declared, and none of the models here declares one. These tests are about
     `expected_direction`, so the assertion is narrowed to their subject rather
     than deleted -- and narrowed by NAMING the excluded reason, so a second
     unexpected decline still fails.
     """
-    return [r for r in declined if r != "no_threshold"]
+    return [r for r in declined if r != "partially_checked"]
 
 
 class TestMonotonicityDecreasing:

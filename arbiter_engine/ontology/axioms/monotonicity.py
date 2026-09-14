@@ -358,12 +358,20 @@ class MonotonicityChecker:
                     entity, indicator.property_name, problems)
             ).declined(
                 Axiom.MONOTONICITY, entity, indicator.name,
-                NotEvaluatedReason.NO_THRESHOLD,
+                # PARTIALLY_CHECKED, not NO_THRESHOLD. The prose below already
+                # said the reversal arm ran; the decline's own fields did not,
+                # and `reason` carried the same code an indicator with nothing
+                # at all to judge against receives. A bridge routing by reason
+                # therefore floored a correct model reporting a genuine
+                # reversal at could-not-complete. The reason and `arms_checked`
+                # now carry what only the sentence carried.
+                NotEvaluatedReason.PARTIALLY_CHECKED,
                 detail=(
                     f"{indicator.name} declares MONOTONICITY and no rate to "
                     f"judge against; declare `monotonicity: {{rate_warning, "
                     f"rate_critical}}` with a basis, or accept that only the "
                     f"reversal arm is being checked. The reversal arm ran"),
+                arms_checked=("reversal",),
             )
 
         problems.extend(self._check_rate(

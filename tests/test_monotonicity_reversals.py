@@ -92,7 +92,7 @@ THREE_REVERSALS = [10, 9, 11, 8, 12, 7]
 def _reversal_declines(declines):
     """Every decline EXCEPT the rate arm's.
 
-    An internal ruling made the rate arm decline `no_threshold` when no rate is declared,
+    An internal ruling made the rate arm decline `partially_checked` when no rate is declared,
     and none of the models in this file declares one -- so every case here now
     carries exactly that decline beside whatever it was written to check.
 
@@ -101,7 +101,7 @@ def _reversal_declines(declines):
     floor. Narrowed rather than deleted, and narrowed by NAMING the reason
     excluded, so that a second unexpected decline still fails.
     """
-    return [d for d in declines if d["reason"] != "no_threshold"]
+    return [d for d in declines if d["reason"] != "partially_checked"]
 
 
 class TestThePositivePathExists:
@@ -119,7 +119,7 @@ class TestThePositivePathExists:
         findings, declines = _run(CLEAN)
         assert findings == []
         assert _reversal_declines(declines) == []
-        assert [d["reason"] for d in declines] == ["no_threshold"], (
+        assert [d["reason"] for d in declines] == ["partially_checked"], (
             "the clean control should carry the rate arm's decline and nothing "
             "else; this model declares no rate")
 

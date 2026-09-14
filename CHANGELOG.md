@@ -43,6 +43,28 @@ useful-looking document and the less trustworthy one.
   this at it would report a broken engine where none is.
 
 
+- **`partially_checked`, a fourteenth `not_checked[].reason`.** An axiom with
+  more than one arm can have one arm with nothing to judge against while another
+  arm runs and reports a real violation. `MONOTONICITY` does exactly that: with
+  a direction block and no rate, one envelope carries `monotonicity_reversal` in
+  `findings` and a decline about the same indicator in `not_checked`. That state
+  used to report `no_threshold`.
+
+  **Reported from outside, and the consequence was in a consumer's floor
+  table.** `no_threshold` usually means somebody owes a declaration, so a bridge
+  routing by reason floored the run at could-not-complete -- a correct model
+  reporting a genuine reversal, scored as a run that could not be made. Only the
+  prose `detail` told the two apart, and `detail` is declared unsupported for
+  matching.
+
+  **A consumer counting `no_threshold` will see the count fall**, with the
+  difference arriving under the new member. An indicator with nothing at all to
+  judge against still reports `no_threshold`.
+
+- **`not_checked[].arms_checked`**, a list naming the arms of a multi-armed
+  axiom that DID produce a verdict. Present only when some did. Beside the
+  reason above it is what a floor table needs without reading a sentence.
+
 - **`binder_must_supply`, a decorator a check uses to declare the arguments it
   decides by.** A platform that binds a declared check calls it with the entity,
   and with the history when that is the second parameter; everything else keeps
@@ -62,6 +84,27 @@ useful-looking document and the less trustworthy one.
   `check_config_drift` carries it. Nothing in the package reads the attribute --
   the binder that does is not part of this distribution -- so this is a
   contract a consumer's own binder can honour, not a behaviour change here.
+
+### Changed
+
+- **RESPONSIVENESS fires AT a declared threshold, not past it.** It read the
+  same `warning:` and `critical:` keys BOUNDEDNESS reads and compared them with
+  `>` where all four of BOUNDEDNESS's bounds use `>=`, so `critical: 600` meant
+  *600 is already critical* on one axiom and *600 is still fine* on the other.
+  Reported from outside by an author transcribing published limits, who had no
+  way to tell which rule applied to the number being written down.
+
+  **Inclusive was chosen in both directions of the argument.** Four of the six
+  comparators involved were already inclusive, as is every other threshold in
+  that module. And the two directions are not equally safe: this makes a finding
+  APPEAR at exactly the bound, where moving BOUNDEDNESS instead would have made
+  one DISAPPEAR there -- a tool that stops reporting a breach it used to report
+  is the worse failure.
+
+  **A model with a latency indicator whose value lands exactly on its threshold
+  will report one finding where it reported none.** `MODELING.md` now states
+  what a declared number means, which it did not: the words *inclusive*,
+  *exclusive* and *at or* appeared in it zero times.
 
 ### Removed — BREAKING
 

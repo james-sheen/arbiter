@@ -263,6 +263,19 @@ BOUNDEDNESS has four threshold keys. `warning:` and `critical:` are ceilings; `l
 `lower_critical:` are floors. Declaring both pairs on one indicator gives you a band, and a reading
 outside it in either direction is reported with the direction stated.
 
+**A declared number is the FIRST value that counts as a breach, on every axiom that takes one.** A
+reading AT the number fires; it is not the last value still acceptable. `critical: 40` says *40 is
+already critical*, and a datasheet phrased as *shall not exceed 40* is transcribed as `critical: 41`
+— the limit and the firing point are not the same number, and this is the one place that says so.
+
+This was worth stating because the engine did not always agree with itself. RESPONSIVENESS read the
+same two field names BOUNDEDNESS reads and fired only past them, so one axiom answered *600 is
+already critical* and the other *600 is still fine*, from the same key on the same kind of number.
+An author transcribing a published limit had no way to tell which rule applied, and the guess that
+went wrong produced either a finding against a conforming subject or a breach nobody reported. The
+comparators agree now, in the inclusive direction: it is the one four of the six already used, and
+it makes a finding appear at the bound rather than disappear there.
+
 The question is not whether a floor is expressible. It is where the number comes from.
 
 **Declare a floor when something told you the number.** A datasheet says the fan stalls below 1000

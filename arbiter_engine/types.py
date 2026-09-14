@@ -387,6 +387,26 @@ class NotEvaluatedReason(str, Enum):
     MISSING_ENTITY_TYPE = "missing_entity_type"
     MISSING_CONFIG = "missing_config"
     NO_THRESHOLD = "no_threshold"
+    # Reported from outside. `NO_THRESHOLD` was covering two MONOTONICITY
+    # dispositions that a bridge must route differently: an indicator with
+    # nothing at all to judge against, and a TWO-ARMED axiom whose other arm
+    # ran and found a real violation. One envelope carried
+    # `monotonicity_reversal:v` in `findings` and `no_threshold` in
+    # `not_checked` at the same time, and nothing but the prose `detail` told
+    # them apart.
+    #
+    # The consequence lands in a consumer's floor table. `no_threshold` usually
+    # means a model defect, so a bridge routing by reason floors the run at
+    # could-not-complete -- and here a correct model reporting a genuine
+    # violation floored at 2. Keying a floor off a prose detail is what a closed
+    # decline vocabulary exists to avoid.
+    #
+    # Same shape as the three splits above, and the fourth instance of it: a
+    # closed enum missing a member does not raise, it reclassifies the case as
+    # the nearest one and reports it with confidence. A consumer counting
+    # `no_threshold` will see that count FALL, with the difference arriving
+    # under this member -- which COMPATIBILITY.md admits at patch level.
+    PARTIALLY_CHECKED = "partially_checked"
     WRONG_INDICATOR_TYPE = "wrong_indicator_type"
     # `NOT_APPLICABLE` was doing duty for three answers that differ in
     # WHO OWES SOMETHING, which is the only axis a bridge author can act on.
@@ -504,6 +524,12 @@ class NotEvaluated:
     window_seconds: Optional[float] = None
     total_observations: Optional[int] = None
     sampling_interval_seconds: Optional[float] = None
+
+    #: Which arms of a multi-armed axiom DID produce a verdict, when some did.
+    #: Empty for a single-armed axiom and for one that ran none of its arms.
+    #: Beside `PARTIALLY_CHECKED` this is the whole answer a floor table needs:
+    #: the reason says part of the axiom was evaluated, and this says which.
+    arms_checked: tuple = ()
 
     @property
     def floor_unreachable_at_this_rate(self) -> bool:

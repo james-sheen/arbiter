@@ -231,13 +231,33 @@ class ResponsivenessChecker:
         # bound for a latency that must be immediate, and the caller now
         # declines NO_THRESHOLD when neither is declared, so an undeclared
         # threshold no longer reaches here at all.
+        # AT THE NUMBER, not past it. These two read the same field names
+        # BOUNDEDNESS reads and compared them differently: all four of its bounds
+        # fire at the declared value and these two fired at the first value
+        # above it, so `critical: 600` meant *600 is already critical* on one
+        # axiom and *600 is still fine* on the other. An author transcribing a
+        # datasheet had no way to know which rule applied, and the wrong guess is
+        # a finding against a conforming subject or a breach nobody reports.
+        #
+        # INCLUSIVE is the direction chosen, for two reasons that are not taste.
+        # Four of the six comparators involved were already inclusive, as are
+        # every other threshold in this module -- the liveness, readiness and
+        # timeout rules below all use `>=`. And the two directions are not
+        # equally safe to move: making these inclusive makes a finding APPEAR at
+        # exactly the bound, while making BOUNDEDNESS exclusive would make one
+        # DISAPPEAR there. A tool that stops reporting a breach it used to report
+        # is the worse failure.
+        #
+        # What a declared number MEANS is now stated in the modelling guide
+        # rather than left to be inferred from a comparator: it is the first
+        # value that counts as a breach.
         if (indicator.critical_threshold is not None
-                and value > indicator.critical_threshold):
+                and value >= indicator.critical_threshold):
             problems.append(Problem.from_entity(
                 entity=entity,
                 problem_type=f'response_time_critical:{indicator.name}',
                 severity=Severity.CRITICAL,
-                reason=f"Response time {indicator.name} exceeds critical threshold",
+                reason=f"Response time {indicator.name} is at or above its critical threshold",
                 axiom=Axiom.RESPONSIVENESS,
                 source_layer=DetectionLayer.ONTOLOGY,
                 evidence={
@@ -248,12 +268,12 @@ class ResponsivenessChecker:
                 confidence=1.0,
             ))
         elif (indicator.warning_threshold is not None
-                and value > indicator.warning_threshold):
+                and value >= indicator.warning_threshold):
             problems.append(Problem.from_entity(
                 entity=entity,
                 problem_type=f'response_time_warning:{indicator.name}',
                 severity=Severity.WARNING,
-                reason=f"Response time {indicator.name} exceeds warning threshold",
+                reason=f"Response time {indicator.name} is at or above its warning threshold",
                 axiom=Axiom.RESPONSIVENESS,
                 source_layer=DetectionLayer.ONTOLOGY,
                 evidence={
