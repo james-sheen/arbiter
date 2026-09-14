@@ -20,6 +20,18 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.14] — 2026-09-14
+
+**A PATCH release, and the `Removed — BREAKING` heading below needs a sentence
+beside it.** `HomeostasisChecker` is not among the names the README lists as the
+public API, and COMPATIBILITY.md places any deeper import outside the contract at
+any version. The heading is a warning to anyone who was importing it anyway --
+which is worth giving -- and not a version ruling. Everything else here is named
+by that document as patch-level: adding a `not_checked[].reason`, adding an
+envelope key, and making a check fire where its silence was a defect.
+
 ### Added
 
 - **`no_rule_for_role`, a thirteenth `not_checked[].reason`.** A model that
