@@ -10,15 +10,31 @@
 # nothing like the engine's own needs to see the format carry a domain that
 # shares no nouns with it.
 #
-# WHY THE ENTITY TYPES LOOK LIKE THAT, which is the part worth reading.
-# `Press__PR_01` is one entity type for one physical press, and that is not a
-# naming quirk -- it is forced. A declared threshold lives on the entity TYPE,
-# and the per-entity override that would vary it does not reach a declared
-# BOUNDEDNESS threshold. So two presses whose die limits differ cannot share a
-# type: they are two types, or one of them is judged against the other's limit.
-# Any fleet of near-identical units with per-unit limits lands here, which is
-# most fleets. Keep the map from type back to asset somewhere an operator reads,
-# because `Station__ST_02` is not a name anybody says out loud.
+# WHY THE ENTITY TYPES LOOK LIKE THAT, which is the part worth reading -- and
+# the part that CHANGED. `Press__PR_01` is one entity type for one physical
+# press. This comment used to call that forced: a declared threshold lived on
+# the entity TYPE and nothing could vary it per instance, so two presses with
+# different die limits were two types or one was judged against the other's
+# limit.
+#
+# THAT CONSTRAINT IS GONE. All four BOUNDEDNESS bounds, RESPONSIVENESS's two and
+# HOMEOSTASIS's setpoint and tolerance take `{from_property: <name>}` and read
+# the number off each entity at check time, so a fleet of near-identical units
+# with per-unit limits is now ONE type. `margin_book.yaml` is that shape, with
+# one `Account` type for a book whose every account has its own requirement.
+#
+# AND IT NEVER EXPLAINED THIS FILE, which is worth saying plainly rather than
+# quietly deleting. The three `Station__ST_0*` types are not split by their
+# limits -- they declare no thresholds at all. They are split because they
+# measure different things: ST_01 welds, ST_02 carries the parts balance, ST_03
+# reports rejects. Merged into one type, every station would declare every
+# other station's indicators and decline for the properties it does not have.
+# They would stay separate under any threshold rule.
+#
+# So the naming stays, for the reason it always had a better claim to: a type
+# per asset keeps the map from model back to machine short. Keep that map
+# somewhere an operator reads, because `Station__ST_02` is not a name anybody
+# says out loud.
 #
 # The MONOTONICITY blocks are deliberately uneven. Where a rate was actually
 # specified, `rate_warning` and `rate_critical` are declared; where nobody

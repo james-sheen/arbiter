@@ -12,6 +12,7 @@ Flow:
 """
 
 import logging
+import math
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional
@@ -22,6 +23,7 @@ from ..interfaces import (
     DetectionResult,
     Entity,
     IndicatorSpec,
+    IndicatorType,
     OntologyReasonerInterface,
     Problem,
     RelationshipGraph,
@@ -107,6 +109,22 @@ def _record_fires(
             tracker.record_fire(axiom.value, domain, name)
     except Exception as exc:  # noqa: BLE001 — telemetry is never load-bearing
         logger.debug("fire counting skipped: %s", exc)
+
+
+def _non_finite_reading(entity, indicator) -> Optional[str]:
+    """The current value's name if it is not a finite number, else None."""
+    if getattr(indicator, "indicator_type", None) is not IndicatorType.NUMERIC:
+        return None
+    value = entity.get_property(indicator.property_name) if hasattr(
+        entity, "get_property") else (entity.properties or {}).get(
+            indicator.property_name)
+    if not isinstance(value, float):
+        return None
+    if math.isnan(value):
+        return "NaN"
+    if math.isinf(value):
+        return "infinity" if value > 0 else "negative infinity"
+    return None
 
 
 class UnifiedAxiomReasoner(OntologyReasonerInterface):
@@ -534,6 +552,32 @@ class UnifiedAxiomReasoner(OntologyReasonerInterface):
                 axiom, entity, indicator.name,
                 NotEvaluatedReason.NOT_APPLICABLE,
                 detail=f"no checker registered for {axiom}",
+            )
+
+        # A NON-FINITE READING IS NOT A MEASUREMENT, and every axiom answers
+        # about it in silence. NaN compares False against everything, so a
+        # threshold is never breached, a count is never negative and a
+        # setpoint is never departed from: the cell produces no finding and no
+        # decline, which is the one outcome this envelope exists to make
+        # impossible. Measured before this guard: a NaN on an indicator
+        # declaring BOUNDEDNESS and CONSISTENCY returned a clean pass.
+        #
+        # INFINITY IS WORSE THAN SILENT. It compares fine, so BOUNDEDNESS
+        # reports `threshold_exceeded` — a precise wrong answer that sends
+        # somebody to look at a quantity when the truth is that the sensor is
+        # broken.
+        #
+        # HERE RATHER THAN IN A CHECKER, and ungated by role, because it is
+        # true of every axiom and every numeric indicator. A guard behind a
+        # declared role would mean opting in to having NaN noticed.
+        unusable = _non_finite_reading(entity, indicator)
+        if unusable is not None:
+            return CheckOutcome().declined(
+                axiom, entity, indicator.name,
+                NotEvaluatedReason.UNDEFINED_FOR_VALUES,
+                detail=(f"{indicator.property_name} reads {unusable}, which is "
+                        f"not a measurement; every comparison against it is "
+                        f"silent or wrong, so no axiom can judge this cell"),
             )
 
         try:

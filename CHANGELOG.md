@@ -22,6 +22,450 @@ useful-looking document and the less trustworthy one.
 
 Nothing yet.
 
+## [0.1.15] — 2026-09-17
+
+**The largest release in this line, and the one that finishes the shape.** Four
+disciplines now sit beside the eight axioms, each with its own denominator and
+its own closed vocabulary of refusals; the engine forecasts, scores forecasts
+that arrive from outside, and judges the forecaster by the same eight axioms as
+anything else. A declared bound can differ on every instance, which ends the
+one-entity-type-per-unit workaround three shipped surfaces still described as
+forced.
+
+
+### Added
+
+- **`project`, a sixth primitive, and the `projection` sub-envelope it reports
+  in.** The eight axioms judge what has been observed; this forecasts a declared
+  numeric indicator forward and reports the probability it crosses a declared
+  line. It rides as a payload key beside the legs rather than inside them,
+  because a discipline's refusals have no axiom to name and the top-level
+  `not_checked` record requires one. Its denominator — `series_seen`,
+  `forecasts_issued`, `observations_assimilated` — is counted in units
+  projection owns and is never summed with `checked.invariants`, which this verb
+  reports as 0.
+
+- **`dynamics:`, `horizon:` and `lookback:` on an indicator.** `dynamics:` names
+  the model and carries its parameters; the other two say how far ahead to
+  forecast and how much history to fit on, falling back to the caller's horizon
+  and the indicator's own `window:`. Read by `project` and by no axiom, which is
+  why declaring one does not oblige you to declare an axiom that reads it.
+
+- **Two models, `local_level` and `trend`, named by `LocalLevel.name` and
+  `TrendCurve.name`.** `local_level` is a random walk seen through measurement
+  noise: declare `q` (variance per second) and `r` (variance of one reading), or
+  omit both and they are estimated from the series, in which case the forecast
+  carries `source: estimated_parameters` instead of `declared_model`. `trend`
+  fits a straight line and extrapolates it — available by name, and deliberately
+  NOT the default, because extrapolating a fitted line states a direction for a
+  series that may have none. `SOURCE_DECLARED`, `SOURCE_ESTIMATED` and
+  `SOURCE_CURVE` are the three values that field takes.
+
+- **`report_above`, and the rule that there is no finding without it.** The
+  engine will compute that a series has a 31% chance of breaching, and it will
+  not decide whether 31% is worth acting on — that depends on what a breach and
+  a false alarm each cost, which are facts about the engagement. Without
+  `dynamics.report_above` the probability is measured, reported on the decline
+  that says why no verdict was reached, and filed for grading; no finding is
+  invented. This is *a floor is a specification, not a guess*, applied to a
+  probability.
+
+- **Three `projection` decline reasons beyond the shared ones**:
+  `no_report_probability`, `no_lookback` and `model_missing`. Each names a fact
+  the author can supply. `MINIMUM_SAMPLES` and `NIS_BAND` are the two thresholds
+  the projector refuses on — the sample floor, and the innovations band outside
+  which the declared parameters do not describe the series. Both decide only
+  whether the engine REFUSES, never what it asserts, and the measured value
+  rides in the decline.
+
+- **`arbiter_engine.subenvelope`**, the four-leg shape one level down, with a
+  closed decline vocabulary per discipline. Shipped now because `projection` is
+  its first producer.
+
+- **A per-session prediction ledger**, `EngineSession.ledger`, unconditional and
+  isolated rather than the environment-gated process singleton; distributional
+  records scored by pinball loss and 90% coverage, with `by_model` and
+  `by_horizon` strata. Every rate is reported beside the count it was computed
+  from, and is `None` rather than `0` before anything has been graded — a zero
+  there reads as perfectly calibrated for a model nobody has looked at.
+
+- **`EngineSession(history=...)`**, because the default is a seven-day ring and
+  a replay needs longer.
+
+- **`arbiter_engine.clock.as_of`**, which reads every window, retention cut-off
+  and grading deadline in the engine as a fixed instant for the duration of a
+  block. A context variable rather than a module global, so freezing the clock
+  for a backtest does not move a concurrent caller's windows.
+
+- **`TOOL_SPECS` gains `project`**, which takes an optional `horizon_s`.
+
+- **`discover`, a second discipline, and the `discovery` sub-envelope.** Tests
+  which declared numeric series PRECEDES which, challenges the edges the model
+  already declares, and counts what the budget left untested. `alpha` is the
+  corrected p-value at which a result counts as support; WITHOUT IT there are no
+  findings and no proposals, on the same rule as `project`'s `report_above`.
+  `DEFAULT_LAGS`, `DEFAULT_BUDGET_PAIRS` and `MINIMUM_PAIRED_SAMPLES` are the
+  lag family, the pair budget and the paired-sample floor.
+
+- **`EngineSession.adopt_io_relationships`, and `proposed_io_relationships`.**
+  Discovery proposes; only adopting changes what gets checked. This is the first
+  producer of the `IORelationship` in `types`, whose consumer -- RESPONSIVENESS's
+  `check_io_pair` arm -- has had none.
+
+- **`stationary` and `lead_lag`**, with `VARIANCE_RATIO_BAND` and
+  `TREND_T_LIMIT`, deciding whether a series is testable at all.
+
+- **`entail`, a third discipline, and `rules:` / `closure:` on a domain.** A rule
+  composes declared edges into a new one — `exposed_to(A, C)` from
+  `holds(A, B), clears_at(B, C)` — and `entail` evaluates every rule once,
+  reporting what it derived and what it refused. `MAX_BODY_ATOMS` is three and
+  the head predicate may not appear in its own body: two bounds that are one
+  bound, and what makes evaluation a polynomial-time join. **A body MAY quantify
+  its join variable**; that is allowed for exactly this reason, and the
+  modelling guide's structural-constraint section has been corrected to say so
+  rather than forbidding it in the shorthand.
+
+- **`closure:`, which is where absence becomes evidence.** A rule that finds no
+  binding may be false, or may be a rule nobody supplied the facts for. Naming a
+  predicate in `closure:` states the feed for it is complete; for everything
+  else, an entity with no fact under it is reported `open_world_undecidable`
+  rather than treated as a no.
+
+- **`BINDING_BUDGET`.** Polynomial is not the same as affordable: three atoms
+  sharing no variables is the full cross product, and 196 facts under one
+  produced 7.5 million bindings. A rule that reaches the budget is declined by
+  name instead of being left to not return.
+
+- **Derived facts carry their proof.** Each one names the rule and the facts it
+  came from, and adopting writes it into the graph as `source: inferred` so a
+  later CONNECTIVITY check can count an edge nobody fed in — and anyone reading
+  the finding can trace it back. Deriving and adopting are separate calls.
+
+- **`derived_exceeds_cardinality:<relation>`**, where the rules and the bounds —
+  both declared by the same author, in the same file — contradict each other.
+
+- **`infer`, a fourth discipline, and `relationship_rules` on the model.** Exact
+  inference by variable elimination over the edges the author declares
+  `edge_direction: causal`, with noisy-OR strengths. `relationship_rules` has
+  been in the format since the twin builder read it and was reachable from no
+  public verb — `traverse` builds its topology from the relationship graph,
+  which never sees those declarations. It is carried on the model now.
+
+- **`do` is an INTERVENTION, not a filter.** The intervened node's incoming
+  edges are cut before the query is answered, which is what separates *what if
+  I forced this* from *what if I saw this*. On a fixture with a declared
+  confounder the two differ by a factor of two: 0.748 observed against 0.345
+  intervened. `traverse(value_mode="hypothetical")` computes neither and is
+  unchanged; this is the verb that answers the question properly.
+
+- **A weight nobody declared stops the answer.** `cpt_missing` names the edges.
+  `SOURCE_DECLARED` / `SOURCE_LEARNED` / `SOURCE_DEFAULT` ride on every weight
+  and the count of each rides in every answer, because a posterior is a product
+  of edge strengths and one the engine chose makes the number partly a
+  statement about the engine with no way to tell which part. `DEFAULT_WEIGHT`
+  and `DEFAULT_LEAK` are what it would have assumed, published so the question
+  can be answered, and refused on any path the query depends on.
+
+- **An entity the check could not evaluate is UNOBSERVED, never clean**, and the
+  count rides in the answer: a posterior with six of ten nodes unseen is not the
+  same claim as one with all ten. `ROOT_PRIOR` is the one default that cannot
+  yet be declared away, so every answer names it.
+
+- **Four refusals**: `cycle_unsupported` naming the loop, `not_identifiable`
+  naming the declared latent that opens a backdoor under an intervention,
+  `evidence_conflict` when the declared model gives the observations
+  probability zero, and `treewidth_exceeded` when exact elimination would need
+  an intermediate factor wider than `FACTOR_VARIABLE_LIMIT`. As with the
+  entailment join, bounding the worst case does not make it affordable, and
+  the engine says which it hit.
+
+- **`SqliteObservationHistory`, a store that outlives the process.** The shipped
+  history is a seven-day ring, which is right for a collector and wrong for
+  *what would you have said last Tuesday* — asked about an evicted span it
+  answers `insufficient_samples`, which reads exactly like a quiet feed. One
+  table, one index, `sqlite3` from the standard library, and no eviction: a
+  file the caller chose for durability should not drop its oldest rows. Numbers
+  and text are stored in separate columns, because a numeric series read back
+  out of a TEXT column compares as text and 9 exceeds 10.
+
+- **`SessionCalendar` and `CalendarHistory`: windows in OPEN time.** On the
+  first morning of a week a one-hour window spans the closed days, so a series
+  sampled once a minute during the session looks like one sampled once every
+  three days and the sample floor fires on data arriving perfectly well.
+  Declared as `calendar:` on the domain — sessions with days, open, close and a
+  zone, plus holidays. **A domain that declares none is always open and behaves
+  exactly as before.** Named for sessions rather than for any one domain's word
+  for them: the same shape is a factory's shifts and a clinic's opening hours.
+
+- **`replay` and `sync_current_from_history`.** Feed the history once with real
+  timestamps, then step the clock. **The clock moves the windows and not the
+  data**: temporal axioms read history and follow `as_of` for free, while the
+  threshold axioms read `Entity.properties`, which follows nothing — so a
+  replay that moved only the clock would check today's snapshot against last
+  Tuesday's windows, with every leg of the envelope still populated and nothing
+  saying the answer was about two days at once. `replay` yields one envelope
+  per step with the instant and the sync counts; `absent` is the denominator
+  that makes a step readable, and the curve worth plotting from the output is
+  declines per reason over time.
+
+- **`derived:` — indicators the engine computes rather than receives.** An
+  expression over other properties of the same entity, parsed against an
+  arithmetic allowlist and never evaluated as code. **This is why there is no
+  ninth axiom**: a parity residual, an arbitrage-free condition, a spread, a
+  conservation gap are each a derived value plus an axiom that already exists —
+  declare the difference, give it HOMEOSTASIS with a setpoint, and departures
+  are reported without the engine learning any of those words.
+
+- **`align_tolerance:`, because the two read sites fail differently.** The
+  current value is missing when an operand is; the SERIES is missing when the
+  operands were never sampled close enough together to count as one moment. Two
+  feeds are not sampled on the same tick, and subtracting a reading from one
+  taken a minute later is a different quantity from the one declared. Declared
+  too tightly, every operand is present and the joined series is empty — so the
+  report says how many points each operand had and how many survived.
+
+- **`underived`, a third payload key on `check`**, on the argument the second
+  one used. A derived indicator whose operand is missing declines on a property
+  NOBODY FEEDS: the reason is right and the name is a dead end, and an author
+  told `missing_property: drop_c` goes looking for a feed that was never
+  supposed to exist. This names the operand. A stale value under the derived
+  name is removed rather than judged as current.
+
+- **References resolve one level, flat.** An operand that is itself derived, a
+  self-reference, and an expression that is not arithmetic are each refused at
+  load and reported in `unreachable_declarations` with a remedy — because a
+  chain has an evaluation order nobody declared and a cycle has none at all.
+
+- **An operand counts as READ.** Without that, feeding both operands to a model
+  whose only use of them is the derivation reports both as read by nobody,
+  which would send an author to delete the feed the indicator depends on.
+
+- **`via:` — CONSERVATION and CONSISTENCY may reach across a declared edge.**
+  A balance whose two halves live on different entities, and a reading that must
+  agree with the same reading taken elsewhere, were declarable only while every
+  property sat on one entity — which is the rare case. `output_properties` and
+  `agrees_with` now accept `{via: <relation>, property: <name>}` beside the bare
+  property names they always took. One shared resolver serves both, so the two
+  cannot disagree about which failure is a decline.
+
+- **Only the agreement needs `aggregate:`.** A balance sums its output side by
+  definition; an agreement compares, and several readings are several candidate
+  answers. With more than one peer and no `aggregate:` the check declines
+  `missing_config` rather than picking — the choice decides the verdict, and on
+  identical data a point agrees with the smallest of two readings and disagrees
+  with the middle one.
+
+- **`loss_absolute:`**, a fixed allowance for a loss that does not scale with
+  the input. Declared beside `loss_margin:` rather than instead of it, and the
+  LARGER allowance wins: an author who declares both has said either is
+  acceptable, and taking the smaller would make declaring a second allowance
+  tighten the check.
+
+- **An absent peer is not a zero.** An edge reaching nobody declines
+  `precondition_unmet` and targets carrying no such property decline
+  `missing_property`. The engine already knew that summing an absent output as
+  zero turns a wrong property name into a 100% deficit reported as a system
+  fault; across an edge there is one more way to be absent, and it is the one
+  most likely to mean the model is unfinished.
+
+- **Forecasts from outside, and the books kept on them.** A forecasting model
+  IS domain knowledge, so the engine carries none: what it adds is what
+  forecasters lack -- a denominator, declines, and calibration stratified by
+  something other than the whole population. `detection/forecast` parses one
+  contract in three shapes. `quantiles` are taken as given; `samples` are
+  reduced to empirical quantiles, which is arithmetic on what was sent; `mean`
+  with `sigma` is expanded under a NORMAL assumption, and because that is the
+  engine choosing a shape the producer never named, `GAUSSIAN_STAMP`
+  (`gaussian_from_mean_sigma`) is written into the record's assumptions. A
+  score turning on an assumption nobody recorded is what this package refuses
+  everywhere else. `REQUIRED_QUANTILES` names the two levels a distributional
+  record cannot be scored without.
+
+  Two shapes in one record is refused rather than merged: two shapes are two
+  claims, and choosing silently would score a producer against something they
+  may not have meant to say.
+
+- **`forecast:` on an indicator, and the denominator it makes possible.**
+  `forecast: {expected: true}` says an outside forecaster is supposed to supply
+  one, which is what makes a MISSING forecast reportable -- *371 received* is
+  not a measurement until something says out of how many. Optional `models:`
+  and `max_age:` enable `model_unknown` and `stale_forecast`; without them
+  there is no check, because refusing every unseen id would refuse the first
+  forecast any producer sends, and how old is too old is a minute for a quote
+  and a day for a balance. A model declaring nothing gets a question rather
+  than a confident zero.
+
+- **The `forecasts` leg on `check`, and the shadow run behind it.** The eight
+  axioms run a second time over the forecast itself, so a forecast bid above a
+  forecast ask and a forecast count below zero are caught before any
+  observation exists to refute them. Findings carry `SHADOW_PREFIX`
+  (`forecast_`), and they do NOT climb into the envelope's own findings: those
+  are about the present, and merging would put *your prediction is impossible*
+  beside *your system is breaking* in one list. A shadow entity carries the
+  forecast medians and nothing else -- inheriting unforecast readings from
+  today would let a balance close on a side that is not a forecast at all.
+
+  P(breach) is piecewise linear between declared levels and a BOUND outside
+  them: a line beyond `q95` supports at most 0.05, which settles a reporting
+  line of 0.1 and settles nothing at 0.01, so the undecidable case declines
+  rather than answering *no breach*.
+
+- **`random_walk`, the reference every forecaster is measured against.**
+  `RandomWalk` is parameter-free on purpose -- `local_level` is also a random
+  walk plus noise, but it estimates its parameters and is a MODEL, and a
+  yardstick that can be tuned lets a poor comparison be explained away by
+  tuning it. Filed under the reserved `BASELINE_MODEL_ID` (`baseline_rw`) on
+  the same series and the same horizon as the forecast it judges, and tagged
+  `SOURCE_BASELINE` so a reader can tell a reference from a real forecast
+  without matching on a name. `DERIVED_LEVELS` names the levels produced when
+  expanding or reducing.
+
+- **A bound that is not the same for every instance.** All four BOUNDEDNESS
+  threshold keys, RESPONSIVENESS's two and HOMEOSTASIS's `setpoint:` and
+  `tolerance:` accept `{from_property: <name>}` instead of a number, and read
+  it off each entity at check time. A margin requirement, a contracted ceiling
+  and a regulatory floor are timestamped numbers owned by another system and
+  different per instance; as literals they claim every entity of a type shares
+  one line, and the only way to say otherwise was one entity type per instance.
+  Resolution order is stated and reported: an instance bound, then the
+  property, then the literal, with the origin carried out of
+  `effective_thresholds` rather than inferred.
+
+  **A bound declared and not arrived is not no bound.** It declines
+  `no_threshold` naming the property, as does a value that is not a finite
+  number -- which matters most for `NaN`, where accepting one would pass a
+  whole book in silence. A mapping the loader cannot read reaches
+  `dropped_declarations` rather than leaving an indicator that looks like it
+  never declared a bound.
+
+- **`session.set_declared_thresholds(entity, indicator, **bounds)`** -- one
+  entity's own band, with no model edit, reaching indicators whose model
+  declares a literal or nothing. Passing `None` removes it. Stored under
+  `DECLARED_THRESHOLDS_KEY`, deliberately NOT the axiom-keyed table
+  `set_threshold_override` writes: that one retunes an axiom's calibration
+  parameter and says in its own docstring that it does not touch a declared
+  bound. `model_describe` gains `instance_thresholds`, a summary of how much
+  of the judging is against bounds not in the model, and
+  `unread_declared_thresholds`, the bounds no check will consult.
+  `THRESHOLD_FIELDS` names the four keys, and the loader imports it rather
+  than keeping a second copy.
+
+- **`consistency: {grid: <step>}` -- a value between the steps it can take.**
+  A quantised quantity has values it cannot hold, and one of those is not high
+  or low, it is impossible; no `warning:` or `critical:` can express that.
+  Declared as a number rather than implied by a role name, so it says the same
+  thing for a tick, a lot or a dial position in any domain.
+
+- **`consistency: {ordered_below: <property>}` -- impossible in company.** A
+  floor under a ceiling, a start before an end. Both readings may be plausible
+  alone and contradictory together, which single-value plausibility cannot see
+  by construction. Takes a bare property name or the same
+  `{via:, property:, aggregate:}` form the other cross-entity references take.
+
+  Neither key needs a `role:` beside it, and both join `agrees_with` in the
+  remedy `unreachable_declarations` prints. That remedy, and the load-time
+  reachability report behind it, are generated from `UNGATED_CONSISTENCY_KEYS`
+  -- one list, so the sentence cannot name fewer ways than exist.
+
+- **A forecaster is an ordinary entity.** `feed_model_figures(session, <your
+  type>)` puts each model into the session carrying six figures --
+  `forecasts_issued`, `forecasts_expected`, `graded_n`, `coverage_90`,
+  `pinball_loss` and `forecast_age_s` -- and files each as an observation, so
+  the eight axioms judge a forecaster the way they judge anything else. A model
+  that is miscalibrated, one that skips subjects and one that delivers late are
+  BOUNDEDNESS, CONSERVATION and RESPONSIVENESS; there is no ninth axiom.
+  `model_figures` returns the same figures without writing them.
+
+  **The type name is the caller's, and the package does not contain one.** A
+  type name compiled into a domain-free core would be a domain word in the one
+  place this project refuses to put one, so the caller passes it and the model
+  declares it.
+
+  **Both surfaces are written, or CONSERVATION says nothing.** BOUNDEDNESS and
+  RESPONSIVENESS judge the current value; CONSERVATION reads the series. An
+  entity carrying the figures as properties alone declines
+  `insufficient_samples` and reports no imbalance at all, which is the silent
+  outcome this pairing closes. A figure no graded record supports is left out
+  rather than defaulted -- a `coverage_90` of 0.0 for a model that has never
+  been scored reads as catastrophic miscalibration, and an axiom would fire
+  on it.
+
+- **`examples/margin_book.yaml`, a fifth worked example**, and the first that
+  declares work the engine has not been handed yet: an outside forecaster is
+  expected to supply a prediction, the engine keeps the books on whether it
+  did, and the forecaster is then judged by the same eight axioms. It is also
+  the first with ONE entity type for a fleet -- one `Account` for a book whose
+  every account carries its own requirement -- which is what `{from_property:}`
+  made possible. Ships at `examples/` and inside the package, like the other
+  four, and the modelling guide now declares the forecaster block it uses.
+
+### Fixed
+
+- **`loss_margin: 0` could never report.** CONSERVATION computed a finding's
+  confidence as `min(1.0, deficit_ratio / margin)`, and every path reaching
+  that line had already passed `deficit_ratio > margin` -- so the quotient
+  exceeded one whenever it could be computed at all, and the clamp returned 1.0
+  every time. The division had exactly two reachable effects: produce a number
+  that was then discarded, or raise. Against a zero allowance it raised, the
+  checker errored, and a real imbalance surfaced as `checker_error` -- so the
+  strictest declaration an author can make was the only one that was silent. A
+  balance of counts, forecasts expected against forecasts issued, is precisely
+  where zero is meant. The confidence is now the constant it always was.
+
+- **Three published surfaces described a closed gap as open.**
+  `factory_line.yaml` explained its one-type-per-machine shape as forced by a
+  declared threshold that could not vary per instance; the README pointed at it
+  for exactly that lesson; and `axiom_thresholds.py` said a consumer needing
+  per-instance bounds still could not express one. `{from_property:}` and
+  `set_declared_thresholds` close that in this same cut. The example's header
+  also never described the example: its three station types declare no
+  thresholds at all and are separate because they measure different things.
+
+- **A test named the modelling guide and never opened it.** The check that the
+  monitor's figures are named as the guide declares them asserted against a set
+  literal typed into the test -- a second copy of the fact -- so it passed
+  while the guide declared none of the six. It now reads the guide.
+
+
+- **THE F DISTRIBUTION WAS NOT THE F DISTRIBUTION.** `f_sf` (formerly
+  `GrangerCausalityTester._f_distribution_sf`) computed the exact survival
+  function for two degrees of freedom and applied it at every number of them.
+  Measured at the true 5% critical value with 250 denominator degrees of
+  freedom, it returned 0.145 at df1=1, 0.049 at df1=2, 0.004 at df1=5 and
+  0.0001 at df1=10 -- correct at two, three times too conservative at one, five
+  hundred times too liberal at ten. Replaced with the regularized incomplete
+  beta, which agrees with a reference implementation to 3e-13 across 1,120
+  points. `_normal_sf` was a `tanh` stand-in is now the error function.
+
+  **What it did to a result**: on series with NO relation, where a test claiming
+  5% should reject 5%, the measured false-positive rate was 0.3% at lag 1, 6% at
+  lag 2 and 25% at lag 5. The test was not slightly miscalibrated; it was a
+  different function of the lag. Anyone who read a Granger p-value out of this
+  engine at any lag other than 2 should re-read it.
+
+- **A lag search reported as a single test.** Taking the smallest p across a
+  family of lags is several chances to be surprised reported as one; uncorrected
+  it rejected independent series 14% of the time. `lead_lag` applies a Sidak
+  correction over the family and reports the raw and corrected figures side by
+  side; the corrected rate measures 5%.
+
+- **The stationarity trend test used an ordinary standard error on
+  autocorrelated residuals**, which inflates |t| by roughly the square root of
+  (1+r)/(1-r) and refused HALF of all strongly autocorrelated series for a trend
+  they did not have. Corrected by the same factor: false rejection falls from
+  50% to 8% at an autocorrelation of 0.8, while a real trend is still caught
+  every time.
+
+- **A NaN reading passed every check silently.** `NaN` compares false against
+  everything, so no threshold was breached, no count was negative and no
+  setpoint was departed from: the cell produced no finding and no decline, and
+  a clean pass is the one answer a broken sensor must never get. An infinity
+  was worse than silent -- it compares fine, so BOUNDEDNESS reported
+  `threshold_exceeded`, sending a reader to look at a quantity rather than at
+  the instrument. A numeric property that is not finite now declines
+  `undefined_for_values` on every axiom, before any checker runs.
+
+
 ## [0.1.14] — 2026-09-14
 
 **A PATCH release, and the `Removed — BREAKING` heading below needs a sentence

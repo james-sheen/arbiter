@@ -95,8 +95,13 @@ ran and found nothing appears in neither. Without `checked.invariants`, the stat
 invariants* has no honest value of N — and an envelope reporting a fabricated denominator is the
 exact failure the envelope exists to prevent.
 
-All eight axiom checkers emit declines (38 call sites). This is not a property of one checker that
+All eight axiom checkers emit declines (43 call sites). This is not a property of one checker that
 the others aspire to.
+
+**And one decline comes before any checker runs.** A numeric property reading `NaN` or an infinity
+is not a measurement: `NaN` compares false against everything, so no threshold is breached and no
+rule is broken, and an infinity compares fine and reports a precise wrong answer. Every axiom
+declines that cell as `undefined_for_values` rather than judging it.
 
 ## The eight axioms
 
@@ -264,12 +269,14 @@ document tells them not to depend on.
 
 `examples/water_tank.yaml` is a deliberately synthetic two-tank water system that **declares all
 eight axioms in one file**, so it doubles as the schema reference. It is not one of the curated
-domain models, which are not published — and neither `kubernetes_node.yaml`, `battery_pack.yaml`
-nor `factory_line.yaml` is one of those either, though every one of them ships here — and reading it
-is the fastest way to learn the shape. `kubernetes_node.yaml` and `battery_pack.yaml` are the same
-kind of thing on domains where a floor and a band carry the weight. `factory_line.yaml` is a
-manufacturing cell, and it is the one whose vocabulary shares no nouns with the engine's own; it is
-also where you can see why a fleet of near-identical units ends up with one entity type per unit.
+domain models, which are not published — and neither `kubernetes_node.yaml`, `battery_pack.yaml`,
+`factory_line.yaml` nor `margin_book.yaml` is one of those either, though every one of them ships
+here — and reading it is the fastest way to learn the shape. `kubernetes_node.yaml` and
+`battery_pack.yaml` are the same kind of thing on domains where a floor and a band carry the weight.
+`factory_line.yaml` is a manufacturing cell, and it is the one whose vocabulary shares no nouns with
+the engine's own. `margin_book.yaml` is the only one that declares work the engine has not been
+given yet: an outside forecaster is expected to supply a prediction, the engine keeps the books on
+whether it did, and the forecaster is then judged by the same eight axioms as everything else.
 
 **Dependencies are two, and that was measured rather than assumed.** `numpy` and `pyyaml` are
 required. `scipy` and `rdflib` are extras (`[confidence]`, `[rdf]`) because they are reached only
@@ -278,7 +285,7 @@ says four, and the measurement says two.
 
 ## The public API
 
-**11 names.** Everything else in the package is importable and **unsupported** — reaching for a deeper
+**14 names.** Everything else in the package is importable and **unsupported** — reaching for a deeper
 path is legitimate and unpromised, and those paths may move without a major version.
 
 ```python
@@ -287,17 +294,26 @@ from arbiter_engine import (
     UnifiedAxiomReasoner,       # evaluates axioms, produces the envelope
     DomainModel,                # your YAML, loaded
     InMemoryObservationHistory, # a concrete history, so it runs without a store
+    SqliteObservationHistory,   # the same contract, durable, for replaying history
+    SessionCalendar,            # when the modelled world is open
+    CalendarHistory,            # windows measured in open time rather than wall clock
     Entity, Problem, RelationshipGraph, Observation, Axiom, Severity,
     api,                        # the tool surface — see below
 )
 ```
 
-**Ten of those are types and the kernel; the eleventh is a module, and the split is deliberate.**
-`arbiter_engine.api` is the tool surface: five verbs over a session, each returning the envelope above.
+**Thirteen of those are types and the kernel; the fourteenth is a module, and the split is
+deliberate.** `arbiter_engine.api` is the tool surface: nine verbs over a session, each returning the
+envelope above. Five answer for the eight axioms; four answer for a DISCIPLINE — work of a different
+kind, with its own denominator and its own vocabulary of refusals, reported in a payload beside the
+legs rather than inside them.
 
 ```python
 from importlib.resources import files
-from arbiter_engine.api import EngineSession, model_describe, check, traverse, gaps, attest
+from arbiter_engine.api import (
+    EngineSession, model_describe, check, traverse, gaps, attest,
+    project, discover, entail, infer,
+)
 
 session = EngineSession()
 session.load_model(files("arbiter_engine").joinpath("examples/water_tank.yaml").read_text())
@@ -360,7 +376,7 @@ The engine is open. The knowledge and the operations are not.
 
 ## Status
 
-**v0.1.** 61 Python files, 59 modules importing on the declared dependencies alone, 11 supported
+**v0.1.** 87 Python files, 85 modules importing on the declared dependencies alone, 11 supported
 names — **counted in this repository**, which is the package you are holding.
 
 That basis is stated because it is easy to get wrong in a way nobody notices. The build adds one
@@ -369,15 +385,17 @@ are holding — and this line published the smaller figure until 2026-08-12, whe
 falsify it with `find . -name '*.py' | wc -l`. A checkable false claim, in the Status section of a
 project whose subject is checkable claims. Count the artifact, never an earlier stage of it.
 
-The import figure carries the same hazard one layer down, and it depends on what you have installed. Sweeping the package where `scipy` happens to be present imports 60; on the declared dependencies alone it is the 59 above, because `propagation.lp_confidence` is the one module that needs `scipy` and it is a deep path outside the supported surface. Count the artifact **in the state the reader will have it**, not in the state the person measuring happens to be standing in — this line quoted the with-`scipy` figure until 2026-08-12, which no reader installing normally could reproduce.
+The import figure carries the same hazard one layer down, and it depends on what you have installed. Sweeping the package where `scipy` happens to be present imports 86; on the declared dependencies alone it is the 85 above, because `propagation.lp_confidence` is the one module that needs `scipy` and it is a deep path outside the supported surface. Count the artifact **in the state the reader will have it**, not in the state the person measuring happens to be standing in — this line quoted the with-`scipy` figure until 2026-08-12, which no reader installing normally could reproduce.
 
-**And the count is of SUBMODULES: the root package is not one of them.** Walking `arbiter_engine` for what it contains gives 59; adding the package you imported to reach them gives 60. Both are honest and they are answers to different questions, so a reader who recounts and gets one more has not found a defect — they have used the other convention. Stated because someone did exactly that from outside, and a number published without its predicate can only be agreed with or disagreed with, never checked.
+**And the count is of SUBMODULES: the root package is not one of them.** Walking `arbiter_engine` for what it contains gives 85; adding the package you imported to reach them gives 86. Both are honest and they are answers to different questions, so a reader who recounts and gets one more has not found a defect — they have used the other convention. Stated because someone did exactly that from outside, and a number published without its predicate can only be agreed with or disagreed with, never checked.
 
 Honest boundaries, stated because you would otherwise find them yourself:
 
-- **PREDICT is plumbed but unfed.** The traversal mode exists and nothing produces projected values
-  outside a test. It is not a working forecast.
-- **Four worked examples ship, not a library of them.** Modelling a real system is your work.
+- **The engine forecasts, and it ships no forecasting model of any domain.** `project` produces
+  projected values from a declared `dynamics:` block, and the `forecasts` leg scores predictions an
+  outside model sends. What is deliberately absent is a model that knows which indicators matter
+  here -- that is domain knowledge, and it belongs on your side of the line.
+- **Five worked examples ship, not a library of them.** Modelling a real system is your work.
 - Stage I and Stage II of this project are **archived, not running**. Anything describing them as
   production is out of date.
 
@@ -440,10 +458,12 @@ python3 -m arbiter_engine.scripts.benchmark_check --sizes 10,100,1000 --model-si
 | [`COMPATIBILITY.md`](COMPATIBILITY.md) | what a patch release may change, and what waits |
 | [`schema/envelope.schema.json`](schema/envelope.schema.json) | the response shape, machine-readable |
 
-Four worked models ship in `examples/`: `water_tank.yaml` declares all eight axioms and doubles as
+Five worked models ship in `examples/`: `water_tank.yaml` declares all eight axioms and doubles as
 the schema reference, `kubernetes_node.yaml` is the smallest domain where a band matters,
-`battery_pack.yaml` is one where nearly every bound is a floor somebody published, and
-`factory_line.yaml` is a manufacturing cell whose vocabulary shares no nouns with the other three.
+`battery_pack.yaml` is one where nearly every bound is a floor somebody published,
+`factory_line.yaml` is a manufacturing cell whose vocabulary shares no nouns with the other three,
+and `margin_book.yaml` is the only one declaring work the engine has not been handed yet -- an
+outside forecaster is expected to supply a prediction, and is then judged by the same eight axioms.
 
 **Built on this engine**: [`bmc-sensor-audit`](https://github.com/james-sheen/bmc-sensor-audit)
 audits firmware sensor coverage, and

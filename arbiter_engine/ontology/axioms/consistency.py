@@ -14,7 +14,9 @@ Requires history for learned invariants.
 """
 
 import logging
-from typing import Any, List, Optional
+import math
+from datetime import timedelta
+from typing import Any, List, Optional, Mapping
 
 from ...interfaces import (
     Entity,
@@ -26,6 +28,7 @@ from ...interfaces import (
     CheckOutcome,
     absent_current_value,
 )
+from .peers import parse_reference, resolve_peer
 from ...types import (
     Axiom, Severity, AxiomParameters, DetectionLayer, NotEvaluatedReason,
 )
@@ -70,12 +73,18 @@ class ConsistencyChecker:
     def __init__(self, params: Optional[AxiomParameters] = None):
         self.params = params or AxiomParameters()
 
+    #: An `agrees_with` entry may name the far side of a declared edge, which
+    #: needs the index to read. The mechanism, third user.
+    wants_entities = True
+
     def check(
         self,
         entity: Entity,
         indicator: IndicatorSpec,
         graph: RelationshipGraph,
-        history: ObservationHistory
+        history: ObservationHistory,
+        *,
+        entities: Optional[Mapping[str, Entity]] = None,
     ) -> List[Problem]:
         """
         Check CONSISTENCY for an entity/indicator.
@@ -139,10 +148,39 @@ class ConsistencyChecker:
         # sensors carries no role — `temp_c` tokenises to nothing — and
         # requiring one would make the commonest case of this capability
         # unreachable.
+        # Rule 5: is this reading ON THE GRID it was declared to sit on?
+        #
+        # A quantised quantity — a tick, a lot, a step — can only take certain
+        # values, and one between them is not a low reading or a high one, it
+        # is an impossible one. Declared as a NUMBER rather than implied by a
+        # role name: `grid: 0.01` says exactly what a `role: price` would have
+        # implied and says it for any quantised quantity in any domain, which
+        # a domain's word for its own quantities cannot.
+        #
+        # OUTSIDE THE ROLE GATE, like the agreement rule below and for the same
+        # reason: a grid is declared directly, so requiring a role as well
+        # would be asking twice for one fact.
+        config = indicator.consistency_config or {}
+        if config.get("grid") is not None:
+            problems.extend(self._check_grid(entity, indicator, value,
+                                             config.get("grid")))
+
+        # Rule 6: is this reading below the one it was declared to sit below?
+        #
+        # A bid under an ask, a floor under a ceiling, a start before an end.
+        # Two readings that are individually plausible and impossible together
+        # are exactly what single-value plausibility cannot see.
+        ordered_declined = None
+        if config.get("ordered_below") is not None:
+            found, ordered_declined = self._check_ordering(
+                entity, indicator, value, config.get("ordered_below"),
+                graph, entities, history)
+            problems.extend(found)
+
         agreement_declined = None
         if roles.has_cross_signal_rule(indicator):
             found, agreement_declined = self._check_agreement(
-                entity, indicator, value)
+                entity, indicator, value, graph, entities, history)
             problems.extend(found)
 
         result = apply_property_confidence(
@@ -152,6 +190,11 @@ class ConsistencyChecker:
         # Returned here rather than from `_check_agreement` so it passes through
         # `apply_property_confidence` with everything else; a decline emitted on
         # a separate path is how return-shape drift starts.
+        if ordered_declined is not None:
+            reason, detail = ordered_declined
+            return CheckOutcome(result).declined(
+                Axiom.CONSISTENCY, entity, indicator.name, reason, detail=detail)
+
         if agreement_declined is not None:
             # The reason travels with the detail. It was hardcoded
             # MISSING_PROPERTY when a missing peer was the only way this arm
@@ -196,6 +239,9 @@ class ConsistencyChecker:
         entity: Entity,
         indicator: IndicatorSpec,
         value: Any,
+        graph: Optional[RelationshipGraph] = None,
+        entities: Optional[Mapping[str, Entity]] = None,
+        history: Optional[ObservationHistory] = None,
     ) -> tuple:
         """compare this reading against the peers it must agree with.
 
@@ -258,14 +304,46 @@ class ConsistencyChecker:
         problems: List[Problem] = []
         missing: List[str] = []
         for peer in peers:
-            other = entity.get_property(str(peer))
-            if other is None:
-                missing.append(str(peer))
-                continue
+            # CROSS-ENTITY AGREEMENT. A peer may be a property of this entity,
+            # as it always could, or `{via: <relation>, property: <name>}`
+            # naming the far side of a declared edge -- which is how one
+            # instrument's reading is compared against the same reading taken
+            # somewhere else, the case redundancy checking exists for and the
+            # format could not express.
+            same_entity, ref, malformed = parse_reference(peer)
+            if malformed:
+                return problems, (NotEvaluatedReason.MISSING_CONFIG, malformed)
+            if ref is not None:
+                if graph is None or history is None:
+                    return problems, (
+                        NotEvaluatedReason.PRECONDITION_UNMET,
+                        f"`{ref}` crosses an edge and this check was called "
+                        f"without a graph or a history")
+                # REQUIRES AN AGGREGATE where conservation does not, and the
+                # difference is real rather than a convenience: a balance SUMS
+                # its output side by definition, while three readings that
+                # must agree are three candidate answers and picking one
+                # without being told would make the verdict depend on
+                # iteration order.
+                resolved = resolve_peer(
+                    entity, ref, graph, entities, history,
+                    indicator.time_window or timedelta(minutes=5),
+                    require_aggregate=True)
+                if not resolved.ok:
+                    return problems, (NotEvaluatedReason(resolved.reason),
+                                      resolved.detail)
+                other = resolved.values[0]
+                peer_name = str(ref)
+            else:
+                peer_name = str(same_entity)
+                other = entity.get_property(peer_name)
+                if other is None:
+                    missing.append(peer_name)
+                    continue
             try:
                 other = float(other)
             except (TypeError, ValueError):
-                missing.append(str(peer))
+                missing.append(peer_name)
                 continue
 
             difference = abs(reading - other)
@@ -288,14 +366,14 @@ class ConsistencyChecker:
                     problem_type=f'redundant_disagreement:{indicator.name}',
                     severity=Severity.WARNING,
                     reason=(
-                        f"{indicator.name} and {peer} are declared redundant "
+                        f"{indicator.name} and {peer_name} are declared redundant "
                         f"and disagree"),
                     axiom=Axiom.CONSISTENCY,
                     source_layer=DetectionLayer.ONTOLOGY,
                     evidence={
                         'indicator': indicator.name,
                         'property': indicator.property_name,
-                        'peer': str(peer),
+                        'peer': peer_name,
                         'value': reading,
                         'peer_value': other,
                         'difference': difference,
@@ -317,6 +395,81 @@ class ConsistencyChecker:
                 f"entity does not carry as a numeric property; agreement "
                 f"cannot be judged against a reading that is not there")
         return problems, None
+
+    #: How far off a declared grid a reading may sit and still count as on it.
+    #: Relative to the grid, because floating point error scales with the
+    #: numbers involved: `100.01 / 0.01` is 10001.000000000002 in binary, and a
+    #: check with no tolerance at all would call almost every real tick off it.
+    GRID_TOLERANCE = 1e-6
+
+    def _check_grid(self, entity: Entity, indicator: IndicatorSpec,
+                    value: Any, grid: Any) -> List[Problem]:
+        """A value between the steps it was declared to take is impossible."""
+        try:
+            reading, step = float(value), float(grid)
+        except (TypeError, ValueError):
+            return []
+        if step <= 0 or not math.isfinite(reading):
+            return []
+        nearest = round(reading / step) * step
+        if abs(reading - nearest) <= step * self.GRID_TOLERANCE:
+            return []
+        return [Problem.from_entity(
+            entity=entity,
+            problem_type="impossible_value",
+            severity=Severity.MEDIUM,
+            reason=(f"{indicator.name} reads {reading:g}, which is not a "
+                    f"multiple of the declared grid {step:g}; the nearest "
+                    f"value it could take is {nearest:g}"),
+            axiom=Axiom.CONSISTENCY,
+            evidence={"value": reading, "grid": step, "nearest": nearest,
+                      "off_by": abs(reading - nearest)},
+        )]
+
+    def _check_ordering(self, entity: Entity, indicator: IndicatorSpec,
+                        value: Any, upper: Any, graph=None, entities=None,
+                        history=None) -> tuple:
+        """This reading must not exceed the one it is declared to sit below."""
+        same_entity, ref, malformed = parse_reference(upper)
+        if malformed:
+            return [], (NotEvaluatedReason.MISSING_CONFIG, malformed)
+        if ref is not None:
+            if graph is None or history is None:
+                return [], (NotEvaluatedReason.PRECONDITION_UNMET,
+                            f"`ordered_below: {ref}` crosses an edge and this "
+                            f"check was called without a graph or a history")
+            resolved = resolve_peer(entity, ref, graph, entities, history,
+                                    indicator.time_window or timedelta(minutes=5),
+                                    require_aggregate=True)
+            if not resolved.ok:
+                return [], (NotEvaluatedReason(resolved.reason), resolved.detail)
+            other, name = resolved.values[0], str(ref)
+        else:
+            name = str(same_entity)
+            other = entity.get_property(name)
+            if other is None:
+                return [], (NotEvaluatedReason.MISSING_PROPERTY,
+                            f"`ordered_below: {name}` names a property this "
+                            f"entity does not carry")
+        try:
+            reading, ceiling = float(value), float(other)
+        except (TypeError, ValueError):
+            return [], (NotEvaluatedReason.UNDEFINED_FOR_VALUES,
+                        f"`ordered_below: {name}` needs two numbers; got "
+                        f"{value!r} and {other!r}")
+        if reading <= ceiling:
+            return [], None
+        return [Problem.from_entity(
+            entity=entity,
+            problem_type="impossible_value",
+            severity=Severity.HIGH,
+            reason=(f"{indicator.name} reads {reading:g} and is declared to sit "
+                    f"below {name}, which reads {ceiling:g}; both are plausible "
+                    f"alone and impossible together"),
+            axiom=Axiom.CONSISTENCY,
+            evidence={"value": reading, "ordered_below": name,
+                      "upper": ceiling, "exceeds_by": reading - ceiling},
+        )], None
 
     def _check_count(
         self,

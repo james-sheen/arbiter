@@ -69,7 +69,7 @@ class PredictionRecord:
     prediction_id: str
     traversal_id: str
     entity_id: str
-    kind: str                       # "impact" (traversal) | "stated" (recorded claim); "value" reserved
+    kind: str                       # "impact" | "stated" | "value" | "distribution"
     probability: float
     horizon_s: float
     severity: str
@@ -88,6 +88,25 @@ class PredictionRecord:
     # (never guessed; the no-name-heuristics discipline).
     value: Optional[float] = None
     tolerance: Optional[float] = None
+    # Distribution-kind: the forecast itself, as declared quantiles, plus the
+    # producer that issued it. A point prediction answers "what"; a
+    # distribution answers "what, and how sure" -- and only the second can be
+    # scored for CALIBRATION rather than for accuracy. `model_id` is what makes
+    # the strata in `calibration()` possible: without it every producer's
+    # scores are pooled, and a pooled score cannot say which model to stop
+    # using.
+    quantiles: Optional[Dict[str, float]] = None
+    model_id: Optional[str] = None
+    # The third stratum, SUPPLIED BY THE CALLER and never derived. This ledger
+    # holds an entity id and has never held a model, so the only way to get a
+    # type out of an id here would be to read the id's shape -- which is the
+    # name-heuristic class this package has removed from three axioms. Both
+    # callers have the entity in hand when they file, so the fact is free at
+    # the one moment it is known and unrecoverable afterwards.
+    entity_type: Optional[str] = None
+    # Set at grading for distribution records: per-level pinball loss, the
+    # 90%-interval hit, and the CRPS approximation built from them.
+    scores: Optional[Dict[str, Any]] = None
     verdict: Optional[str] = None   # confirmed | falsified | ungradeable
     graded_at: Optional[datetime] = None
 
@@ -123,6 +142,43 @@ def _problem_indicator(problem: Any) -> Optional[str]:
     if ":" in ptype:
         return ptype.split(":", 1)[1] or None
     return None
+
+
+#: The two levels a distribution record must carry. Chosen because the central
+#: 90% interval is what `coverage_90` scores, and a record that cannot be
+#: coverage-scored cannot be calibration-scored at all -- which would make it a
+#: point prediction wearing a distribution's name.
+_REQUIRED_LEVELS: Tuple[str, str] = ("q05", "q95")
+
+
+def quantile_level(key: str) -> float:
+    """``q05`` -> 0.05, ``q50`` -> 0.5, ``q975`` -> 0.975.
+
+    The digits after ``q`` ARE the fractional part, which is the only reading
+    under which ``q05`` and ``q5`` can both be written and mean what their
+    authors meant. Levels of 0 and 1 are refused: a 0th or 100th percentile is
+    unbounded for every distribution the engine will be handed, so a number
+    there is a placeholder rather than a forecast.
+    """
+    text = str(key).strip().lower()
+    if not text.startswith("q") or not text[1:].isdigit():
+        raise ValueError(
+            f"quantile key {key!r} is not `q` followed by digits (q05, q50, q95)")
+    level = float("0." + text[1:])
+    if not 0.0 < level < 1.0:
+        raise ValueError(f"quantile level from {key!r} is {level}, not strictly in (0, 1)")
+    return level
+
+
+def pinball_loss(level: float, predicted: float, observed: float) -> float:
+    """The proper scoring rule for one quantile. Lower is better, 0 is exact.
+
+    Asymmetric by design: at the 5th percentile, being too HIGH is penalised
+    nineteen times as hard as being too low, because a 5th-percentile forecast
+    that the outcome routinely falls below is not a 5th percentile.
+    """
+    delta = observed - predicted
+    return delta * level if delta >= 0 else -delta * (1.0 - level)
 
 
 class PredictionLedger:
@@ -250,6 +306,90 @@ class PredictionLedger:
         self._records.append(record)
         return record.prediction_id
 
+    def record_distribution(
+        self,
+        entity_id: str,
+        property_name: str,
+        quantiles: Dict[str, float],
+        horizon_s: float,
+        model_id: str,
+        traversal_id: Optional[str] = None,
+        predicted_at: Optional[datetime] = None,
+        entity_type: Optional[str] = None,
+    ) -> str:
+        """File a distributional forecast -- entity E's property P will be
+        distributed like these quantiles at horizon H, according to model M.
+
+        ``q05`` and ``q95`` are MANDATORY, on the same argument that makes
+        ``tolerance`` mandatory on a value prediction: the ledger never guesses
+        resolution. A caller who supplies only a median has supplied a point
+        prediction, and ``record_value_prediction`` is where those go -- filing
+        one here would produce a record that ``coverage_90`` silently skips,
+        and a calibration figure computed over an unstated subset is worse than
+        no figure.
+
+        Extra levels are kept and scored. They widen the CRPS approximation
+        without changing what ``coverage_90`` means.
+        """
+        if not quantiles:
+            raise ValueError("a distribution prediction requires quantiles")
+        levels = {}
+        for key, value in quantiles.items():
+            levels[key] = quantile_level(key)          # raises on a malformed key
+            if not isinstance(value, (int, float)) or isinstance(value, bool):
+                raise ValueError(
+                    f"quantile {key!r} is {value!r}, which is not a number")
+        # `q10` and `q100` both read as 0.1 under the rule above, and so do
+        # `q1` and `q10`. Two keys at one level are not a crash -- they are two
+        # scores for one quantile, silently double-weighting it in the mean
+        # that becomes CRPS. Refused, naming both spellings, because the caller
+        # meant one of them and the ledger cannot tell which.
+        collisions = {}
+        for key, level in levels.items():
+            collisions.setdefault(level, []).append(key)
+        duplicated = {lvl: sorted(keys) for lvl, keys in collisions.items()
+                      if len(keys) > 1}
+        if duplicated:
+            raise ValueError(
+                f"two quantile keys name one level: {duplicated}. The digits "
+                f"after `q` are the fractional part, so `q1`, `q10` and `q100` "
+                f"are all 0.1")
+        missing = [k for k in _REQUIRED_LEVELS if k not in quantiles]
+        if missing:
+            raise ValueError(
+                f"a distribution prediction requires {list(_REQUIRED_LEVELS)}; "
+                f"missing {missing}. A forecast with no stated interval cannot "
+                f"be scored for coverage, and an unscoreable record would be "
+                f"counted in a calibration figure it never contributed to"
+            )
+        # Monotonicity is a property of quantiles, not a convention: if the
+        # 95th percentile sits below the 5th, the producer has mislabelled its
+        # own output and every score computed from it would be meaningless.
+        ordered = sorted(levels.items(), key=lambda kv: kv[1])
+        for (lo_key, _), (hi_key, _) in zip(ordered, ordered[1:]):
+            if quantiles[hi_key] < quantiles[lo_key]:
+                raise ValueError(
+                    f"quantiles are not monotone: {hi_key}={quantiles[hi_key]} "
+                    f"< {lo_key}={quantiles[lo_key]}")
+        record = PredictionRecord(
+            prediction_id=str(uuid.uuid4()),
+            traversal_id=traversal_id or str(uuid.uuid4()),
+            entity_id=str(entity_id),
+            kind="distribution",
+            probability=0.9,          # the interval this record is scored on
+            horizon_s=float(horizon_s),
+            severity="medium",
+            predicted_at=as_naive_utc(predicted_at) if predicted_at else now_utc(),
+            indicator=str(property_name),
+            value=float(quantiles.get("q50", quantiles[_REQUIRED_LEVELS[0]])),
+            quantiles={str(k): float(v) for k, v in quantiles.items()},
+            model_id=str(model_id),
+            entity_type=str(entity_type) if entity_type else None,
+        )
+        self._note_eviction()
+        self._records.append(record)
+        return record.prediction_id
+
     def record_projected_values(
         self,
         topology: Any,
@@ -317,6 +457,70 @@ class PredictionLedger:
                         and start <= ts <= end):
                     out.append((ts, float(value)))
         return out
+
+    def _grade_distribution_record(
+        self,
+        record: PredictionRecord,
+        histories: Optional[Iterable[Any]],
+        now: datetime,
+    ) -> Optional[PredictionResidualProblem]:
+        """Score a distributional forecast against the observed mirror.
+
+        Same maturity discipline as the value aperture -- a distribution stated
+        for a horizon is not scoreable early, and a silent channel is
+        UNGRADEABLE rather than either kind of error.
+
+        CONFIRMED means the observation landed inside the stated 90% interval;
+        FALSIFIED means outside. That is a per-record verdict, and on its own it
+        says almost nothing: a well-calibrated 90% interval is SUPPOSED to be
+        missed one time in ten. The figure that means something is the rate
+        across many records, which is what ``calibration()["coverage_90"]``
+        reports -- and a model at 100% coverage is badly calibrated in the
+        other direction, having bought its hit-rate with intervals too wide to
+        act on.
+
+        A miss is therefore not emitted as a finding. The pinball losses are
+        recorded on the record either way, because a forecast scored only when
+        it was wrong cannot produce a calibration curve.
+        """
+        window_end = record.predicted_at + timedelta(
+            seconds=record.horizon_s + self.grace_s)
+        if now < window_end or histories is None:
+            return None
+        observations = self._observations_for(
+            list(histories), record.entity_id, record.indicator or "",
+            record.predicted_at, window_end)
+        if not observations:
+            record.verdict = GRADE_UNGRADEABLE
+            record.graded_at = now
+            return None
+        target = record.predicted_at + timedelta(seconds=record.horizon_s)
+        observed_at, observed = min(
+            observations, key=lambda o: abs((o[0] - target).total_seconds()))
+        quantiles = record.quantiles or {}
+        losses = {
+            key: pinball_loss(quantile_level(key), value, observed)
+            for key, value in quantiles.items()
+        }
+        lo, hi = quantiles[_REQUIRED_LEVELS[0]], quantiles[_REQUIRED_LEVELS[1]]
+        covered = lo <= observed <= hi
+        record.scores = {
+            "observed": observed,
+            "observed_at": observed_at.isoformat(),
+            "pinball": {k: round(v, 9) for k, v in losses.items()},
+            "pinball_mean": round(sum(losses.values()) / len(losses), 9),
+            # CRPS for a distribution given by quantiles is approximated by
+            # twice the mean pinball loss over its levels. It is named
+            # `_approx` because the equality is exact only in the limit of
+            # densely and evenly spaced levels, and three levels are neither.
+            "crps_approx": round(2.0 * sum(losses.values()) / len(losses), 9),
+            "covered_90": covered,
+            "interval": [lo, hi],
+            "model_id": record.model_id,
+        }
+        record.verdict = GRADE_CONFIRMED if covered else GRADE_FALSIFIED
+        record.graded_at = now
+        return None
 
     def _grade_value_record(
         self,
@@ -412,6 +616,9 @@ class PredictionLedger:
                 if emission is not None:
                     emissions.append(emission)
                 continue
+            if record.kind == "distribution":
+                self._grade_distribution_record(record, histories, now)
+                continue
             window_end = record.predicted_at + timedelta(
                 seconds=record.horizon_s + self.grace_s)
             hit = None
@@ -495,6 +702,88 @@ class PredictionLedger:
             "mean_predicted_probability": (
                 sum(r.probability for r in graded) / len(graded)) if graded else None,
             "brier": brier,
+            **self._distribution_calibration(),
+        }
+
+    def _distribution_calibration(self) -> Dict[str, Any]:
+        """Quantile scores over graded distribution records, and the strata.
+
+        **Every figure here carries its own denominator.** ``coverage_90`` over
+        four records and over four thousand are different statements, and a
+        rate reported without the count it was computed from is the shape this
+        engine's top-level envelope exists to refuse. So each aggregate is
+        emitted beside its ``_n``, and every one of them is ``None`` -- not
+        zero -- when nothing has been scored. A zero would read as "perfectly
+        calibrated" for a model that has never been graded.
+
+        The strata are ``by_model`` and ``by_horizon``, and they are the reason
+        ``model_id`` is mandatory on a distribution record. A pooled score
+        cannot answer the only question worth asking of a forecaster, which is
+        whether THIS one is worth keeping; and a model that is well calibrated
+        at an hour and useless at a day is a single number that describes
+        neither. ``by_entity_type`` is the third the design named, and it is here on
+        one condition: the caller STATED the type when it filed. The ledger
+        still cannot derive it -- it holds an id and has never held a model,
+        and reading a type out of an id's shape is the name-heuristic class
+        this package has removed from three axioms. So the stratum covers the
+        records that carry one, and ``entity_type_unattributed_n`` says how
+        many it does not cover. A rate over an unstated subset is the shape
+        this docstring's own second paragraph refuses.
+        """
+        scored = [r for r in self._records
+                  if r.kind == "distribution" and r.scores is not None]
+        if not scored:
+            return {
+                "pinball": None, "pinball_n": 0,
+                "crps_approx": None, "crps_approx_n": 0,
+                "coverage_90": None, "coverage_90_n": 0,
+                "by_model": {}, "by_horizon": {}, "by_entity_type": {},
+                "entity_type_unattributed_n": 0,
+            }
+
+        def _aggregate(records: List[PredictionRecord]) -> Dict[str, Any]:
+            n = len(records)
+            return {
+                "n": n,
+                "pinball": round(
+                    sum(r.scores["pinball_mean"] for r in records) / n, 9),
+                "crps_approx": round(
+                    sum(r.scores["crps_approx"] for r in records) / n, 9),
+                "coverage_90": round(
+                    sum(1 for r in records if r.scores["covered_90"]) / n, 6),
+            }
+
+        by_model: Dict[str, Dict[str, Any]] = {}
+        for record in scored:
+            by_model.setdefault(str(record.model_id), []).append(record)
+        by_horizon: Dict[str, Dict[str, Any]] = {}
+        for record in scored:
+            by_horizon.setdefault(f"{record.horizon_s:g}s", []).append(record)
+        by_entity_type: Dict[str, List[PredictionRecord]] = {}
+        unattributed = 0
+        for record in scored:
+            if record.entity_type:
+                by_entity_type.setdefault(str(record.entity_type), []).append(record)
+            else:
+                unattributed += 1
+
+        overall = _aggregate(scored)
+        return {
+            "pinball": overall["pinball"],
+            "pinball_n": overall["n"],
+            "crps_approx": overall["crps_approx"],
+            "crps_approx_n": overall["n"],
+            "coverage_90": overall["coverage_90"],
+            "coverage_90_n": overall["n"],
+            "by_model": {k: _aggregate(v) for k, v in by_model.items()},
+            "by_horizon": {k: _aggregate(v) for k, v in by_horizon.items()},
+            "by_entity_type": {k: _aggregate(v)
+                               for k, v in by_entity_type.items()},
+            # NOT folded into the stratum as a bucket. A key named for the
+            # absence would collide the first time somebody declares an entity
+            # type with that name, and the count belongs beside the figure it
+            # qualifies rather than inside it.
+            "entity_type_unattributed_n": unattributed,
         }
 
 

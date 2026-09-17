@@ -61,6 +61,10 @@ ARGUMENTS = {
     "gaps": {},
     "traverse": {"start_nodes": [ENTITY_ID]},
     "attest": {"problem_type": "threshold_exceeded:level_pct"},
+    "project": {"horizon_s": 600.0},
+    "discover": {"alpha": 0.01, "budget_pairs": 4},
+    "entail": {},
+    "infer": {"target": ENTITY_ID},
     "load_model": {"model": _MINIMAL_MODEL},
     "add_entity": {"entity_id": "x", "entity_type": "Unit"},
     "add_observations": {"entity_id": ENTITY_ID,
@@ -82,7 +86,8 @@ class TestTheRoutingTable:
         an unfillable session is what an internal ruling closed, and a count cannot tell
         you it came back.
         """
-        reads = {"model_describe", "check", "traverse", "gaps", "attest"}
+        reads = {"model_describe", "check", "traverse", "gaps", "attest",
+                 "project", "discover", "entail", "infer"}
         feeders = {"load_model", "add_entity", "add_observations"}
         assert reads | feeders == set(TOOL_NAMES)
 

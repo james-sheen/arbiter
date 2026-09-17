@@ -151,20 +151,60 @@ def roles_for(indicator: Any) -> Tuple[FrozenSet[str], str]:
     return frozenset(), "none"
 
 
-def has_cross_signal_rule(indicator: Any) -> bool:
-    """does this indicator declare peers it must agree with?
+#: `consistency:` keys that give CONSISTENCY something to do WITHOUT a role.
+#:
+#: Each is a fact the author states directly, so requiring a role beside it
+#: would be asking twice for one thing. Listed in ONE place because two
+#: readers need the same answer: the load-time reachability report, deciding
+#: whether a pair can ever fire, and the remedy sentence it prints, telling
+#: the author what to declare. They drifted apart the moment a third key was
+#: added and the sentence still named one -- a remedy that lists fewer ways
+#: than exist sends an author to declare something they do not need.
+#:
+#: NOT the gate on any individual rule. Each rule reads its OWN key; a
+#: predicate covering all three gated the agreement arm for a whole afternoon
+#: and asked authors of a `grid:` for a tolerance between two readings they
+#: had never declared.
+UNGATED_CONSISTENCY_KEYS = ("agrees_with", "grid", "ordered_below")
 
-    A second, independent way for CONSISTENCY to have something to do. The
-    role-gated rules ask *is this value possible on its own terms*; the
-    cross-signal rule asks *do two readings that should agree, agree*. Neither
-    implies the other, and a redundant pair of temperature sensors carries no
-    role at all — `temp_c` tokenises to nothing this module knows.
+
+def has_cross_signal_rule(indicator: Any) -> bool:
+    """did this indicator declare a redundant reading to compare to?
+
+    Narrow ON PURPOSE, and narrower than it briefly was. Widening this one
+    predicate to cover the grid and the ordering rules made it answer two
+    different questions — *may CONSISTENCY run at all* and *is there an
+    agreement to check* — and the second answer went wrong immediately: an
+    indicator declaring only `grid:` entered the agreement arm and declined
+    for a missing `tolerance:`, telling its author to say how close two
+    readings must be when they had never named a second reading. Read
+    `reaches_consistency_without_a_role` for the other question.
     """
     config = getattr(indicator, "consistency_config", None)
     if not isinstance(config, dict):
         return False
-    peers = config.get("agrees_with")
-    return bool(peers)
+    return bool(config.get("agrees_with"))
+
+
+def reaches_consistency_without_a_role(indicator: Any) -> bool:
+    """Does this indicator give CONSISTENCY anything to do without a role?
+
+    The role-gated rules ask *is this value possible on its own terms*. These
+    ask questions a role cannot answer: do two readings that should agree
+    agree, does this value sit on the grid it was declared to take, is it
+    below the reading it was declared to sit below. None implies the others,
+    and a redundant pair of temperature sensors carries no role at all —
+    `temp_c` tokenises to nothing this module knows.
+
+    TRUTHY, not merely present. `agrees_with: []`, `grid: 0` and an empty
+    `ordered_below:` are all declarations that give the axiom nothing to do,
+    and reporting the pair as reachable on the strength of the key existing
+    would tell an author their empty block was working.
+    """
+    config = getattr(indicator, "consistency_config", None)
+    if not isinstance(config, dict):
+        return False
+    return any(config.get(key) for key in UNGATED_CONSISTENCY_KEYS)
 
 
 def has_balance_rule(indicator: Any) -> bool:
@@ -221,7 +261,8 @@ def applies(axiom: Axiom, indicator: Any) -> Tuple[bool, FrozenSet[str], str]:
         return True, frozenset(), "not_role_gated"
     roles, source = roles_for(indicator)
     matched = roles & wanted
-    if not matched and axiom is Axiom.CONSISTENCY and has_cross_signal_rule(indicator):
+    if (not matched and axiom is Axiom.CONSISTENCY
+            and reaches_consistency_without_a_role(indicator)):
         return True, frozenset(), "cross_signal"
     return bool(matched), matched, source
 
@@ -257,8 +298,14 @@ def explain_absence(axiom: Axiom, indicator: Any) -> str:
     # which question they meant to ask, and the sentence now offers both.
     alt = ""
     if axiom is Axiom.CONSISTENCY:
-        alt = (", or declare `consistency: {agrees_with: [...]}` to compare it "
-               "against a redundant reading instead")
+        # DERIVED from the same tuple the checker gates on, so the remedy
+        # cannot name fewer ways than exist. Written out as a list rather than
+        # a sentence about `agrees_with` alone, which is what it said while
+        # three keys reached this axiom -- and an author reading it would have
+        # declared a redundant peer they did not have to model.
+        ways = ", ".join(f"`{key}`" for key in UNGATED_CONSISTENCY_KEYS)
+        alt = (f", or give it something to check without a role by declaring "
+               f"one of {ways} in the `consistency:` block")
     if source == "declared":
         got = sorted(roles)
         return (f"declared role {got[0]!r} has no {axiom.value} rule; "

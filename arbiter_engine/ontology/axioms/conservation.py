@@ -19,7 +19,7 @@ Parameters:
 
 import logging
 from datetime import timedelta
-from typing import List, Optional
+from typing import List, Optional, Mapping
 
 from ...interfaces import (
     sampling_context,
@@ -31,6 +31,7 @@ from ...interfaces import (
     apply_property_confidence,
     CheckOutcome,
 )
+from .peers import parse_reference, resolve_peer
 from ...types import (
     Axiom, Severity, AxiomParameters, DetectionLayer, NotEvaluatedReason,
 )
@@ -56,12 +57,19 @@ class ConservationChecker:
     def __init__(self, params: Optional[AxiomParameters] = None):
         self.params = params or AxiomParameters()
 
+    #: the mechanism, reused. A balance whose output side sits on other
+    #: entities cannot be struck from `entity` and `graph` alone: the edge says
+    #: WHICH entities, and reading a property off one of them needs the index.
+    wants_entities = True
+
     def check(
         self,
         entity: Entity,
         indicator: IndicatorSpec,
         graph: RelationshipGraph,
-        history: ObservationHistory
+        history: ObservationHistory,
+        *,
+        entities: Optional[Mapping[str, Entity]] = None,
     ) -> List[Problem]:
         """
         Check CONSERVATION for an entity/indicator.
@@ -110,6 +118,11 @@ class ConservationChecker:
             fallback=margin_fallback,
             bound="warn",
         )
+        # A fixed allowance, for a loss that does not scale with the input:
+        # a per-transaction fee, a constant bleed. Declared alongside rather
+        # than instead of `loss_margin`, and the LARGER of the two allowances
+        # wins -- an author who declares both means either is acceptable.
+        loss_absolute = conservation_config.get("loss_absolute")
 
         # reported from outside as issue #1. The SHIPPED example's
         # `conservation:` block declares `output_properties` and no
@@ -185,16 +198,41 @@ class ConservationChecker:
         # `conservation_violation ... 100.0% deficit` with nothing on any
         # surface saying the model was at fault. Worse than a missed detection
         # -- it sends somebody to the plant to look for a leak that is a typo.
+        # CROSS-ENTITY OUTPUTS. An entry may be a property of THIS entity, as
+        # it always could, or `{via: <relation>, property: <name>}` naming the
+        # far side of a declared edge. A balance that crosses a boundary is the
+        # common case the format could not express: orders leave a strategy and
+        # arrive at venues, and the two halves live on different entities.
+        #
+        # A reference that cannot resolve DECLINES rather than summing to zero
+        # -- the same rule the absent-property branch below already enforces,
+        # extended to the one extra way a reference can be absent, which is
+        # that the edge is not there at all.
         total_output = 0.0
         unobserved = []
-        for out_prop in output_props:
-            out_values = history.get_values(entity.id, out_prop, window)
+        for entry in output_props:
+            same_entity, ref, malformed = parse_reference(entry)
+            if malformed:
+                return CheckOutcome(problems).declined(
+                    Axiom.CONSERVATION, entity, indicator.name,
+                    NotEvaluatedReason.MISSING_CONFIG, detail=malformed)
+            if ref is not None:
+                resolved = resolve_peer(entity, ref, graph, entities, history,
+                                        window, require_aggregate=False)
+                if not resolved.ok:
+                    return CheckOutcome(problems).declined(
+                        Axiom.CONSERVATION, entity, indicator.name,
+                        NotEvaluatedReason(resolved.reason),
+                        detail=resolved.detail)
+                total_output += sum(resolved.values)
+                continue
+            out_values = history.get_values(entity.id, same_entity, window)
             if not out_values:
-                unobserved.append(out_prop)
+                unobserved.append(same_entity)
                 continue
             total_output += sum(v[1] for v in out_values if v[1] is not None)
 
-        if len(unobserved) == len(output_props):
+        if unobserved and len(unobserved) == len(output_props):
             # THE MIRROR of the zero-input exit above, and deliberately no
             # wider. When nothing on the output side was observed, the deficit
             # is the whole input and none of it is measured. Certain, so it
@@ -224,7 +262,15 @@ class ConservationChecker:
         deficit = total_input - total_output
         deficit_ratio = abs(deficit) / total_input if total_input > 0 else 0
 
-        if deficit_ratio > margin:
+        # A FIXED ALLOWANCE, where the loss does not scale with the input: a
+        # per-transaction fee, a constant bleed. When both are declared the
+        # LARGER allowance wins, because an author who declares two has said
+        # either is acceptable -- and the alternative, taking the smaller,
+        # would make declaring a second allowance tighten the check.
+        within_absolute = (loss_absolute is not None
+                           and abs(deficit) <= float(loss_absolute))
+
+        if deficit_ratio > margin and not within_absolute:
             severity = Severity.HIGH if deficit_ratio > margin * 3 else Severity.MEDIUM
             # the partial-absence clause rides in `reason` and not in
             # `evidence`, because the envelope serialises five keys per finding
@@ -257,7 +303,27 @@ class ConservationChecker:
                     **({'unobserved_output_properties': unobserved}
                        if unobserved else {}),
                 },
-                confidence=min(1.0, deficit_ratio / margin),
+                # THIS WAS ALWAYS 1.0, and it could also raise.
+                #
+                # The expression here read `min(1.0, deficit_ratio / margin)`.
+                # Every path that reaches it has already passed
+                # `deficit_ratio > margin` above, so the quotient exceeds one
+                # whenever it can be computed and the clamp returns 1.0 every
+                # time. The division had exactly two possible effects: produce
+                # a number that was then discarded, or raise.
+                #
+                # AND IT RAISED ON THE STRICTEST DECLARATION. `loss_margin: 0`
+                # says no loss is acceptable -- what an author means for a
+                # balance of COUNTS, where a missing unit is the finding and
+                # not a rounding error. Any deficit at all then cleared the
+                # condition and divided by zero here, the checker raised, and
+                # a real imbalance surfaced as `checker_error`. The stricter
+                # the author, the quieter the engine.
+                #
+                # Found by writing `margin_book.yaml`, whose forecaster
+                # balance declares zero because that is what the balance
+                # means, and running it -- not by reading this file.
+                confidence=1.0,
             ))
 
         return apply_property_confidence(entity, indicator.property_name, problems)

@@ -1,0 +1,308 @@
+"""The four-leg envelope, one level down: a discipline reporting its own work.
+
+The top-level :class:`~.envelope.Envelope` answers for the eight axioms. A
+discipline -- entailment, projection, inference, discovery -- does work of a
+different KIND, with its own denominator and its own reasons for refusing, and
+the envelope's contract is deliberately unable to carry it:
+
+``not_checked[].axiom`` is a closed enum of eight and every decline record
+requires one. A projection that cannot fit a model has no axiom to name. Given
+that record shape, a discipline could only report a refusal by inventing an
+axiom for it, which is precisely the name-derived judgement this engine has
+been removing.
+
+So a discipline reports in a sub-envelope of the same SHAPE -- checked,
+findings, not_checked, questions -- riding as a payload key alongside the
+legs rather than inside them. The schema already permits that and documents
+why: additive keys are how this envelope grows, and a tool-specific payload is
+not a change to the contract every tool satisfies identically.
+
+**Two denominators are never summed.** The top-level ``checked.invariants``
+counts axiom evaluations attempted and nothing else. A sub-envelope's
+``checked`` counts what that discipline attempted, in units that discipline
+owns -- rules, series, queries, pairs. Adding them would produce a number that
+is true of no process.
+
+WHY THE VOCABULARY IS CHECKED HERE AND NOT AT THE EDGE
+
+A decline whose reason is outside the vocabulary is the failure this engine
+keeps paying for in other forms: a refusal that reads as a judgement, or a
+category nobody can count because it is spelled three ways. The check is in
+``__post_init__`` rather than in a serialiser because a sub-envelope that
+cannot be built is a bug the author sees, while one that serialises to
+something a consumer cannot classify is a bug the consumer sees.
+
+Each discipline owns its own closed set. They are separate because the reasons
+genuinely do not overlap: ``cpt_missing`` means nothing to a projector and
+``filter_not_converged`` means nothing to a query planner. A single merged
+vocabulary would let either accept the other's refusals, which is how a closed
+enum stops being evidence about anything.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Mapping, Optional, Sequence
+
+from .envelope import (
+    SOURCE_LIVE,
+    SOURCE_UNAVAILABLE,
+    SOURCE_WARMING_UP,
+    _problem_to_dict,
+    _question_to_dict,
+)
+from .interfaces import Problem
+from .types import NotEvaluatedReason
+
+__all__ = ["VOCABULARIES", "Decline", "SubEnvelope"]
+
+
+#: The closed decline vocabulary of each discipline.
+#:
+#: These are the refusals each discipline can make and no others. A member is
+#: added by a patch release -- COMPATIBILITY.md permits growing a decline set,
+#: because a reader that switches on a reason it knows is unaffected by a
+#: reason it has never seen; what it forbids is changing what an existing
+#: member MEANS.
+#:
+#: ``internal_error`` is in all four deliberately. A discipline that raises
+#: where it could have declined turns one unanswerable cell into an
+#: unanswerable pass, and the envelope's whole claim is that it reports what it
+#: could not do rather than failing to return.
+#: The shadow discipline's vocabulary is DERIVED, and it is the only one that
+#: is. Every other discipline owns its refusals; this one runs the eight axioms
+#: over forecast values and passes their declines through unchanged, so its
+#: vocabulary is theirs plus the two refusals it makes on its own account --
+#: a forecast with no median, and a subject this session cannot place.
+#:
+#: Written as a union rather than a list because a list would be a second copy
+#: of `NotEvaluatedReason`, and this file's own comment on the discovery
+#: vocabulary says what happens to those: it goes stale the first time a member
+#: is added, which has happened to a decline vocabulary here before.
+_SHADOW_VOCABULARY = frozenset({
+    "missing_property",            # a forecast with no median to shadow with
+    "precondition_unmet",          # a subject this session cannot place
+    "no_report_probability",       # results, and no declared line for them
+    "tail_not_declared",           # the line falls outside the sent quantiles
+    # Every discipline carries this and a standing test says so. The axioms'
+    # own enum has `checker_error`, which is a different statement -- that one
+    # names a checker that raised, and this one is the discipline itself
+    # failing. Inheriting the union alone left this the only discipline that
+    # could not say it had broken.
+    "internal_error",
+}) | {reason.value for reason in NotEvaluatedReason}
+
+VOCABULARIES: Dict[str, frozenset] = {
+    "shadow": _SHADOW_VOCABULARY,
+    "forecasts": frozenset({
+        "forecast_missing",     # declared expected, and nothing arrived
+        "stale_forecast",       # older than the declared `max_age`
+        "model_unknown",        # a model_id the declaration does not list
+        "ungradeable",          # matured with no mirror observation to score on
+        "no_tolerance",         # a point prediction with no declared tolerance
+        "internal_error",
+    }),
+    "entailment": frozenset({
+        "rule_unreachable",            # a body predicate is not declared
+        "open_world_undecidable",      # absence of a fact is not evidence of absence
+        "depth_exceeded",              # body longer than the atom limit
+        "recursion_unsupported",       # head predicate appears in its own body
+        "malformed_rule",              # the head or a body atom did not parse
+        "binding_budget_exhausted",    # polynomial is not the same as affordable
+        "internal_error",
+        # WITHDRAWN BEFORE THEY EVER FIRED, and recorded rather than deleted
+        # silently. The design named two more:
+        #
+        # `inheritance_conflict` belongs to `extends:` on an entity type, which
+        # is a second feature in the same section of that design and has not
+        # landed; it returns with the loader change that can produce it.
+        #
+        # `unit_mismatch` has no producer that could ever exist here: this
+        # engine has no unit system at all, so nothing can declare two
+        # operands in incompatible units. A member no input can reach makes the
+        # set a worse instrument -- a reader counting refusal kinds counts one
+        # that cannot happen, and the enum stops being evidence about the
+        # engine. Both come back with the machinery that emits them.
+    }),
+    "projection": frozenset({
+        "model_missing",               # no dynamics declared; a default would decide it
+        "insufficient_samples",
+        "unobservable_state",
+        "unidentifiable_parameter",    # q and r not separable from this series
+        "filter_not_converged",
+        "model_inconsistent",          # innovations outside the declared band
+        "covariance_unbounded",
+        "stale_observation",
+        "horizon_exceeds_validity",
+        "no_threshold",                # nothing to compute a breach probability against
+        "no_report_probability",       # a breach probability, and no declared line for it
+        "no_lookback",                 # no declared span of history to fit on
+        "internal_error",
+    }),
+    "inference": frozenset({
+        "not_identifiable",            # an open backdoor through a declared latent
+        "cpt_missing",                 # a weight on an active path is a default
+        "cycle_unsupported",
+        "evidence_conflict",           # the model gives this evidence probability zero
+        "treewidth_exceeded",          # exact elimination would build a factor too wide
+        "no_report_probability",       # a posterior, and no declared line for it
+        "internal_error",
+        # WITHDRAWN until the method that produces them lands, like the two in
+        # `entailment`. `approximation_not_converged` and `sample_floor` belong
+        # to the Monte Carlo fallback for graphs exact elimination cannot take;
+        # this discipline ships exact-only, and refuses by `treewidth_exceeded`
+        # where the fallback would have been. Naming a convergence failure that
+        # nothing can converge is a member a reader would count and never see.
+    }),
+    "discovery": frozenset({
+        "orientation_undetermined",    # both directions significant
+        "nonstationary_series",        # the tests are invalid as-is
+        "untested_pair",               # the budget ran out; this is discovery's denominator
+        "latent_confounding_possible",
+        "faithfulness_unverifiable",   # assumed; not testable from observational data
+        "insufficient_samples",
+        "no_significance_level",       # results, and no declared line for them
+        "internal_error",
+    }),
+}
+
+#: Keys a :class:`Decline` writes itself when it serialises. A ``scope`` key
+#: with one of these names would overwrite the record's own field and produce a
+#: decline whose stated reason is not the reason it was declined for -- silently,
+#: because a dict update is not an error. The names are refused at construction.
+_RESERVED_SCOPE_KEYS = frozenset({"reason", "detail", "evidence"})
+
+_SOURCES = frozenset({SOURCE_LIVE, SOURCE_WARMING_UP, SOURCE_UNAVAILABLE})
+
+
+@dataclass(frozen=True)
+class Decline:
+    """One thing a discipline did not do, and why.
+
+    ``scope`` says WHAT was not done, in the units of the discipline: a
+    projection names ``{"entity_id", "property"}``, entailment names
+    ``{"rule"}``, discovery names ``{"pair"}``, inference names ``{"query"}``.
+    It is deliberately not a closed shape -- the disciplines do not share one --
+    while ``reason`` is, because that is the field a consumer counts.
+
+    ``evidence`` carries the numbers behind the refusal, and the refusals worth
+    having all have some: how many samples arrived against how many were
+    needed, which p-values disagreed, which edges were defaults.
+    """
+
+    reason: str
+    scope: Dict[str, Any] = field(default_factory=dict)
+    detail: str = ""
+    evidence: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.scope, Mapping):
+            raise TypeError(
+                f"decline scope must be a mapping, got {type(self.scope).__name__}")
+        clash = _RESERVED_SCOPE_KEYS & set(self.scope)
+        if clash:
+            raise ValueError(
+                f"decline scope may not use {sorted(clash)}: the record writes "
+                f"those keys itself and a scope entry would overwrite them"
+            )
+
+    def to_dict(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {"reason": self.reason}
+        out.update(self.scope)
+        if self.detail:
+            out["detail"] = self.detail
+        if self.evidence:
+            out["evidence"] = dict(self.evidence)
+        return out
+
+
+@dataclass(frozen=True)
+class SubEnvelope:
+    """What one discipline checked, what it found, what it declined, what it asks.
+
+    ``checked`` is the discipline's own denominator, in its own units, reported
+    by the routine that attempted the work. The keys are the discipline's to
+    choose; what is enforced here is that there IS one and that at least one
+    entry counts something. A sub-envelope with an empty ``checked`` is the
+    "8 declined out of ?" shape the top-level denominator exists to prevent,
+    one level down.
+
+    Non-count entries are allowed alongside the counts -- inference reports
+    which method answered, and that is not a number -- but they cannot be the
+    whole of it.
+    """
+
+    kind: str
+    checked: Dict[str, Any]
+    findings: List[Problem] = field(default_factory=list)
+    not_checked: List[Decline] = field(default_factory=list)
+    questions: List[Any] = field(default_factory=list)
+    source: str = SOURCE_LIVE
+    reason: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if self.kind not in VOCABULARIES:
+            raise ValueError(
+                f"unknown discipline {self.kind!r}; "
+                f"known: {sorted(VOCABULARIES)}"
+            )
+        if not isinstance(self.checked, Mapping) or not self.checked:
+            raise ValueError(
+                f"{self.kind}: `checked` is the denominator and cannot be empty -- "
+                f"declines are uninterpretable without it"
+            )
+        if not any(isinstance(v, int) and not isinstance(v, bool)
+                   for v in self.checked.values()):
+            raise ValueError(
+                f"{self.kind}: `checked` counts nothing; at least one entry must "
+                f"be an integer count. Got {dict(self.checked)!r}"
+            )
+        vocabulary = VOCABULARIES[self.kind]
+        outside = sorted({d.reason for d in self.not_checked
+                          if d.reason not in vocabulary})
+        if outside:
+            raise ValueError(
+                f"{self.kind}: reason(s) outside the vocabulary: {outside}. "
+                f"Known: {sorted(vocabulary)}"
+            )
+        if self.source not in _SOURCES:
+            raise ValueError(
+                f"{self.kind}: source must be one of {sorted(_SOURCES)}, "
+                f"got {self.source!r}"
+            )
+        # The envelope's own rule, applied one level down: `reason` is
+        # populated whenever `source` is not `live`. A sub-envelope that says
+        # `unavailable` and does not say why is the silence this shape exists
+        # to make impossible.
+        if self.source != SOURCE_LIVE and not self.reason:
+            raise ValueError(
+                f"{self.kind}: source is {self.source!r} and carries no reason"
+            )
+
+    @property
+    def is_fully_evaluated(self) -> bool:
+        """True when the discipline declined nothing. Named after the
+        envelope's property of the same name, and meaning the same thing:
+        not health, just an absence of refusals."""
+        return not self.not_checked
+
+    def to_dict(self) -> Dict[str, Any]:
+        meta: Dict[str, Any] = {"source": self.source}
+        if self.reason is not None:
+            meta["reason"] = self.reason
+        return {
+            "checked": dict(self.checked),
+            # Findings carry their evidence here, where top-level findings do
+            # not. A discipline's finding is a claim built from a computation
+            # the reader did not watch -- a posterior, a breach probability, a
+            # lead-lag -- and the numbers behind it are the only way to tell a
+            # measurement from an assertion.
+            "findings": [
+                dict(_problem_to_dict(p),
+                     evidence=dict(getattr(p, "evidence", {}) or {}))
+                for p in self.findings
+            ],
+            "not_checked": [d.to_dict() for d in self.not_checked],
+            "questions": [_question_to_dict(q) for q in self.questions],
+            "meta": meta,
+        }

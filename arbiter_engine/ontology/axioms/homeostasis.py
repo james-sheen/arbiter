@@ -60,6 +60,7 @@ from ...types import (
 # axiom) calibration values.
 from ...axiom_thresholds import (
     resolve_axiom_threshold,
+    resolve_config_number,
 )
 
 logger = logging.getLogger(__name__)
@@ -116,9 +117,16 @@ class HomeostasisChecker:
         if not isinstance(config, dict) or config.get("setpoint") is None:
             return [], False
 
+        # B-2.7 — either may be `{from_property: <name>}`, read off this
+        # entity. A target balance differs per account the way a margin
+        # requirement does, and the four bounds already take this form.
+        raw_setpoint, _detail = resolve_config_number(
+            entity, config.get("setpoint"), where="setpoint")
+        raw_tolerance, _detail = resolve_config_number(
+            entity, config.get("tolerance"), where="tolerance")
         try:
-            setpoint = float(config["setpoint"])
-            tolerance = float(config["tolerance"])
+            setpoint = float(raw_setpoint)
+            tolerance = float(raw_tolerance)
         except (KeyError, TypeError, ValueError):
             logger.warning(
                 "indicator %r declares a setpoint the checker cannot use "
@@ -134,7 +142,8 @@ class HomeostasisChecker:
                 getattr(indicator, "name", "?"), tolerance)
             return [], False
 
-        critical_band = config.get("tolerance_critical")
+        critical_band, _detail = resolve_config_number(
+            entity, config.get("tolerance_critical"), where="tolerance_critical")
         try:
             critical_band = (float(critical_band) if critical_band is not None
                              else tolerance * 2.0)

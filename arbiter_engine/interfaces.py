@@ -938,6 +938,37 @@ class IndicatorSpec:
     # relying on it. See `ontology/axioms/roles.py`, which is the one place the
     # vocabulary and the axiom mapping live.
     role: Optional[str] = None
+    #: The projection declaration: which model describes how this indicator
+    #: moves, its parameters, and the probability at which a projected breach
+    #: is worth reporting. Read by the `project` verb and by no axiom -- a
+    #: forecast is not a judgement, and the eight axioms do not make one.
+    dynamics_config: Optional[Dict[str, Any]] = None
+    # Path B -- what an OUTSIDE forecaster is expected to supply for this
+    # indicator. Distinct from `dynamics_config` one line up, which says how
+    # the engine's own projector should model the series: that one is a
+    # method, this one is an expectation of somebody else.
+    #
+    # `expected: true` is what makes a MISSING forecast reportable. Without a
+    # declaration there is no denominator -- *371 forecasts received* out of
+    # what? -- and counting only what arrived is the shape rule 1 exists to
+    # forbid, one discipline down.
+    forecast_config: Optional[Dict[str, Any]] = None
+    #: How far ahead to forecast, and how much history to fit on. Both optional:
+    #: the horizon falls back to the caller's argument, and the lookback to this
+    #: indicator's own `window`.
+    horizon: Optional[timedelta] = None
+    lookback: Optional[timedelta] = None
+    #: An arithmetic expression over OTHER properties of the same entity.
+    #: A derived indicator is not fed; it is computed, and the axioms then
+    #: judge it exactly as they judge anything else -- which is why a parity
+    #: or arbitrage relation needs no new axiom: it is a derived value plus
+    #: HOMEOSTASIS with a declared setpoint.
+    derived: Optional[str] = None
+    #: How far apart two operand samples may be and still be treated as
+    #: simultaneous when building the derived SERIES. Two feeds are never
+    #: sampled on the same tick, and subtracting a price from one taken a
+    #: minute later is a different quantity from the one declared.
+    align_tolerance: Optional[timedelta] = None
 
     # reported from outside as issue #3. A sensor frozen at one value
     # for its whole window produced an envelope byte-identical to a live one:
@@ -987,6 +1018,21 @@ class IndicatorSpec:
     # `direction: hihger`, which is the same author error against a key that
     # exists.
     unresolved_values: dict = field(default_factory=dict)
+
+    # B-2.7 -- which of the four thresholds are read off the ENTITY rather than
+    # off this spec, keyed by the YAML field name (`critical`, `lower_warning`,
+    # ...) and holding the property to read. A margin requirement, a contracted
+    # ceiling and a regulatory floor are all timestamped numbers that arrive
+    # from another system and differ per instance; declaring them here as
+    # literals means one entity type per account.
+    #
+    # A SEPARATE FIELD rather than a union on the four threshold slots. Those
+    # are `Optional[float]` and every consumer in the package tests them with
+    # `is not None` -- putting a marker object in one would turn each of those
+    # reads into a comparison against a non-number, which is the sentinel
+    # collision and both record. The slot stays None, which is
+    # what it honestly is: the number is not here.
+    threshold_sources: dict = field(default_factory=dict)
 
     def __post_init__(self):
         if not self.property_name:

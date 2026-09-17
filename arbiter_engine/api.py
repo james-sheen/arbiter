@@ -23,10 +23,11 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
-from .clock import as_naive_utc, now_utc
+from .clock import as_naive_utc, as_of, now_utc
 from arbiter_engine.axiom_thresholds import (
-    AXIOM_THRESHOLD_OVERRIDES_KEY, OVERRIDE_CONSULTED_BY,
-    OVERRIDE_DECLARED_BUT_UNREACHABLE,
+    AXIOM_THRESHOLD_OVERRIDES_KEY, DECLARED_THRESHOLDS_KEY,
+    OVERRIDE_CONSULTED_BY, OVERRIDE_DECLARED_BUT_UNREACHABLE,
+    THRESHOLD_FIELDS,
 )
 from arbiter_engine.envelope import (
     CheckedSummary, Envelope, build_envelope, unavailable_envelope,
@@ -40,6 +41,17 @@ from arbiter_engine.ontology.axioms.roles import (
 )
 from arbiter_engine.ontology.domain_loader import load_domain
 from arbiter_engine.ontology.reasoner import UnifiedAxiomReasoner
+from arbiter_engine.residual.predict_vs_mirror import PredictionLedger
+from arbiter_engine.forecast import run_forecasts
+from arbiter_engine.projection import run_projection
+from arbiter_engine.causal.discovery import (
+    DEFAULT_LAGS, run_discovery,
+)
+from arbiter_engine.ontology.entail import entail as entail_rules
+from arbiter_engine.inference import Query, run_inference
+from arbiter_engine.derived.indicator import (
+    DerivedHistoryView, compute_current, operands_of,
+)
 
 #: `projected` was withheld while nothing produced projected values, and
 #: has been offered since 2026-08-04, when `TopologyTraverser.project_values`
@@ -58,13 +70,34 @@ class EngineSession:
     the tools be tested as plain functions.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, history: Optional[Any] = None) -> None:
         self.model = None
         self.reasoner: Optional[UnifiedAxiomReasoner] = None
-        self.history = InMemoryObservationHistory()
+        # An injectable history, because the default one is a seven-day ring
+        # and a replay needs a decade. The default is unchanged, so every
+        # existing caller gets exactly what it got before.
+        self.history = history if history is not None else InMemoryObservationHistory()
         self.entities: Dict[str, Entity] = {}
         self.graph = RelationshipGraph()
         self._last_result = None
+        # THE LEDGER IS PER-SESSION, not the module singleton.
+        #
+        # `get_prediction_ledger()` returns one ledger for the whole process,
+        # gated on an environment variable that is OFF by default. That shape
+        # is right for a Core hook and wrong for this API: two sessions in one
+        # MCP server would grade each other's predictions, and a consumer who
+        # never set the variable would find that predictions recorded through
+        # a session verb went nowhere -- silently, which is the failure the
+        # ledger exists to remove.
+        #
+        # A session-owned ledger is unconditional and isolated. The module
+        # singleton is untouched and still serves the gated Core callsite.
+        self.ledger = PredictionLedger()
+        #: What `discover` last PROPOSED. Filled by the verb and read by
+        #: `adopt_io_relationships`; nothing consumes it until a caller says so.
+        self.proposed_io_relationships: List[Any] = []
+        #: What `entail` last DERIVED, whether or not it was adopted.
+        self.derived_facts: List[Any] = []
 
     # -- loading -----------------------------------------------------
 
@@ -166,6 +199,23 @@ class EngineSession:
         """
         self.graph.add_relationship(source_id, relation_type, target_id)
 
+    def adopt_io_relationships(self, records: Optional[Sequence[Any]] = None) -> int:
+        """Turn PROPOSALS into declarations, deliberately and by a caller.
+
+        `discover` never does this itself. A lead-lag test measures predictive
+        precedence, which two series driven by an undeclared third will also
+        show, so promoting its output automatically would let the engine
+        conclude structure from a correlation and then check against it.
+
+        Adopting hands the records to RESPONSIVENESS, whose `check_io_pair` arm
+        has had no producer. Returns how many were adopted.
+        """
+        chosen = list(records if records is not None
+                      else self.proposed_io_relationships)
+        if self.reasoner is not None:
+            self.reasoner.set_io_relationships(chosen)
+        return len(chosen)
+
     def set_threshold_override(self, entity_id: str, indicator: str, axiom: str,
                                warning: Any = None,
                                critical: Any = None) -> None:
@@ -254,6 +304,130 @@ class EngineSession:
                     "indicator": key,
                     "axiom": axiom,
                     "bounds": list(bounds),
+                    "reason": reason,
+                })
+        return records
+
+    def set_declared_thresholds(self, entity_id: str, indicator: str,
+                                **bounds: Any) -> None:
+        """Give ONE entity its own `warning:` / `critical:` band.
+
+        THE THING THE SIBLING ABOVE SAYS THE ENGINE DOES NOT HAVE.
+        ``set_threshold_override`` replaces an axiom's calibration parameter
+        and states in its own docstring that a caller wanting per-instance
+        declared bounds *is asking for something the engine does not have*.
+        Every account has its own margin line; without this, expressing that
+        means one entity type per account, and a model with one type per
+        instance has stopped being a model.
+
+        A SECOND KEY RATHER THAN A SECOND MEANING FOR THE FIRST. The override
+        table is keyed by axiom and holds calibration; this is keyed by field
+        and holds bounds. One table carrying both would make the two
+        indistinguishable at the point a reader most needs them apart -- and
+        `unread_threshold_overrides` classifies by axiom, which has no answer
+        for an entry that names no axiom.
+
+        Accepts any of the four fields as keywords. Passing `None` REMOVES a
+        bound previously set here rather than storing a null, so a caller can
+        put an entity back on its model's own band without knowing whether one
+        was ever set.
+
+        Does not raise on an indicator the model does not declare -- the same
+        ruling the sibling records. ``unread_declared_thresholds`` is where
+        that surfaces.
+        """
+        entity = self.entities.get(entity_id)
+        if entity is None:
+            raise KeyError(
+                f"no entity {entity_id!r} in this session; add_entity first. "
+                f"A declared threshold is stored ON the entity, so there is "
+                f"nowhere to put this one."
+            )
+        unknown = sorted(set(bounds) - set(THRESHOLD_FIELDS))
+        if unknown:
+            raise ValueError(
+                f"{', '.join(unknown)} is not a bound this engine reads; the "
+                f"four are {', '.join(THRESHOLD_FIELDS)}. Refused rather than "
+                f"reported, because a keyword argument is a typo in the "
+                f"caller's own source and they are standing in front of it -- "
+                f"unlike a model file, which may have come from elsewhere."
+            )
+        # Same translation the override feeder does: the checkers look up
+        # `property_name`, which differs from the declared name exactly when
+        # the model carries a `property_mapping`.
+        key = self._override_key(entity.type, indicator)
+        table = entity.properties.setdefault(DECLARED_THRESHOLDS_KEY, {})
+        for field, value in bounds.items():
+            if value is None:
+                table.pop((key, field), None)
+            else:
+                table[(key, field)] = float(value)
+
+    def instance_thresholds(self) -> Dict[str, Any]:
+        """How much of this session's judging is against per-instance bounds.
+
+        A SUMMARY, not a row per bound, and the difference is not cosmetic: a
+        listing here grows with the session, so on a book of ten thousand
+        accounts it would be ten thousand rows of ordinary configuration
+        dwarfing the findings beside it. The sibling report below stays a row
+        list because it carries only what is WRONG, which is small by nature.
+
+        What a reader needs from this key is whether the numbers in the
+        envelope came from the model they can read or from somewhere else, and
+        which mechanism put them there. The number a finding was compared
+        against already travels in that finding's own evidence.
+        """
+        entities, fields, by_origin = set(), set(), {"instance": 0, "property": 0}
+        for entity_id, entity in self.entities.items():
+            for (_key, field) in (
+                    entity.properties.get(DECLARED_THRESHOLDS_KEY) or {}):
+                entities.add(entity_id)
+                fields.add(field)
+                by_origin["instance"] += 1
+            for spec in (self.model.indicators.get(entity.type, [])
+                         if self.model is not None else []):
+                for field, source in (spec.threshold_sources or {}).items():
+                    if entity.properties.get(source) is None:
+                        continue      # declared, not arrived; the decline says so
+                    entities.add(entity_id)
+                    fields.add(field)
+                    by_origin["property"] += 1
+        return {"entities": len(entities), "fields": sorted(fields),
+                "by_origin": by_origin}
+
+    def unread_declared_thresholds(self) -> List[Dict[str, Any]]:
+        """Per-instance bounds no check will consult. The mirror of the
+        override report above, for the key beside it.
+
+        Two ways to be unread and they need different fixes.
+        ``undeclared_indicator`` is the caller naming something the model does
+        not carry; ``axiom_not_declared`` is the indicator existing without the
+        axiom that reads bounds, so the number is stored against a check that
+        never runs.
+        """
+        records: List[Dict[str, Any]] = []
+        reads_bounds = {"BOUNDEDNESS", "RESPONSIVENESS"}
+        for entity_id, entity in sorted(self.entities.items()):
+            table = entity.properties.get(DECLARED_THRESHOLDS_KEY) or {}
+            specs = ((self.model.indicators.get(entity.type, []))
+                     if self.model is not None else [])
+            by_key = {(s.property_name or s.name): s for s in specs}
+            for (key, field) in sorted(table):
+                spec = by_key.get(key)
+                if self.model is not None and spec is None:
+                    reason = "undeclared_indicator"
+                elif spec is not None and not (
+                        {a.value for a in (spec.relevant_axioms or ())}
+                        & reads_bounds):
+                    reason = "axiom_not_declared"
+                else:
+                    continue
+                records.append({
+                    "entity_id": entity_id,
+                    "entity_type": entity.type,
+                    "indicator": key,
+                    "field": field,
+                    "value": table[(key, field)],
                     "reason": reason,
                 })
         return records
@@ -369,8 +543,15 @@ class EngineSession:
         """
         if self.model is None:
             return []
+        # AN OPERAND OF A DERIVED INDICATOR IS READ, and by something the
+        # author declared. Without this, feeding `spot` and `futures` to a
+        # model whose only use of them is `derived: futures - spot` reports
+        # both as read by nobody -- which is the opposite of true, and would
+        # send an author to delete the feed the indicator depends on.
         declared: Dict[str, set] = {
-            etype: {spec.property_name or spec.name for spec in specs}
+            etype: ({spec.property_name or spec.name for spec in specs}
+                    | {name for spec in specs if spec.derived
+                       for name in operands_of(spec.derived)})
             for etype, specs in self.model.indicators.items()
         }
         records: List[Dict[str, Any]] = []
@@ -515,7 +696,59 @@ def model_describe(session: EngineSession) -> Envelope:
     # declared, but an author cannot declare a property they do not know they
     # are sending. This says what arrived and was never read.
     payload["unread_properties"] = session.unread_properties()
+    # B-2.7 — a bound read off an entity is invisible in the envelope, which
+    # reports the number and not where it came from. Both halves ride here: what
+    # is set, and what is set and will never be read.
+    payload["instance_thresholds"] = session.instance_thresholds()
+    payload["unread_declared_thresholds"] = session.unread_declared_thresholds()
     return _WithPayload(envelope, payload)
+
+
+def _history_for(session: EngineSession):
+    """The session's history, able to answer for derived indicators too.
+
+    Wrapped per call rather than held on the session: the wrapper is a view
+    over a model, and a session whose model is replaced would otherwise carry
+    a view of the old one.
+    """
+    if session.model is None or not any(
+            spec.derived for specs in (session.model.indicators or {}).values()
+            for spec in specs):
+        return session.history
+    return DerivedHistoryView(session.history, session.model)
+
+
+def _derive_current_values(session: EngineSession) -> List[Dict[str, Any]]:
+    """Compute every declared derived indicator onto its entity.
+
+    Returns the ones that could NOT be computed, naming the operands that were
+    missing. A value already present under the derived name is overwritten:
+    the declaration says the property IS the expression, and a fed value under
+    that name is a second source for one fact.
+    """
+    unresolved: List[Dict[str, Any]] = []
+    if session.model is None:
+        return unresolved
+    for entity in session.entities.values():
+        for spec in session.model.indicators.get(entity.type, []) or []:
+            if not spec.derived:
+                continue
+            name = spec.property_name or spec.name
+            value, missing = compute_current(spec, entity.properties)
+            if value is None:
+                entity.properties.pop(name, None)
+                unresolved.append({
+                    "entity_id": entity.id, "entity_type": entity.type,
+                    "indicator": spec.name, "property": name,
+                    "derived": spec.derived,
+                    "missing_operands": missing,
+                    "remedy": (f"feed {missing} on {entity.id}, or correct "
+                               f"`derived:` on {spec.name}") if missing else
+                              (f"`derived: {spec.derived}` did not evaluate"),
+                })
+                continue
+            entity.properties[name] = value
+    return unresolved
 
 
 def check(session: EngineSession) -> Envelope:
@@ -525,9 +758,34 @@ def check(session: EngineSession) -> Envelope:
     if not session.entities:
         return unavailable_envelope("no entities supplied")
 
+    # DERIVED INDICATORS ARE COMPUTED BEFORE ANYTHING JUDGES THEM, into the
+    # same `Entity.properties` the threshold axioms already read -- so no
+    # checker learns that a value was computed, which is what keeps a parity
+    # or spread relation from needing an axiom of its own.
+    underived = _derive_current_values(session)
     result = session.reasoner.detect(
-        list(session.entities.values()), session.graph, session.history)
+        list(session.entities.values()), session.graph,
+        _history_for(session))
     session._last_result = result
+    # RULE: every prediction gets graded. `check` is the cycle boundary, so it
+    # is where maturity is noticed -- a prediction whose horizon passed between
+    # two calls is graded on the next one rather than whenever someone
+    # remembers to ask.
+    #
+    # This reports NOTHING in the envelope, deliberately. The payload set below
+    # is closed by its own argument -- those two keys answer *did what I
+    # declared actually take effect*, which is the question `check` IS -- and a
+    # calibration summary is not that question. Grading is a state transition
+    # on the ledger; the caller reads it at `session.ledger.calibration()`,
+    # where the denominators live.
+    #
+    # Inert until something records a prediction: a fresh session's ledger is
+    # empty and this is a no-op over an empty deque.
+    session.ledger.grade_matured(
+        list(result.problems) + list(result.warnings),
+        set(session.entities),
+        histories=[session.history],
+    )
     envelope = build_envelope(result)
     # the one report this verb owes, and the only one carried here.
     # An internal ruling withdrew a check: a numeric property no indicator declares used to
@@ -559,6 +817,26 @@ def check(session: EngineSession) -> Envelope:
     payload = envelope.to_dict()
     payload["unread_properties"] = session.unread_properties()
     payload["dropped_declarations"] = session.dropped_declarations()
+    # the argument, a third time, and the same one: this answers *did
+    # what I declared actually take effect*, which is the question `check` IS.
+    #
+    # A derived indicator whose operand is missing declines on a property
+    # NOBODY FEEDS. The reason is right and the name is a dead end: an author
+    # told `missing_property: basis` goes looking for a `basis` feed that was
+    # never supposed to exist, when what is missing is `spot`. This names the
+    # operand. Empty when nothing is derived, which is every model that
+    # predates the key.
+    payload["underived"] = underived
+    # Path B -- the forecasts leg, every cycle. Its findings stay INSIDE it:
+    # the envelope's own `findings` are about the present, and a forecast
+    # breach merged into them would put *your prediction is impossible* beside
+    # *your system is breaking* in one list, which is the confusion the
+    # `forecast_` prefix exists to prevent -- reintroduced one level up where
+    # the prefix cannot be seen.
+    #
+    # Costs nothing when nobody forecasts: with an empty ledger the shadow run
+    # returns before it builds an entity.
+    payload["forecasts"] = run_forecasts(session).to_dict()
     return _WithPayload(envelope, payload)
 
 
@@ -815,6 +1093,187 @@ def gaps(session: EngineSession,
     # declared, but an author cannot declare a property they do not know they
     # are sending. This says what arrived and was never read.
     payload["unread_properties"] = session.unread_properties()
+    # B-2.7 — a bound read off an entity is invisible in the envelope, which
+    # reports the number and not where it came from. Both halves ride here: what
+    # is set, and what is set and will never be read.
+    payload["instance_thresholds"] = session.instance_thresholds()
+    payload["unread_declared_thresholds"] = session.unread_declared_thresholds()
+    return _WithPayload(envelope, payload)
+
+
+def project(session: EngineSession, horizon_s: float = 3600.0) -> Envelope:
+    """Forecast every declared numeric indicator, and say what could not be.
+
+    WHICH LEGS THIS VERB CAN HONESTLY FILL
+
+    `checked.invariants` is 0, following `attest`: this verb evaluates no
+    axioms, and reporting the number of series it looked at as `invariants`
+    would be the declared-versus-evaluated conflation that field was corrected
+    to end. The projection's own denominator is `projection.checked`, counted in
+    the units projection owns -- series, forecasts, observations assimilated --
+    and the two are NEVER summed.
+
+    `not_checked` is empty and the projection's declines are not copied into it.
+    That is a shape limit rather than a decision: a top-level decline record
+    REQUIRES one of eight axioms, and *this series has no declared dynamics* has
+    none. Supplying one would mean naming an axiom from a field that no axiom
+    reads.
+
+    `findings` and `questions` DO carry the projection's, because both have a
+    shape the leg can hold, and a consumer reading the envelope generically must
+    not see an empty findings leg while a finding exists -- silence reading as
+    health is the failure this envelope exists to prevent. They therefore appear
+    twice: once in the generic leg, once in the discipline's own accounting. A
+    test holds the two to each other, because a fact written in two places
+    drifts unless something compares them.
+    """
+    if session.model is None:
+        return unavailable_envelope("no domain model loaded")
+    if not session.entities:
+        return unavailable_envelope("no entities supplied")
+
+    sub = run_projection(session, horizon_s)
+    envelope = Envelope(
+        checked=CheckedSummary(invariants=0, entities=len(session.entities)),
+        findings=list(sub.findings),
+        questions=[_q(q) for q in sub.questions],
+    )
+    payload = envelope.to_dict()
+    payload["projection"] = sub.to_dict()
+    return _WithPayload(envelope, payload)
+
+
+def discover(session: EngineSession, alpha: Optional[float] = None,
+             lags: Optional[Sequence[int]] = None,
+             budget_pairs: int = 500) -> Envelope:
+    """Test which declared series precede which, and say what went untested.
+
+    `alpha` is the corrected p-value at which a lead-lag result counts as
+    support. WITHOUT IT THERE ARE NO FINDINGS AND NO PROPOSALS: the tests run,
+    their p-values are reported, and the engine declines to rule -- because how
+    much a false edge costs is a fact about the engagement. Same rule as
+    `project`'s `report_above`.
+
+    The proposed `IORelationship` records are left on the envelope's payload
+    and on `session.proposed_io_relationships`. They are NOT applied. Only
+    `session.adopt_io_relationships()` changes what gets checked, because a
+    proposal is not a declaration.
+    """
+    if session.model is None:
+        return unavailable_envelope("no domain model loaded")
+    if not session.entities:
+        return unavailable_envelope("no entities supplied")
+
+    sub, proposals = run_discovery(
+        session, alpha=alpha,
+        lags=tuple(lags) if lags else DEFAULT_LAGS,
+        budget_pairs=budget_pairs)
+    session.proposed_io_relationships = list(proposals)
+    envelope = Envelope(
+        checked=CheckedSummary(invariants=0, entities=len(session.entities)),
+        findings=list(sub.findings),
+        questions=[_q(q) for q in sub.questions],
+    )
+    payload = envelope.to_dict()
+    payload["discovery"] = sub.to_dict()
+    payload["proposed_io_relationships"] = [
+        {"input_entity_type": r.input_entity_type,
+         "output_entity_type": r.output_entity_type,
+         "input_property": r.input_property,
+         "output_property": r.output_property,
+         "correlation": r.correlation, "lag_seconds": r.lag_seconds,
+         "granger_p_value": r.granger_p_value, "confidence": r.confidence,
+         "adopted": False}
+        for r in proposals
+    ]
+    return _WithPayload(envelope, payload)
+
+
+def entail(session: EngineSession, adopt: bool = False) -> Envelope:
+    """Derive what the declared rules entail from the declared edges.
+
+    A rule is a conjunctive query of at most three atoms whose head predicate
+    is not in its own body. Those bounds are one bound: they are what keeps
+    evaluation polynomial, which is the project's actual constraint, and they
+    are why a body MAY quantify its join variable.
+
+    `adopt=False` derives and reports; nothing changes. `adopt=True` writes the
+    derived edges into the graph, each carrying the rule and the facts that
+    produced it, so that a CONNECTIVITY check can afterwards count an edge
+    nobody fed in and a finding resting on one can be traced to its author.
+    Separate for the same reason `discover` proposes rather than promotes --
+    except that here the derivation IS sound given its inputs, so adopting is
+    a decision about what to check, not about whether to believe.
+    """
+    if session.model is None:
+        return unavailable_envelope("no domain model loaded")
+
+    sub, derived = entail_rules(session.model, session.graph, session.entities)
+    session.derived_facts = list(derived)
+    adopted = 0
+    if adopt:
+        for (relation, source, target), meta in derived:
+            session.graph.add_relationship(
+                source, relation, target,
+                properties={"source": "inferred", "proof": meta})
+            adopted += 1
+
+    envelope = Envelope(
+        checked=CheckedSummary(invariants=0, entities=len(session.entities)),
+        findings=list(sub.findings),
+        questions=[_q(q) for q in sub.questions],
+    )
+    payload = envelope.to_dict()
+    payload["entailment"] = sub.to_dict()
+    payload["derived_facts"] = [
+        {"predicate": relation, "source": source, "target": target,
+         "rule": meta["rule"], "from": meta["from"], "adopted": bool(adopt)}
+        for (relation, source, target), meta in derived
+    ]
+    return _WithPayload(envelope, payload)
+
+
+def infer(session: EngineSession, target: str,
+          do: Optional[Dict[str, int]] = None,
+          report_above: Optional[float] = None) -> Envelope:
+    """How likely is `target` faulty, given what the last check could see?
+
+    The causal edges are the ones the author declared `edge_direction: causal`
+    in `relationship_rules`; the strengths are the ones they declared or a
+    learner measured. A strength nobody supplied STOPS the answer -- a
+    posterior is a product of edge weights, and one the engine chose would make
+    the number partly a statement about the engine with no way to tell which
+    part.
+
+    `do={"node": 1}` is an INTERVENTION, not an observation: the node's
+    incoming edges are cut before the query is answered. That distinction is
+    the whole reason this verb exists rather than being a filter over
+    `traverse`.
+
+    Evidence is the last `check()`. An entity in its `not_checked` leg is left
+    UNOBSERVED rather than assumed clean, and the count of those rides in every
+    answer -- a posterior computed with six of ten nodes unseen is a different
+    claim from one computed with all ten.
+
+    Without `report_above` there is no finding, on the same rule as `project`
+    and `discover`: the posterior is computed and reported, and whether it is
+    alarming is not the engine's to decide.
+    """
+    if session.model is None:
+        return unavailable_envelope("no domain model loaded")
+    if not session.entities:
+        return unavailable_envelope("no entities supplied")
+
+    sub = run_inference(session, Query(target=target, do=dict(do or {})),
+                        report_above=report_above)
+    envelope = Envelope(
+        checked=CheckedSummary(invariants=0, entities=len(session.entities)),
+        findings=list(sub.findings),
+        questions=[_q(q) for q in sub.questions],
+        source=sub.source, reason=sub.reason,
+    )
+    payload = envelope.to_dict()
+    payload["inference"] = sub.to_dict()
     return _WithPayload(envelope, payload)
 
 

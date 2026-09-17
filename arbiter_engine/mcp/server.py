@@ -34,11 +34,13 @@ import sys
 from typing import Any, Dict, List
 
 from arbiter_engine.api import (
-    EngineSession, attest, check, gaps, model_describe, traverse,
+    EngineSession, attest, check, discover, entail, gaps, infer,
+    model_describe, project, traverse,
 )
 from arbiter_engine.envelope import Envelope, unavailable_envelope
 
-#: The five primitives, in the order that an internal ruling lists them. Each entry is the
+#: The primitives, in the order that an internal ruling lists them, plus `project`
+#: since 2026-09-16. Each entry is the
 #: name, a one-line description for the client, and the JSON-Schema input.
 TOOL_SPECS: List[Dict[str, Any]] = [
     {
@@ -100,6 +102,111 @@ TOOL_SPECS: List[Dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {"start_node": {"type": "string"}},
+        },
+    },
+    {
+        "name": "project",
+        "description": (
+            "Forecast every declared numeric indicator forward and report the "
+            "probability that each crosses a declared line. Returns a "
+            "`projection` payload with its OWN denominator — series seen, "
+            "forecasts issued, observations assimilated — because a forecast is "
+            "not an axiom evaluation and the two are never summed. A series "
+            "with no declared `dynamics` is declined, not guessed at; a "
+            "forecast with no declared `report_above` is computed and reported "
+            "WITHOUT a finding, because which breach probability is worth "
+            "acting on is the author's to state and not this engine's."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "horizon_s": {
+                    "type": "number",
+                    "description": (
+                        "Seconds ahead to forecast. An indicator declaring its "
+                        "own `horizon` uses that instead."),
+                },
+            },
+        },
+    },
+    {
+        "name": "discover",
+        "description": (
+            "Test which declared numeric series PRECEDES which, challenge the "
+            "edges the model already declares, and report what went untested. "
+            "Returns a `discovery` payload whose denominator counts pairs seen, "
+            "tested and UNTESTED -- the pair space is quadratic, so what the "
+            "budget cut off is part of the answer. Without `alpha` there are no "
+            "findings and no proposals: the p-values are reported and the "
+            "engine declines to rule, because how much a false edge costs is a "
+            "fact about the engagement. Nothing is promoted; a significant "
+            "undeclared pair becomes a question, and predictive precedence is "
+            "not causation."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "alpha": {"type": "number", "description": (
+                    "Corrected p-value at or below which a lead-lag result "
+                    "counts as support. Omit and nothing is ruled.")},
+                "lags": {"type": "array", "items": {"type": "integer"},
+                         "description": (
+                             "Lags to test. The p-value is corrected for how "
+                             "many, so widening this is not free.")},
+                "budget_pairs": {"type": "integer", "description": (
+                    "How many pairs to test before stopping. What is cut off "
+                    "is counted, not dropped.")},
+            },
+        },
+    },
+    {
+        "name": "entail",
+        "description": (
+            "Derive what the declared rules entail from the declared edges. A "
+            "rule is a conjunctive query of at most three atoms whose head is "
+            "not in its own body -- two bounds that are one bound, and what "
+            "keeps evaluation polynomial. Every derived edge carries the rule "
+            "and the facts that produced it. Absence is NOT evidence: unless a "
+            "predicate is named in `closure:`, an entity with no fact under it "
+            "is reported undecidable rather than false. `adopt` writes the "
+            "derived edges into the graph so later checks can read them; "
+            "without it nothing changes."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "adopt": {"type": "boolean", "description": (
+                    "Write the derived edges back, each marked inferred and "
+                    "carrying its proof. Default false.")},
+            },
+        },
+    },
+    {
+        "name": "infer",
+        "description": (
+            "How likely is an entity faulty, given what the last check could "
+            "see? Exact inference over the edges the model declares "
+            "`edge_direction: causal`, with noisy-OR strengths the author "
+            "declared. A strength nobody declared STOPS the answer -- a "
+            "posterior is a product of them, and one the engine chose would "
+            "make the number partly a statement about the engine. `do` is an "
+            "INTERVENTION, not an observation: the node's incoming edges are "
+            "cut first, which is why the two give different answers when a "
+            "confounder is declared. An entity the check could not evaluate is "
+            "left unobserved, never assumed clean, and the count rides in the "
+            "answer."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "required": ["target"],
+            "properties": {
+                "target": {"type": "string", "description": "entity to ask about"},
+                "do": {"type": "object", "description": (
+                    "Interventions, {entity: 0 or 1}. Incoming edges are cut.")},
+                "report_above": {"type": "number", "description": (
+                    "Posterior at or above which to emit a finding. Omit and "
+                    "nothing is ruled.")},
+            },
         },
     },
     {
@@ -246,6 +353,12 @@ _HANDLERS = {
         a.get("overrides")),
     "gaps": lambda s, a: gaps(s, a.get("start_node")),
     "attest": lambda s, a: attest(s, a["problem_type"], a.get("entity_id")),
+    "project": lambda s, a: project(s, a.get("horizon_s", 3600.0)),
+    "discover": lambda s, a: discover(
+        s, a.get("alpha"), a.get("lags"), a.get("budget_pairs", 500)),
+    "entail": lambda s, a: entail(s, bool(a.get("adopt", False))),
+    "infer": lambda s, a: infer(
+        s, a["target"], a.get("do"), a.get("report_above")),
     "load_model": _load_model,
     "add_entity": _add_entity,
     "add_observations": _add_observations,

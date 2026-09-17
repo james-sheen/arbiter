@@ -312,9 +312,18 @@ class TestTheDescribePayloadLocations:
         without anyone deciding to publish it is exactly what containment would
         have waved through. Both were then added here on purpose, which is the
         deciding this test exists to force.
+
+        It has now caught four. `instance_thresholds` and
+        `unread_declared_thresholds` arrived with per-instance bounds, and the
+        red forced the question the first of them needed: it was written as a
+        row per bound, which on a book of ten thousand accounts is ten thousand
+        rows of ordinary configuration in front of the findings. It is a
+        summary. The second stays a row list because it carries only what is
+        wrong.
         """
         assert set(self._payload()) == {
             "checked", "findings", "not_checked", "questions", "meta",
             "model", "unconsumed_observations", "unread_threshold_overrides",
-            "unread_properties",
+            "unread_properties", "instance_thresholds",
+            "unread_declared_thresholds",
         }

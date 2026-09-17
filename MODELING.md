@@ -68,6 +68,19 @@ board. Pair them and the engine reports disagreement between readings that were 
 agree — a false finding on every working machine. **If a rule can generate the pairs, it does not
 know the pairs.**
 
+**Two more `consistency:` keys say a value is impossible without comparing it to a threshold.**
+`grid: 0.01` declares the steps the quantity can take — a tick, a lot, a dial position — and a
+reading between them is reported `impossible_value`, which no `warning:` or `critical:` can express
+because the bad value is neither high nor low. `ordered_below: cap` declares that this reading must
+not exceed another: a floor under a ceiling, a start before an end. Both readings may be plausible
+alone and impossible together, and single-value plausibility cannot see that by construction.
+`ordered_below:` takes a bare property name on the same entity, or the same
+`{via: <relation>, property: <name>, aggregate: <fn>}` form the other cross-entity references take.
+
+Both are declared as facts, so neither needs a `role:` beside it — like `agrees_with:`, they make
+CONSISTENCY reachable on their own. A grid of zero or an empty `ordered_below:` declares nothing and
+is reported as an unreachable pair rather than treated as a rule.
+
 **HOMEOSTASIS learns its normal from the window, which means a fault that lasts is eventually
 absorbed into it.** The baseline is a mean and spread over recent history, and that history contains
 the deviation — so as a fault persists the mean walks toward it, the spread widens, and the score
@@ -276,6 +289,150 @@ went wrong produced either a finding against a conforming subject or a breach no
 comparators agree now, in the inclusive direction: it is the one four of the six already used, and
 it makes a finding appear at the bound rather than disappear there.
 
+### A bound that is not the same for every instance
+
+All four keys take `{from_property: <name>}` instead of a number, and the bound is then read off
+each entity at check time. A margin requirement, a contracted ceiling and a regulatory floor are
+timestamped numbers owned by another system and different per instance; written as literals they
+say every entity of this type shares one line, which is false of most books, and the only way to
+express the truth was one entity type per instance.
+
+```yaml
+- name: margin_balance
+  axioms: [BOUNDEDNESS]
+  lower_critical: {from_property: margin_requirement}
+```
+
+`margin_requirement` may itself be declared as an indicator with `axioms: []` — recorded, carried
+in history, never judged. RESPONSIVENESS takes the same form on its two keys, and HOMEOSTASIS on
+its `setpoint:` and `tolerance:`.
+
+**A bound that was declared and has not arrived is not the same as no bound.** The first is a check
+you asked for that could not run, and it declines `no_threshold` naming the property it wanted; the
+second is a check nobody asked for. The same decline covers a value that is not a finite number,
+which matters most for `NaN`: every comparison against a `NaN` floor is false, so accepting one
+would pass the entire book in silence.
+
+For a bound a caller sets rather than a model declares, `session.set_declared_thresholds(entity_id,
+indicator, lower_critical=...)` sets one entity's band, reaching indicators whose model declares a
+literal or nothing at all. Passing `None` removes it. An instance bound takes precedence over a
+`from_property` on the same key, and `model_describe` reports `instance_thresholds` — how many
+entities are judged against bounds that are not in the model, and by which mechanism — beside
+`unread_declared_thresholds`, which names bounds no check will consult.
+
+This is a different capability from `set_threshold_override`, which retunes an axiom's calibration
+parameter and does not touch a declared bound.
+
+### Saying a forecast is expected
+
+`forecast: {expected: true}` on an indicator says an outside forecaster is supposed to supply one.
+It is what makes a MISSING forecast reportable: *371 forecasts received* is not a measurement until
+something says out of how many, and counting what arrived and calling that the denominator is the
+shape the envelope exists to refuse. A model that declares nothing gets a question rather than a
+zero — `expected: 0` beside `received: 12` would read as twelve unexpected forecasts, when the truth
+is that nobody has said which pairs should carry one.
+
+```yaml
+- name: margin_balance
+  axioms: [BOUNDEDNESS]
+  forecast:
+    expected: true
+    models: [garch_v3, lstm_v1]   # optional; an id outside this list declines model_unknown
+    max_age: 15m                  # optional; older than this declines stale_forecast
+```
+
+Both optional keys follow the same rule as every other line in this document: there is no check
+until somebody declares the number. Without `models:` no id is unknown, because refusing every id
+the engine has not seen would refuse the first forecast any producer ever sends. Without `max_age:`
+nothing is stale, because how old is too old is a minute for a quote and a day for a balance.
+
+This block is distinct from `dynamics:`, which says how the engine's own projector should model the
+series. That one is a method; this one is an expectation of somebody else.
+
+### Judging the forecaster itself
+
+A forecaster is an ordinary entity, and monitoring one needs no ninth axiom. A model that is
+miscalibrated, a model that skips subjects and a model that delivers late are the same three shapes
+BOUNDEDNESS, CONSERVATION and RESPONSIVENESS already judge. What was missing was never an axiom; it
+was a way to get the numbers onto an entity.
+
+`feed_model_figures(session, "<your type>")` does that, and **the type name is yours**. The engine
+package does not contain one — a type name compiled into a domain-free core would be a domain word
+in the single place this project refuses to put one — so the caller passes it and the model below
+declares it. Rename `ForecastModel` to anything and nothing in the engine notices.
+
+Six properties are produced, and an indicator declared on a property the ledger cannot yet support
+declines rather than reading a default. A `coverage_90` of 0.0 for a model that has never been
+scored would look like catastrophic miscalibration, so absent stays absent.
+
+| property | what it is |
+|---|---|
+| `forecasts_issued` | how many records this model has filed |
+| `forecasts_expected` | how many the model's own `forecast:` declarations call for |
+| `graded_n` | how many have matured and been scored — the denominator for the two below |
+| `coverage_90` | the share of matured intervals that contained the outcome |
+| `pinball_loss` | the quantile loss over the same records |
+| `forecast_age_s` | how long since this model last filed anything |
+
+```yaml
+ForecastModel:
+  # A model that skips subjects. `loss_margin: 0` because a forecast that was
+  # expected and never sent is the finding, not a rounding error.
+  - name: forecasts_expected
+    type: NUMERIC
+    axioms: [CONSERVATION]
+    window: 24h
+    flow: in
+    conservation:
+      input_property: forecasts_expected
+      output_properties: [forecasts_issued]
+      loss_margin: 0
+  - name: forecasts_issued
+    type: NUMERIC
+    axioms: []
+    flow: out
+
+  # A DECLARED setpoint, and the rare case where the number is not a choice: a
+  # q05-q95 interval covers 90% by the definition of those quantiles, so 0.90
+  # is what the model claimed about itself when it chose to emit them.
+  - name: coverage_90
+    type: NUMERIC
+    axioms: [HOMEOSTASIS]
+    window: 7d
+    homeostasis: {setpoint: 0.90, tolerance: 0.05}
+
+  # A LEARNED baseline, and the ordinary case. Nobody publishes an acceptable
+  # pinball loss — it has no units a contract could name — so a declared bound
+  # here would be a number the model chose for itself.
+  - name: pinball_loss
+    type: NUMERIC
+    axioms: [HOMEOSTASIS]
+    window: 7d
+
+  - name: graded_n
+    type: NUMERIC
+    axioms: [MONOTONICITY]
+    window: 7d
+    monotonicity: {expected_direction: increasing, allow_reset: true}
+
+  # A model that delivers late. `role:` is what makes this evaluate.
+  - name: forecast_age_s
+    type: NUMERIC
+    role: latency
+    axioms: [RESPONSIVENESS]
+    warning: 900
+    critical: 1800
+    window: 6h
+```
+
+The figures go onto the entity **and** into the observation history, because the axioms do not all
+read the same surface: BOUNDEDNESS and RESPONSIVENESS judge the current value, and CONSERVATION
+reads the series. An entity carrying the properties alone declines `insufficient_samples` and
+reports no imbalance at all, which is the silent outcome this pairing exists to close.
+
+`examples/margin_book.yaml` is this block in a whole model, with the accounts it forecasts.
+
+
 The question is not whether a floor is expressible. It is where the number comes from.
 
 **Declare a floor when something told you the number.** A datasheet says the fan stalls below 1000
@@ -333,6 +490,54 @@ alongside baseline deviation:
 Encoding a floor as a bound is a category error, and it is the single most common mistake when
 writing a domain for the first time.
 
+## Forecasting an indicator: `dynamics`, `horizon`, `lookback`
+
+The eight axioms judge what has been observed. `project` answers the neighbouring question — what
+the series is about to do — and it is declared on the indicator, in three keys that no axiom reads:
+
+```yaml
+- name: level_pct
+  type: NUMERIC
+  axioms: [BOUNDEDNESS]
+  window: 6h
+  critical: 95
+  dynamics: {model: local_level, q: 0.001, r: 0.09, report_above: 0.2}
+  horizon: 1h
+  lookback: 24h
+```
+
+`dynamics:` names the model and carries that model's own parameters. `horizon:` is how far ahead to
+forecast, and `lookback:` how much history to fit on; omit either and the caller's horizon and this
+indicator's `window:` are used.
+
+**Two models ship.** `local_level` is a random walk seen through measurement noise — the least a
+forecast can assume and still be one. `q` is the variance the level gains per SECOND and `r` is the
+variance of a single reading; declare both from a datasheet, or omit both and they are estimated
+from the series, in which case the forecast says so by carrying `source: estimated_parameters`
+rather than `declared_model`. `trend` fits a straight line and extrapolates it. It is available by
+name and is deliberately not the default: extrapolating a fitted line states a direction for a
+series that may have none.
+
+**A forecast that does not fit is refused, not delivered.** The filter tests its own innovations
+against what the declared model predicts, and parameters that do not describe the series are
+declined with the measured value attached. A series with no wander at all cannot separate `q` from
+`r` and is declined too. Nothing substitutes a plausible parameter and reports the result anyway.
+
+### `report_above` — the floor rule, applied to a probability
+
+**A reporting probability is a specification, not a guess.** This is the same rule as *a floor is a
+specification*, one level out, and it is the one thing about `project` most likely to surprise.
+
+The engine can compute that a series has a 31% chance of crossing `critical:` within the horizon.
+It cannot know whether 31% is worth acting on — that depends on what the breach costs and what a
+false alarm costs, and both are facts about the engagement rather than about the arithmetic. So
+**without `report_above:` there is no finding.** The probability is still computed, still attached
+to the decline that says why no verdict was reached, and still filed for grading; what does not
+happen is the engine picking a number and calling the result a judgement.
+
+Declare `report_above: 0.2` and a projected breach at or above 0.2 becomes a finding. Declare
+nothing and you get the measurement plus a question asking you for the line.
+
 ## The structural constraint: stay first-order
 
 A domain model may not contain:
@@ -343,18 +548,177 @@ A domain model may not contain:
    rule means, and neither can a reviewer.
 3. **Nested references** of the form `derived.derived.X` — references resolve one level, flat.
 
-And, more generally: no quantifiers nested inside quantifiers, and no constraints *about* the
-constraints.
+And, more generally: no constraints *about* the constraints.
 
-**Why this matters more than it looks.** These restrictions are what keep checking polynomial. A
-model that permits nested quantification is expressive enough to encode problems you cannot check
-in reasonable time, and the failure mode is not an error message — it is a checker that quietly
-becomes too slow on the one domain that grows. The restriction buys a guarantee: **evaluation cost
-stays predictable as the graph grows**, which is the property that lets a domain expert add
-indicators without consulting anyone about performance.
+**The rule is that checking stays polynomial**, and *first-order* is the shorthand for it. A model
+expressive enough to encode problems you cannot check in reasonable time fails in the worst
+available way: not an error message, but a checker that quietly becomes too slow on the one domain
+that grew. The restriction buys a guarantee — **evaluation cost stays predictable as the graph
+grows** — which is what lets a domain expert add indicators without consulting anyone about
+performance.
+
+**So a derivation rule MAY quantify a join variable**, which the shorthand appears to forbid. In
+`body: [holds(A, B), clears_at(B, C)]` the variable `B` is existential: it says *there is some B*.
+That is allowed because the two bounds on a rule — at most three body atoms, and the head predicate
+absent from its own body — make evaluation a nested-loop join over a non-recursive conjunctive
+query, which is polynomial. What stays forbidden is what leaves polynomial time: recursion, an
+unbounded body, and a constraint whose subject is another constraint.
+
+**Polynomial is not the same as affordable**, and the engine says so rather than implying otherwise.
+Three body atoms sharing no variables is the full cross product, cubic in the facts; the engine
+stops such a rule at a binding budget and declines `binding_budget_exhausted` naming it, because a
+rule nobody can afford to evaluate should be reported rather than attempted.
 
 The constraint should be enforced at load time, not by convention. A model that violates it should
 be rejected outright, with an override for people who know why they want one.
+
+## Deriving facts: `rules` and `closure`
+
+A rule composes declared edges into a new one:
+
+```yaml
+relationship_types: [holds, clears_at, exposed_to]
+closure: [holds, clears_at]
+rules:
+  - name: exposure
+    head: exposed_to(A, C)
+    body: [holds(A, B), clears_at(B, C)]
+```
+
+Variables are names; atoms are binary, because the graph's edges are. `entail` evaluates every rule
+once and reports what it derived, what it refused, and why. **Every derived edge carries the rule
+and the facts that produced it**, so a finding resting on one can be traced back to the
+declarations it came from rather than appearing as an edge with no author.
+
+Deriving is not adopting. Nothing enters the graph until a caller asks, at which point each derived
+edge is written with `source: inferred` and its proof, and later checks can read it — a CONNECTIVITY
+indicator can count an `exposed_to` that nobody fed in.
+
+### `closure:` — where absence becomes evidence
+
+A graph holds the edges someone fed it. A rule that finds no binding may be false, or may be a rule
+nobody supplied the facts for, and **those are different answers**. Naming a predicate in `closure:`
+is the author stating that the feed for it is complete. For everything else, an entity that could
+have bound the rule's first atom and has no fact under that predicate produces
+`open_world_undecidable` — unknown, not false.
+
+This is the same discipline as every other refusal in this engine: the alternative is concluding
+from silence, and silence is what the `not_checked` leg exists to stop being mistaken for an answer.
+
+## Indicators the engine COMPUTES: `derived`
+
+An indicator does not have to be fed. It can be an expression over other
+properties of the same entity:
+
+```yaml
+- name: drop_c
+  derived: "inlet_c - outlet_c"
+  align_tolerance: 2s
+  axioms: [HOMEOSTASIS]
+  window: 1h
+  homeostasis: {setpoint: 0, tolerance: 0.5}
+```
+
+**This is why there is no ninth axiom.** A relation that should hold — a parity
+residual, an arbitrage-free condition, a spread, a conservation gap — is a
+derived value plus an axiom that already exists. Declare the difference, give it
+HOMEOSTASIS with a setpoint, and departures are reported without the engine
+learning what any of those words mean. The axioms judge the result and none of
+them knows it was computed.
+
+**Expressions are arithmetic over property names**, parsed and never evaluated
+as code: `+ - * / // % **`, parentheses, and `abs`, `min`, `max`, `sqrt`, `log`.
+Anything else — an attribute, a subscript, a comparison, a call to something
+not on that list — is refused by shape rather than by a list of forbidden names.
+
+**References resolve one level, flat.** An operand that is itself derived is
+refused at load and reported in `unreachable_declarations`, because a chain has
+an evaluation order nobody declared and a cycle has none at all. Write the
+expression out over base properties.
+
+### `align_tolerance` — the two failures are different
+
+The CURRENT value is missing when an operand is, and `check` names the operand:
+the axiom declines on the derived property, which nobody feeds, so being told
+only that `drop_c` is missing sends you looking for a feed that was never
+supposed to exist.
+
+The SERIES is missing for a different reason. Two feeds are not sampled on the
+same tick, so building a derived series means deciding which readings count as
+one moment. `align_tolerance` is that decision. Declare it too tightly and the
+operands are all present while the joined series is empty; the decline says how
+many points each operand had and how many survived, which is the only way to
+tell that apart from a feed that stopped.
+
+## Reaching across an edge: `via`
+
+A balance whose two halves live on different entities, and a reading that must
+agree with the same reading taken somewhere else, are both declared by naming
+the edge to follow:
+
+```yaml
+# on the Source
+- name: sent
+  axioms: [CONSERVATION]
+  conservation:
+    input_property: sent
+    output_properties: [{via: feeds, property: arrived}]   # summed over all targets
+    loss_margin: 0.02        # a relative allowance
+    loss_absolute: 5         # or a fixed one; the larger allowance wins
+
+# on the Point
+- name: reading
+  axioms: [CONSISTENCY]
+  consistency:
+    agrees_with: [{via: measured_by, property: reading, aggregate: median}]
+    tolerance: 0.001
+```
+
+A bare property name is the existing form and still means a property of the
+entity being checked. A mapping crosses **one** edge — references resolve one
+level here for the same reason they do in `derived:`.
+
+**Only CONSISTENCY needs `aggregate:`, and the asymmetry is real.** A balance
+SUMS its output side by definition: three outfeeds carry three parts of one
+flow. An agreement COMPARES, and three readings are three candidate answers —
+so with more than one peer the engine asks which you meant rather than picking,
+because the choice changes the verdict. Against the smallest of two readings a
+point can agree while against the middle one it does not, on identical data.
+
+**An absent peer is never a zero.** An edge that reaches nobody, and targets
+that carry no such property, each decline — `precondition_unmet` and
+`missing_property`. Resolving either to an empty sum turns an unfinished model
+into a 100% deficit reported as a fault in the system, which sends somebody
+looking for a leak that is a missing relationship.
+
+## When the world is open: `calendar`
+
+Every window in this format is a span of time, and by default that is wall-clock
+time. For a domain that is not always running, it should not be:
+
+```yaml
+calendar:
+  sessions:
+    - days: [Mon, Tue, Wed, Thu, Fri]
+      open: "09:30"
+      close: "16:00"
+      tz: America/New_York
+  holidays: [2026-11-26, 2026-12-25]
+```
+
+Declare this and a `window: 1h` means an hour of OPEN time. On the first morning
+of a week it reaches back into the previous session, not into the closed days.
+
+**Why it matters more than it sounds.** On the first morning, a wall-clock hour
+spans everything that was shut. A series sampled once a minute during the
+session then looks like a series sampled once every three days:
+`floor_unreachable_at_this_rate` fires on data that is arriving perfectly well,
+a freeze check calls a closed shop frozen, and every one of those findings is
+about a span in which nothing could have been observed.
+
+**Declaring nothing is not declaring closed.** A domain with no `calendar:` is
+always open and behaves exactly as it did before this key existed, which is the
+right default for anything that runs around the clock.
 
 ## Coverage is a declaration, and absences are choices
 

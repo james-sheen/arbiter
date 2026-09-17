@@ -11,7 +11,9 @@ metadata, so it is None when this package runs from a source tree.
 """
 
 from . import api
+from .history.calendar import CalendarHistory, SessionCalendar
 from .history.observation import InMemoryObservationHistory
+from .history.sqlite_store import SqliteObservationHistory
 from .interfaces import Entity, Observation, Problem, RelationshipGraph
 from .ontology.domain_loader import DomainModel
 from .ontology.reasoner import UnifiedAxiomReasoner
@@ -27,13 +29,16 @@ __version__ = _engine_version()
 
 __all__ = [
     "Axiom",
+    "CalendarHistory",
     "DomainModel",
     "Entity",
     "InMemoryObservationHistory",
     "Observation",
     "Problem",
     "RelationshipGraph",
+    "SessionCalendar",
     "Severity",
+    "SqliteObservationHistory",
     "TopologyTraverser",
     "UnifiedAxiomReasoner",
     "api",

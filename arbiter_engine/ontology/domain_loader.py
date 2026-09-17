@@ -42,10 +42,12 @@ import re
 from dataclasses import dataclass, field
 from datetime import timedelta
 from pathlib import Path
+from collections.abc import Mapping
 from typing import Any, Dict, List, Optional, Union
 
 import yaml
 
+from ..axiom_thresholds import THRESHOLD_FIELDS
 from ..interfaces import IndicatorSpec
 from ..types import Axiom, IndicatorType, Severity
 from .axioms.roles import (
@@ -250,6 +252,27 @@ class DomainModel:
     #: causes the split beats an alias table in shared code, which the project's design guidance
     #: forbids anyway. Absent means no aliases.
     aliases: List[str] = field(default_factory=list)
+    #: Derivation rules, as the author wrote them. Parsed and checked by the
+    #: `entail` verb, not here: the loader's job is to carry what the file
+    #: says, and a rule that cannot be evaluated is a DECLINE with a reason
+    #: rather than a file that will not load.
+    rules: List[Dict[str, Any]] = field(default_factory=list)
+    #: Predicates the author declares COMPLETE. For anything not named here,
+    #: the absence of a fact is not evidence of its absence, and `entail` says
+    #: so rather than concluding from silence.
+    closure: List[str] = field(default_factory=list)
+    #: Per-edge semantics, keyed by (source type, target type, relation): which
+    #: edges are CAUSAL, how strongly a fault travels one, and any declared
+    #: unobserved common cause. The format has carried these since the twin
+    #: builder read them, and nothing on the public surface could: `traverse`
+    #: builds its topology from the relationship graph, which has no access to
+    #: them. Carried here so `infer` can read what the author declared.
+    relationship_rules: List[Dict[str, Any]] = field(default_factory=list)
+    #: When the world this model describes is OPEN, as declared sessions and
+    #: holidays. A domain that declares none is always open and behaves exactly
+    #: as it did before this existed; one that declares sessions has its
+    #: windows measured in open time by `CalendarHistory`.
+    calendar: Dict[str, Any] = field(default_factory=dict)
     indicators: Dict[str, List[IndicatorSpec]] = field(default_factory=dict)
 
     def all_indicators(self) -> List[IndicatorSpec]:
@@ -422,6 +445,62 @@ class DomainModel:
                         "declared_role": getattr(spec, "role", None),
                         "remedy": explain_absence(axiom, spec),
                     })
+        out.extend(self._unreachable_derivations())
+        return out
+
+    def _unreachable_derivations(self) -> List[Dict[str, Any]]:
+        """Derived indicators that cannot be computed as declared.
+
+        THREE WAYS, and each is decidable here rather than per cell:
+
+        an expression that will not parse; an operand that is ITSELF derived,
+        which the format forbids because references resolve one level and a
+        chain has an evaluation order nobody declared; and an operand that
+        names the indicator's own property, which is the same rule at depth
+        zero.
+
+        Reported rather than raised, like everything else on this surface.
+        """
+        from ..derived.indicator import operands_of
+
+        out: List[Dict[str, Any]] = []
+        for entity_type, specs in self.indicators.items():
+            derived_properties = {
+                (spec.property_name or spec.name) for spec in specs if spec.derived}
+            for spec in specs:
+                if not spec.derived:
+                    continue
+                own = spec.property_name or spec.name
+                names = operands_of(spec.derived)
+                if not names:
+                    out.append({
+                        "entity_type": entity_type, "indicator": spec.name,
+                        "axiom": None, "declared_role": getattr(spec, "role", None),
+                        "reason": "underivable",
+                        "remedy": (f"`derived: {spec.derived}` is not an arithmetic "
+                                   f"expression over property names, so this "
+                                   f"indicator can never be computed"),
+                    })
+                    continue
+                chained = sorted(n for n in names
+                                 if n in derived_properties and n != own)
+                if chained:
+                    out.append({
+                        "entity_type": entity_type, "indicator": spec.name,
+                        "axiom": None, "declared_role": getattr(spec, "role", None),
+                        "reason": "underivable",
+                        "remedy": (f"operand(s) {chained} are themselves derived; "
+                                   f"references resolve ONE level, so write the "
+                                   f"expression out over base properties"),
+                    })
+                if own in names:
+                    out.append({
+                        "entity_type": entity_type, "indicator": spec.name,
+                        "axiom": None, "declared_role": getattr(spec, "role", None),
+                        "reason": "underivable",
+                        "remedy": (f"`{own}` derives from itself, which has no "
+                                   f"evaluation order and no fixed point"),
+                    })
         return out
 
 
@@ -466,6 +545,27 @@ _SHARED_FIELDS = frozenset({
     "uri", "name", "property_name", "indicator_type", "relevant_axioms",
     "time_window", "warning_threshold", "critical_threshold",
     "violation_severity",
+    # READ BY A VERB RATHER THAN BY AN AXIOM, which is a third category this
+    # set had not had to hold before. `_FIELD_CONSUMERS` answers *which axiom
+    # reads this*, and for a projection field the honest answer is none: the
+    # `project` verb reads all three whatever the indicator declares under
+    # `axioms:`. Mapping them to an axiom would make `unread_fields` tell an
+    # author to declare BOUNDEDNESS in order to get a forecast, which is false
+    # and would be acted on.
+    "dynamics_config", "horizon", "lookback", "forecast_config",
+    # Read by the derived-indicator machinery rather than by an axiom: the
+    # axioms judge the RESULT, and none of them knows it was computed.
+    "derived", "align_tolerance",
+    # B-2.7 — DERIVED, NOT TYPED, which is the reason it is here rather than
+    # mapped to BOUNDEDNESS and RESPONSIVENESS. The author writes
+    # `critical: {from_property: sla_ms}`; the loader lifts the property name
+    # out into this field. `declared_keys` records `critical`, not this, so a
+    # remedy naming this field would name something nobody wrote -- and the
+    # key they DID write is classified two lines up, where the report will
+    # find it. Mapping it would also be the wrong answer on the merits: the
+    # four keys it serves are split, with the ceiling pair shared and the
+    # floor pair BOUNDEDNESS-only.
+    "threshold_sources",
     # `flow_direction` is here rather than mapped to CONSERVATION
     # above, and the reason is the second sentence of this block's own
     # docstring: declaring it says nothing about which axioms should be
@@ -532,6 +632,8 @@ _KNOWN_INDICATOR_KEYS = frozenset({
     "normal", "transient", "bad", "timeout", "target_type", "relation_type",
     "min_cardinality", "max_cardinality", "required_property",
     "violation_severity",
+    "dynamics", "horizon", "lookback", "forecast",
+    "derived", "align_tolerance",
 }) | _NON_AXIOM_KEYS
 
 #: Where the YAML key differs from the dataclass attribute, so a remedy names
@@ -543,6 +645,8 @@ _YAML_NAME = {
     "monotonicity_config": "monotonicity",
     "consistency_config": "consistency",
     "stability_config": "stability",
+    "dynamics_config": "dynamics",
+    "forecast_config": "forecast",
     "normal_states": "normal",
     "transient_states": "transient",
     "problematic_states": "bad",
@@ -714,8 +818,36 @@ def _resolve_threshold(raw: Any) -> Optional[float]:
     Zero is a legitimate threshold and cannot double as "absent" — the same
     sentinel collision as the ``_robust_slope`` and the
     correlation.
+
+    B-2.7 — a MAPPING is not a number and is not an absence either: it says the
+    number lives on the entity. It resolves to None here and the property name
+    is carried in ``threshold_sources``, so every ``is not None`` read in the
+    package still means *this spec carries a literal bound*, which is the only
+    question those reads were ever asking.
     """
+    if isinstance(raw, Mapping):
+        return None
     return float(raw) if raw is not None else None
+
+
+def _threshold_source(raw: Any, unresolved: Optional[dict] = None,
+                      key: str = "") -> Optional[str]:
+    """The property a bound is read from, for ``{from_property: <name>}``.
+
+    A mapping the loader cannot read a property name out of is RECORDED rather
+    than dropped in silence — the author wrote a bound and would otherwise get
+    an indicator with no bound at all, which looks exactly like never having
+    declared one. Same channel as every other unrecognised value, so it reaches
+    `dropped_declarations` without a fifth report being invented for it.
+    """
+    if not isinstance(raw, Mapping):
+        return None
+    name = raw.get("from_property")
+    if isinstance(name, str) and name.strip():
+        return name.strip()
+    _record_unresolved(unresolved, key, raw,
+                       ["<number>", "{from_property: <property name>}"])
+    return None
 
 
 def _resolve_role(raw: Any, indicator_name: str = "",
@@ -841,6 +973,14 @@ def parse_indicator(
     # report an unrecognised KEY already reaches.
     unresolved: Dict[str, Any] = {}
 
+    # B-2.7 — resolved before the spec is built, because a source and a literal
+    # are read out of the SAME key and only one of them can be there.
+    sources = {}
+    for _field in THRESHOLD_FIELDS:
+        _source = _threshold_source(data.get(_field), unresolved, _field)
+        if _source is not None:
+            sources[_field] = _source
+
     try:
         return IndicatorSpec(
             uri=f"domain:{entity_type}.{name}",
@@ -854,6 +994,7 @@ def parse_indicator(
             # `lower_warning: 0` is a legitimate floor and not an absence.
             lower_warning_threshold=_resolve_threshold(data.get("lower_warning")),
             lower_critical_threshold=_resolve_threshold(data.get("lower_critical")),
+            threshold_sources=sources,
             time_window=parse_duration(data.get("window", "1h")) or DEFAULT_WINDOW,
             direction=resolve_direction(data.get("direction"), name, unresolved),
             normal_states=data.get("normal", []),
@@ -885,6 +1026,19 @@ def parse_indicator(
             # a duration, which cannot be a flat field beside `warning:`
             # without reading as a threshold on the value rather than on time.
             homeostasis_config=data.get("homeostasis") or None,
+            # The projection declaration. A nested block for the same reason
+            # the five above are: it carries a model name and that model's own
+            # parameters, which are meaningless flattened beside `warning:`.
+            dynamics_config=data.get("dynamics") or None,
+            forecast_config=data.get("forecast") or None,
+            horizon=parse_duration(data.get("horizon")),
+            lookback=parse_duration(data.get("lookback")),
+            # CARRIED, NOT PARSED. Whether the expression is well formed, and
+            # whether its operands exist, are questions with better answers
+            # than a file that will not load: `unreachable_declarations` says
+            # so at load, and a decline says so per cell.
+            derived=(str(data["derived"]) if data.get("derived") else None),
+            align_tolerance=parse_duration(data.get("align_tolerance")),
             # the declared role. Normalised here rather than at every
             # read site, and an unrecognised word is reported and dropped —
             # the same convention `_resolve_axioms` and `_resolve_severity`
@@ -968,6 +1122,15 @@ def load_domain(source: Union[str, Path, Dict[str, Any]]) -> DomainModel:
             domain.get("relationship_types"), "relationship_types"),
         aliases=[str(a) for a in
                  _require_sequence(domain.get("aliases"), "aliases")],
+        rules=[r for r in _require_sequence(domain.get("rules"), "rules")
+               if isinstance(r, dict)],
+        closure=[str(c) for c in
+                 _require_sequence(domain.get("closure"), "closure")],
+        relationship_rules=[
+            r for r in _require_sequence(
+                domain.get("relationship_rules"), "relationship_rules")
+            if isinstance(r, dict)],
+        calendar=dict(domain.get("calendar") or {}),
         indicators=indicators,
     )
 

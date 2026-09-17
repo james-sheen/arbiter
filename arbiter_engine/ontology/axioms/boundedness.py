@@ -44,6 +44,8 @@ from ...types import (
 # channel for a capability no consumer has asked for. BOUNDEDNESS now sits in
 # `OVERRIDE_NOT_CONSULTED`, which is a true statement rather than a promise.
 
+from ...axiom_thresholds import effective_thresholds  # noqa: E402
+
 logger = logging.getLogger(__name__)
 
 
@@ -208,24 +210,38 @@ class BoundednessChecker:
         #: resolve effective thresholds through the optional
         # RuntimeYAMLOverlay. When no overlay is wired or no override
         # exists, the calls return the original IndicatorSpec values.
-        critical_threshold = self._effective_threshold(
-            entity, indicator, 'critical', indicator.critical_threshold
-        )
-        warning_threshold = self._effective_threshold(
-            entity, indicator, 'warning', indicator.warning_threshold
-        )
-        # the floor pair goes through the same overlay resolution as
-        # the ceiling pair. Skipping it would give a model two thresholds an
+        # B-2.7 — the four bounds may not be on the spec at all. One call, and
+        # BEFORE the overlay rather than after: the overlay retunes a number a
+        # model declared for a whole entity type, and an instance bound or a
+        # bound read from this entity's own data is the more specific statement
+        # of the two. Applying the overlay on top would let a type-wide retune
+        # silently replace an account's own margin requirement.
+        resolved, origins, unresolvable = effective_thresholds(entity, indicator)
+        if unresolvable is not None:
+            return CheckOutcome(problems).declined(
+                Axiom.BOUNDEDNESS, entity, indicator.name,
+                NotEvaluatedReason.NO_THRESHOLD,
+                detail=unresolvable,
+            )
+
+        def _bound(field: str) -> Optional[float]:
+            # A bound that came from the entity is NOT handed to the overlay.
+            # The overlay is keyed by (domain, indicator, threshold_type) and
+            # knows nothing about which entity it is being asked about, so it
+            # would answer the same number for every account.
+            if origins[field] in ("instance", "property"):
+                return resolved[field]
+            return self._effective_threshold(
+                entity, indicator, field, resolved[field])
+
+        critical_threshold = _bound('critical')
+        warning_threshold = _bound('warning')
+        # the floor pair goes through the same resolution as the
+        # ceiling pair. Skipping it would give a model two thresholds an
         # operator can retune at runtime and two they cannot, with nothing
         # saying which is which.
-        lower_critical = self._effective_threshold(
-            entity, indicator, 'lower_critical',
-            indicator.lower_critical_threshold
-        )
-        lower_warning = self._effective_threshold(
-            entity, indicator, 'lower_warning',
-            indicator.lower_warning_threshold
-        )
+        lower_critical = _bound('lower_critical')
+        lower_warning = _bound('lower_warning')
 
         # a band whose floor sits at or above its ceiling admits no
         # healthy value, so EVERY reading fires. That is a model defect and the

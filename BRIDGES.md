@@ -217,9 +217,11 @@ empty list is the target, and a generated model is the case that fills it — th
 combination is easy to emit from a template and impossible to see by reading one
 indicator at a time.
 
-`CONSISTENCY` has a second way out that the role table does not show: declaring
-`consistency: {agrees_with: [...]}` makes it applicable whatever the role, and
-the decline's own detail says so.
+`CONSISTENCY` has three ways out that the role table does not show. Declaring
+`agrees_with:`, `grid:` or `ordered_below:` in the `consistency:` block makes it
+applicable whatever the role, because each states a fact directly rather than
+implying one from a kind of quantity. The remedy in `unreachable_declarations`
+names all three, and it is generated from the same list the loader reads.
 
 ### `precondition_unmet`
 

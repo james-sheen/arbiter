@@ -52,6 +52,7 @@ from ...types import (
 # the responsiveness Problem); operator-supplied perturbed_thresholds inject
 # via the output-side entity.
 from ...axiom_thresholds import (
+    effective_thresholds,
     resolve_axiom_threshold,
 )
 
@@ -152,8 +153,18 @@ class ResponsivenessChecker:
             # bridge, against a latency of ten million: no finding, no decline,
             # `invariants: 1`. BOUNDEDNESS in the same position already
             # declines NO_THRESHOLD, which is the shape this restores.
-            if (indicator.critical_threshold is None
-                    and indicator.warning_threshold is None):
+            # B-2.7 — asked of the RESOLVER rather than of the spec, because
+            # a bound declared `{from_property: ...}` leaves both spec slots
+            # None. Reading the spec here would decline *no threshold declared*
+            # at an indicator that declares two, and the author would go
+            # looking for a missing `critical:` that is in front of them.
+            bounds, _origins, unresolvable = effective_thresholds(
+                entity, indicator)
+            if unresolvable is not None:
+                return CheckOutcome(problems).declined(
+                    Axiom.RESPONSIVENESS, entity, indicator.name,
+                    NotEvaluatedReason.NO_THRESHOLD, detail=unresolvable)
+            if (bounds["critical"] is None and bounds["warning"] is None):
                 return CheckOutcome(problems).declined(
                     Axiom.RESPONSIVENESS, entity, indicator.name,
                     NotEvaluatedReason.NO_THRESHOLD,
@@ -251,8 +262,14 @@ class ResponsivenessChecker:
         # What a declared number MEANS is now stated in the modelling guide
         # rather than left to be inferred from a comparator: it is the first
         # value that counts as a breach.
-        if (indicator.critical_threshold is not None
-                and value >= indicator.critical_threshold):
+        # B-2.7 — same resolution as the gate above. Resolved again here rather
+        # than threaded through, because this helper is called from two places
+        # and a parameter one caller forgets to pass is how a bound goes back
+        # to being read off the spec without anything saying so.
+        bounds, _origins, _unresolvable = effective_thresholds(entity, indicator)
+        critical_threshold, warning_threshold = bounds["critical"], bounds["warning"]
+        if (critical_threshold is not None
+                and value >= critical_threshold):
             problems.append(Problem.from_entity(
                 entity=entity,
                 problem_type=f'response_time_critical:{indicator.name}',
@@ -263,12 +280,12 @@ class ResponsivenessChecker:
                 evidence={
                     'property': indicator.name,
                     'value': value,
-                    'threshold': indicator.critical_threshold,
+                    'threshold': critical_threshold,
                 },
                 confidence=1.0,
             ))
-        elif (indicator.warning_threshold is not None
-                and value >= indicator.warning_threshold):
+        elif (warning_threshold is not None
+                and value >= warning_threshold):
             problems.append(Problem.from_entity(
                 entity=entity,
                 problem_type=f'response_time_warning:{indicator.name}',
@@ -279,7 +296,7 @@ class ResponsivenessChecker:
                 evidence={
                     'property': indicator.name,
                     'value': value,
-                    'threshold': indicator.warning_threshold,
+                    'threshold': warning_threshold,
                 },
                 confidence=1.0,
             ))

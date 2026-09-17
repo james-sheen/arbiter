@@ -68,9 +68,15 @@ AXIOM_THRESHOLD_OVERRIDES_KEY = "__axiom_threshold_overrides__"
 # loss a balance tolerates, how many deviations count as drift. Those are
 # genuinely useful and they are not what "per-entity thresholds" sounds like.
 #
-# The gap that leaves is filed separately: a consumer needing per-instance
-# `warning`/`critical` (hundreds of sensors, each with its own vendor limits)
-# still cannot express it, and models an entity type per sensor instead.
+# The gap that leaves is CLOSED, and this comment described it as open for a
+# release after it was. A consumer needing per-instance `warning`/`critical`
+# -- hundreds of sensors, each with its own vendor limits -- declares
+# `{from_property: <name>}` and the bound is read off each entity at check
+# time; `set_declared_thresholds` does the same for a bound a caller holds
+# rather than a model declares. Both live in this module, below. What remains
+# true is the distinction the paragraph above draws: an axiom override retunes
+# CALIBRATION and has never touched a declared bound, and the two are separate
+# tables so that a reader cannot mistake one for the other.
 #
 # Every row below is established by running the engine both ways -- with the
 # override absent and present -- and watching the verdict move or not. The
@@ -207,3 +213,156 @@ def resolve_axiom_threshold(
     if bound == "both":
         return bounds_tuple
     return warn if warn is not None else fallback
+
+
+# --------------------------------------------------------------------------
+# B-2.7 — declared bounds that differ per instance
+#
+# EVERYTHING ABOVE IS A DIFFERENT CAPABILITY and the two are easy to confuse.
+# `resolve_axiom_threshold` replaces an axiom's CALIBRATION PARAMETER -- how
+# much hunting counts as unstable, how far an I/O correlation may fall -- and
+# `set_threshold_override` says in its own docstring that it does not touch a
+# declared `warning:` or `critical:`. BOUNDEDNESS sits in
+# `OVERRIDE_NOT_CONSULTED` for exactly that reason. What follows is the thing
+# that docstring tells a caller the engine does not have.
+#
+# Two ways in, and they answer different questions:
+#
+#   `critical: {from_property: contracted_ceiling}` in the MODEL -- the bound
+#   is a number that arrives with the entity, from whatever system owns it. It
+#   moves when the data moves and nobody has to call anything.
+#
+#   `set_declared_thresholds(...)` on the SESSION -- this one entity's bound,
+#   set by a caller, with no model edit. Reaches indicators whose model
+#   declares a literal or nothing at all, which the first cannot.
+# --------------------------------------------------------------------------
+
+#: Entity-property key carrying per-instance DECLARED bounds. Keyed
+#: ``(property_name, field)`` where field is one of `THRESHOLD_FIELDS`, holding
+#: a number. A second sentinel rather than a second meaning for the first:
+#: `AXIOM_THRESHOLD_OVERRIDES_KEY` is keyed by AXIOM and holds calibration
+#: parameters, and one table holding both kinds would make the two capabilities
+#: indistinguishable at the point a reader most needs to tell them apart.
+DECLARED_THRESHOLDS_KEY = "__declared_thresholds__"
+
+#: The four YAML keys a bound is declared under. Ordered ceiling-then-floor to
+#: match the dataclass, and iterated wherever all four must be handled the same
+#: way -- handling three of four is how the floor pair was missed once already
+#: (the overlay resolution).
+#:
+#: HERE, and the loader IMPORTS it. It was written out in both for an afternoon,
+#: which is the number-written-twice defect this package has a long record of:
+#: the copy goes stale the first time a fifth field is added, and the direction
+#: of the import is what makes one copy possible -- this module holds only
+#: stdlib imports, so nothing cycles.
+THRESHOLD_FIELDS = ("warning", "critical", "lower_warning", "lower_critical")
+
+
+def resolve_declared_threshold(entity: Any, spec: Any, field: str,
+                               literal: Any) -> tuple:
+    """``(value, origin, detail)`` for one bound on one entity.
+
+    ``origin`` is ``instance``, ``property``, ``declared`` or ``absent`` and is
+    returned rather than inferred, because the three cases produce the same
+    kind of number and a reader who has to act needs to know which system to go
+    and look at.
+
+    ``detail`` is a sentence when a bound was DECLARED and could not be
+    resolved, and None otherwise. The caller declines on it. A bound the author
+    asked for and the engine could not find is not the same as no bound: the
+    first is an unanswered check, the second is a check nobody asked for, and
+    silently treating one as the other is how `axioms: [BOUNDEDNES]` used to
+    produce a clean envelope.
+    """
+    table = getattr(entity, "properties", None) or {}
+    instance = (table.get(DECLARED_THRESHOLDS_KEY) or {}).get(
+        (getattr(spec, "property_name", "") or getattr(spec, "name", ""), field))
+    if instance is not None:
+        try:
+            return float(instance), "instance", None
+        except (TypeError, ValueError):
+            return None, "absent", (
+                f"an instance {field} was set for this entity and is not a "
+                f"number: {instance!r}")
+
+    source = (getattr(spec, "threshold_sources", None) or {}).get(field)
+    if source is not None:
+        raw = table.get(source)
+        if raw is None:
+            return None, "absent", (
+                f"`{field}: {{from_property: {source}}}` is declared and this "
+                f"entity carries no {source}; the bound comes from your data, "
+                f"so there is nothing to check against until it arrives")
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            return None, "absent", (
+                f"`{field}: {{from_property: {source}}}` resolved to {raw!r}, "
+                f"which is not a number")
+        if value != value or value in (float("inf"), float("-inf")):
+            return None, "absent", (
+                f"`{field}: {{from_property: {source}}}` resolved to a value "
+                f"that is not a measurement; a bound has to be a finite number")
+        return value, "property", None
+
+    if literal is not None:
+        return float(literal), "declared", None
+    return None, "absent", None
+
+
+def resolve_config_number(entity: Any, raw: Any, *, where: str) -> tuple:
+    """``(value, detail)`` for one number inside an axiom configuration block.
+
+    The same `{from_property: <name>}` form the four bounds take, for the
+    numbers that do not live in a spec slot -- a HOMEOSTASIS setpoint and its
+    tolerance. A target balance differs per account exactly as a margin
+    requirement does, and offering the form on four keys and not on these two
+    would make which keys accept it a thing to memorise.
+
+    Returns the value unchanged when it is not a mapping, so every existing
+    literal keeps working and this function can sit on the read path without a
+    caller asking first whether it applies.
+    """
+    from collections.abc import Mapping
+    if not isinstance(raw, Mapping):
+        return raw, None
+    name = raw.get("from_property")
+    if not isinstance(name, str) or not name.strip():
+        return None, (f"`{where}` was declared as a mapping this engine cannot "
+                      f"read: {dict(raw)!r}; the form is "
+                      f"`{{from_property: <property name>}}`")
+    name = name.strip()
+    value = (getattr(entity, "properties", None) or {}).get(name)
+    if value is None:
+        return None, (f"`{where}: {{from_property: {name}}}` is declared and "
+                      f"this entity carries no {name}")
+    try:
+        return float(value), None
+    except (TypeError, ValueError):
+        return None, (f"`{where}: {{from_property: {name}}}` resolved to "
+                      f"{value!r}, which is not a number")
+
+
+def effective_thresholds(entity: Any, spec: Any) -> tuple:
+    """``(values, origins, detail)`` for all four bounds on one entity.
+
+    One call, because the contradiction check reads all four together and a
+    band assembled from bounds resolved at different times would be checked
+    against itself. The first unresolvable declaration wins the decline --
+    reporting four sentences for one missing feed would bury the one that
+    matters.
+    """
+    literals = {
+        "warning": getattr(spec, "warning_threshold", None),
+        "critical": getattr(spec, "critical_threshold", None),
+        "lower_warning": getattr(spec, "lower_warning_threshold", None),
+        "lower_critical": getattr(spec, "lower_critical_threshold", None),
+    }
+    values, origins, first = {}, {}, None
+    for field in THRESHOLD_FIELDS:
+        value, origin, detail = resolve_declared_threshold(
+            entity, spec, field, literals[field])
+        values[field], origins[field] = value, origin
+        if detail is not None and first is None:
+            first = detail
+    return values, origins, first

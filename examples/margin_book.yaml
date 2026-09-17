@@ -1,0 +1,228 @@
+# A worked example: a client margin book, and the forecasters that predict it.
+#
+# Deliberately synthetic, like the other four. Every number below is invented
+# and none of it is advice about your book -- a house margin requirement comes
+# off a contract, not off an example file.
+#
+# WHAT THIS ONE ADDS is the second half of the engine's job. The other four
+# examples declare what should be true of a reading that has arrived. This one
+# declares what should be true of a reading that has not happened yet: an
+# outside forecaster is expected to supply one, the engine keeps the books on
+# whether it did, and the forecaster is then judged by the same eight axioms as
+# anything else in the model.
+#
+# THE ENGINE CARRIES NO FORECASTING MODEL, and this file is where that shows.
+# `dynamics:` names a method the engine already has; `forecast:` says somebody
+# ELSE is expected to send one. Nothing below teaches the engine what a margin
+# balance is or which way it should move -- a forecaster that knows those things
+# lives on the bridge, and its predictions arrive as data.
+#
+# ONE ENTITY TYPE PER REAL THING, which is worth saying because it was not
+# always possible. A declared BOUNDEDNESS bound used to live on the entity TYPE,
+# so two accounts with different margin requirements could not share a type --
+# the workaround was one type per account, and `factory_line.yaml` still carries
+# the note explaining it. `{from_property:}` ended that: the bound is read off
+# each entity at check time, so `Account` below is one type for every account in
+# the book.
+
+domain:
+  id: margin-book
+  name: Client Margin Book
+  description: >
+    Client margin accounts cleared by one desk, with two outside forecasters
+    predicting the balances. Small enough to read in one sitting.
+
+  entity_types:
+    - Account
+    - Desk
+    - ForecastModel
+
+  relationship_types:
+    - cleared_by
+    - holds
+
+  indicators:
+    Account:
+      # BOUNDEDNESS with a floor that is DIFFERENT ON EVERY ENTITY.
+      #
+      # A margin requirement is a contracted number owned by another system and
+      # different per client. Written as a literal it would claim every account
+      # shares one line, which is false of every book. `{from_property:}` reads
+      # it off this entity at check time.
+      #
+      # AND IT IS A LEGITIMATE FLOOR, which is the part worth reading. The
+      # project's rule is that a floor is a specification and not a guess --
+      # for accuracy, satisfaction or performance nobody published a line, so a
+      # floor there would be an assumption wearing a threshold's clothes. A
+      # margin requirement is the opposite case: the number exists in a
+      # contract before the model is written, and the model transcribes where
+      # to find it rather than what it is.
+      #
+      # A bound declared and not arrived is NOT no bound. If an account carries
+      # no `margin_requirement`, this declines `no_threshold` naming the
+      # property it wanted -- a check you asked for that could not run, which
+      # is a different statement from a check nobody asked for.
+      - name: margin_balance
+        type: NUMERIC
+        axioms: [BOUNDEDNESS]
+        lower_critical: {from_property: margin_requirement}
+        window: 1h
+
+        # `forecast:` -- an expectation of SOMEBODY ELSE.
+        #
+        # This is what makes a MISSING forecast reportable. Without it, *371
+        # forecasts received* has no denominator, and counting what arrived and
+        # calling that the total is the shape the envelope exists to refuse.
+        forecast:
+          expected: true
+          # Optional. Without it no id is unknown, because refusing every id
+          # the engine has not seen would refuse the first forecast any
+          # producer ever sends.
+          models: [garch_v3, lstm_v1]
+          # Optional, and invented. How old is too old is a minute for a quote
+          # and a day for a balance, so there is no staleness check until
+          # somebody declares the number.
+          max_age: 15m
+
+        # `dynamics:` -- a method the engine ALREADY HAS, declared so its own
+        # projection can sit beside the outside forecasts as a reference.
+        # "Does it beat a random walk" is the standard question, and it can
+        # only be asked if something keeps a random walk running.
+        dynamics:
+          model: local_level
+          # Invented. The engine will compute that a series has a 31% chance of
+          # breaching and will not decide whether 31% is worth acting on --
+          # that depends on what a breach and a false alarm each cost, which
+          # are facts about the desk. Without this key the probability is
+          # measured and reported and no finding is invented.
+          report_above: 0.25
+        horizon: 1h
+        lookback: 7d
+
+      # Recorded, carried in history, never judged. It exists so the bound
+      # above has somewhere to be read from. An indicator with no axioms is a
+      # deliberate declaration, not an omission.
+      - name: margin_requirement
+        type: NUMERIC
+        axioms: []
+
+      # The output side of the desk's balance below. It declares which
+      # direction it points and nothing else; the balance that reads it is
+      # declared once, on the desk.
+      - name: margin_call_amount_usd
+        type: NUMERIC
+        axioms: []
+        flow: out
+
+    Desk:
+      # CONSERVATION ACROSS AN ENTITY BOUNDARY. The calls the desk issued
+      # should equal the calls its accounts received. Both halves of that
+      # balance have never sat on one entity, and until `{via:}` the only
+      # declarable balances were the ones that did -- which is the rare case.
+      - name: margin_calls_issued_usd
+        type: NUMERIC
+        axioms: [CONSERVATION]
+        window: 24h
+        flow: in
+        conservation:
+          input_property: margin_calls_issued_usd
+          output_properties:
+            - {via: holds, property: margin_call_amount_usd}
+          # Invented. A rounding allowance, not a tolerance for losing a call.
+          loss_margin: 0.01
+
+      # CONNECTIVITY -- a desk holding no accounts is a modelling error, not a
+      # quiet day.
+      - name: holds_accounts
+        type: RELATIONSHIP
+        axioms: [CONNECTIVITY]
+        target_type: Account
+        relation_type: holds
+        min_cardinality: 1
+        violation_severity: HIGH
+
+    # A FORECASTER IS AN ORDINARY ENTITY, and this block is the whole of that
+    # claim. Monitoring a forecaster needs no ninth axiom: a miscalibrated
+    # model, a model that skips subjects and a model that delivers late are the
+    # same three shapes BOUNDEDNESS, CONSERVATION and RESPONSIVENESS already
+    # judge. What was missing was not an axiom but a way to get the numbers
+    # onto an entity.
+    #
+    # THE TYPE NAME IS THIS FILE'S CHOICE. `feed_model_figures(session,
+    # "ForecastModel")` takes it as an argument and the engine package does not
+    # contain the word -- a type name written into a domain-free core would be
+    # a domain word in the one place the project refuses to put one. Rename it
+    # here and pass the new name; nothing in the engine notices.
+    #
+    # The property names below are the ones the engine's own monitor produces.
+    ForecastModel:
+      # CONSERVATION -- a model that skips subjects. Expected in, issued out.
+      # `loss_margin: 0` because a forecast that was expected and never sent is
+      # not a rounding error; it is the thing this balance exists to find.
+      #
+      # This reads the SERIES, not the current value, so it declines
+      # `insufficient_samples` until several cycles have been fed. That decline
+      # is the honest answer on a fresh session, not a misconfiguration.
+      - name: forecasts_expected
+        type: NUMERIC
+        axioms: [CONSERVATION]
+        window: 24h
+        flow: in
+        conservation:
+          input_property: forecasts_expected
+          output_properties: [forecasts_issued]
+          loss_margin: 0
+
+      - name: forecasts_issued
+        type: NUMERIC
+        axioms: []
+        flow: out
+
+      # HOMEOSTASIS against a DECLARED setpoint, and this is the rare case
+      # where the number is not invented. A q05-q95 interval covers 90% of
+      # outcomes by the definition of those quantiles, so 0.90 is what the
+      # model claimed about itself when it chose to emit them. The tolerance
+      # is invented; the setpoint is arithmetic.
+      - name: coverage_90
+        type: NUMERIC
+        axioms: [HOMEOSTASIS]
+        window: 7d
+        homeostasis:
+          setpoint: 0.90
+          tolerance: 0.05
+
+      # HOMEOSTASIS against a LEARNED baseline, and this is the ordinary case.
+      # Nobody publishes an acceptable pinball loss -- it has no units a
+      # contract could name and its scale depends on the series -- so a
+      # declared bound here would be a number the model chose for itself.
+      # Drift from where this model has recently been is answerable; a line is
+      # not.
+      - name: pinball_loss
+        type: NUMERIC
+        axioms: [HOMEOSTASIS]
+        window: 7d
+
+      # The denominator travels with the figure. A coverage of 1.0 from one
+      # record and from four thousand are different statements that the rate
+      # alone presents identically.
+      - name: graded_n
+        type: NUMERIC
+        axioms: [MONOTONICITY]
+        window: 7d
+        monotonicity:
+          expected_direction: increasing
+          # A model re-registered mid-run starts its count again; that is a
+          # restart, not a violation.
+          allow_reset: true
+
+      # RESPONSIVENESS -- a model that delivers late. `role:` is what makes
+      # this evaluate: the axiom is about a KIND of quantity, and the checker
+      # does not guess it from the name. Both numbers are invented and stand
+      # in for a desk's delivery SLA.
+      - name: forecast_age_s
+        type: NUMERIC
+        role: latency
+        axioms: [RESPONSIVENESS]
+        warning: 900
+        critical: 1800
+        window: 6h
