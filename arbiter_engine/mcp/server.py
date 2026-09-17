@@ -453,6 +453,32 @@ def build_server(session: EngineSession | None = None):
             "values": values, "interval_seconds": interval_seconds,
         })
 
+    # THE FOUR DISCIPLINES. Each one was added to TOOL_SPECS and to _HANDLERS
+    # and not here, so `dispatch` served them and the transport could not --
+    # and the guard below turned that into a server that refuses to construct
+    # at all rather than one advertising a tool it cannot serve. It did its
+    # job: the failure was loud, at start-up, on the only lane that installs
+    # the `mcp` extra. Every other lane skips the transport test and wears the
+    # same green.
+
+    async def project_tool(horizon_s: float = 3600.0) -> str:
+        return _emit("project", {"horizon_s": horizon_s})
+
+    async def discover_tool(alpha: float | None = None,
+                            lags: List[int] | None = None,
+                            budget_pairs: int = 500) -> str:
+        return _emit("discover", {"alpha": alpha, "lags": lags,
+                                  "budget_pairs": budget_pairs})
+
+    async def entail_tool(adopt: bool = False) -> str:
+        return _emit("entail", {"adopt": adopt})
+
+    async def infer_tool(target: str,
+                         do: Dict[str, Any] | None = None,
+                         report_above: float | None = None) -> str:
+        return _emit("infer", {"target": target, "do": do,
+                               "report_above": report_above})
+
     # derived from TOOL_SPECS rather than listed again.
     #
     # This was a hand-written tuple of five pairs beside a hand-written list of
@@ -468,6 +494,10 @@ def build_server(session: EngineSession | None = None):
         "traverse": traverse_tool,
         "gaps": gaps_tool,
         "attest": attest_tool,
+        "project": project_tool,
+        "discover": discover_tool,
+        "entail": entail_tool,
+        "infer": infer_tool,
         "load_model": load_model_tool,
         "add_entity": add_entity_tool,
         "add_observations": add_observations_tool,
