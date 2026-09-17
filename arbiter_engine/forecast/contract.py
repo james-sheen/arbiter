@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from ..clock import as_naive_utc, now_utc
@@ -107,7 +107,16 @@ def _instant(raw: Any) -> Optional[datetime]:
     if isinstance(raw, datetime):
         return as_naive_utc(raw)
     if isinstance(raw, (int, float)) and not isinstance(raw, bool):
-        return as_naive_utc(datetime.utcfromtimestamp(float(raw)))
+        # AWARE FIRST, THEN FLATTENED. The obvious call for this reads a
+        # POSIX timestamp straight into a naive UTC datetime, and it is
+        # deprecated from Python 3.12 and scheduled for removal; this
+        # suite turns a DeprecationWarning into an error, so it shipped
+        # green on 3.10 and red on every interpreter most users run.
+        # `as_naive_utc` converts an aware value to UTC before
+        # flattening it, so the instant is identical and only the route
+        # to it changed.
+        return as_naive_utc(
+            datetime.fromtimestamp(float(raw), timezone.utc))
     if isinstance(raw, str):
         text = raw.strip()
         # `Z` is valid ISO-8601 and `fromisoformat` did not accept it before

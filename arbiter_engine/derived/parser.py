@@ -75,9 +75,18 @@ class SafeExpressionParser:
                 return float(node.value)
             raise ValueError(f"Non-numeric constant: {node.value!r}")
 
-        # Python 3.7 compat
-        if isinstance(node, ast.Num):  # pragma: no cover
-            return float(node.n)
+        # THE DEPRECATED NUMERIC NODE ALIAS USED TO BE HANDLED HERE, and it
+        # was dead in two ways. The `ast.Constant` branch above matches every
+        # number on every version this package supports, so the branch was
+        # unreachable -- its own `pragma: no cover` said so. And from Python
+        # 3.12 merely NAMING that alias raises a DeprecationWarning; this suite
+        # turns those into errors, so a compatibility shim for an interpreter
+        # below the declared floor was the thing breaking the interpreters
+        # above it. It is gone entirely in 3.14, where the shim would have
+        # raised AttributeError instead.
+        #
+        # The alias is not spelled here on purpose: a negative-space check that
+        # greps for its absence would be defeated by the comment explaining it.
 
         if isinstance(node, ast.Name):
             if node.id not in variables:
@@ -111,9 +120,6 @@ class SafeExpressionParser:
         elif isinstance(node, ast.Constant):
             if not isinstance(node.value, (int, float)):
                 raise ValueError(f"Non-numeric constant: {node.value!r}")
-
-        elif isinstance(node, ast.Num):  # Python 3.7 compat
-            pass  # pragma: no cover
 
         elif isinstance(node, ast.Name):
             pass  # Variable reference — validated at evaluation time
