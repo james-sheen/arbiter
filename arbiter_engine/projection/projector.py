@@ -33,7 +33,8 @@ from ..subenvelope import Decline
 
 __all__ = ["Forecast", "Fitted", "Projector", "LocalLevel", "TrendCurve",
            "PROJECTORS", "SOURCE_DECLARED", "SOURCE_ESTIMATED", "SOURCE_CURVE",
-           "SOURCE_BASELINE", "RandomWalk", "BASELINE_MODEL_ID"]
+           "SOURCE_BASELINE", "SOURCE_ENGINE", "RandomWalk",
+           "BASELINE_MODEL_ID"]
 
 #: Where a model's parameters came from. Carried on every forecast, because a
 #: number the author declared and a number the engine inferred from the same
@@ -46,6 +47,16 @@ SOURCE_CURVE = "curve_fit"
 #: a reader of `diagnostics` can tell a reference forecast from a real one
 #: without matching on the model name.
 SOURCE_BASELINE = "baseline_reference"
+
+#: WHO ISSUED A LEDGER RECORD, which is a different question from where a
+#: model's parameters came from -- the four constants above answer that, and
+#: all four are the engine's own work. This one is what the `forecasts` leg
+#: reads to tell its own projections from an outside producer's submission,
+#: and it is deliberately ONE value rather than four: a leg that judged
+#: `estimated_parameters` differently from `curve_fit` would be branching on a
+#: distinction that belongs to the projector, not to the question of whether
+#: anybody outside owes a forecast.
+SOURCE_ENGINE = "engine"
 
 #: The innovations test. For a correctly specified filter the normalised
 #: innovation squared has mean 1 -- it is a chi-square with one degree of

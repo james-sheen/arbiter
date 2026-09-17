@@ -32,12 +32,39 @@ Most releases move the first and not the second.
 
 The schema itself is at [`schema/envelope.schema.json`](schema/envelope.schema.json).
 
+## The sub-envelope
+
+A tool that runs a DISCIPLINE — forecasts, shadow, projection, entailment,
+inference, discovery — mounts its own report as a payload key beside the legs,
+in the same four-part shape: `checked`, `findings`, `not_checked`, `questions`,
+plus a `meta` carrying `source`. The shape is in the schema as
+[`$defs/sub_envelope`](schema/envelope.schema.json), so a consumer has
+something to validate against rather than a field list read out of the engine's
+source.
+
+Three things about it are promises and not accidents:
+
+- **Its `checked` is never summed with the top-level one.** That counts axiom
+  evaluations; a discipline's counts rules, series, queries or forecasts.
+  Adding them gives a number that is true of no process.
+- **Its `not_checked[].reason` comes from that discipline's own closed
+  vocabulary**, not the axiom one. The sets are separate on purpose, and
+  reading a reason from one against the other is how a closed enum stops being
+  evidence about anything. Each is three-valued in exactly the way the axiom
+  enum is: a member you do not recognise means this engine is newer than your
+  reader.
+- **A leg is present only on the verb that produces it**, and is never
+  required. An envelope from an engine that predates a discipline validates.
+
 ## What a PATCH release may change
 
 - **Add a key** to any envelope leg, to `meta`, or to a tool's payload. Every
   reader here is a lookup, and additive keys are the normal way this envelope
   grows — `unread_fields`, `unconsumed_observations` and
   `unread_threshold_overrides` all arrived this way.
+- **Add a sub-envelope**, on the same argument — `shadow` arrived that way,
+  after a release in which the shadow run happened, declined, and had every
+  part of its report except the findings discarded before the caller saw it.
 - **Add a member to `not_checked[].reason`.** Read that enum as three-valued: a
   member you do not recognise means this engine is newer than your reader, not
   that the record is malformed. A reader that switches exhaustively over it and

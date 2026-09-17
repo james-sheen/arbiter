@@ -4,19 +4,31 @@
   "title": "Arbiter engine response envelope",
   "description": "Every tool returns this shape: what was checked, what was not and why, and what the engine needs to know next. `meta.schema_version` names the revision; see COMPATIBILITY.md for what may change without moving it.",
   "type": "object",
-  "required": ["checked", "findings", "not_checked", "questions", "meta"],
+  "required": [
+    "checked",
+    "findings",
+    "not_checked",
+    "questions",
+    "meta"
+  ],
   "properties": {
     "checked": {
       "description": "The denominator. Without it, `not_checked: 8` is uninterpretable -- 8 declined out of 47 attempted is a different statement from 8 out of 9.",
       "type": "object",
-      "required": ["invariants", "entities"],
+      "required": [
+        "invariants",
+        "entities"
+      ],
       "properties": {
         "invariants": {
           "description": "Evaluations ATTEMPTED. Not declarations, not traversal steps, not matched findings -- all three of which this field has meant somewhere in the past, which is why the two below exist.",
           "type": "integer",
           "minimum": 0
         },
-        "entities": {"type": "integer", "minimum": 0},
+        "entities": {
+          "type": "integer",
+          "minimum": 0
+        },
         "steps": {
           "description": "Traversal steps. Present only for `traverse`, and omitted rather than zero so an absent number is not read as a measured zero.",
           "type": "integer",
@@ -35,22 +47,56 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["entity_id", "problem_type", "axiom", "severity", "reason"],
+        "required": [
+          "entity_id",
+          "problem_type",
+          "axiom",
+          "severity",
+          "reason"
+        ],
         "properties": {
-          "entity_id": {"type": "string"},
+          "entity_id": {
+            "type": "string"
+          },
           "problem_type": {
             "description": "`<kind>:<indicator>` for indicator-scoped findings. DOMAIN VOCABULARY -- the part after the colon is the model author's name for the thing, so this is not an enumerable set.",
             "type": "string"
           },
           "axiom": {
-            "type": ["string", "null"],
-            "enum": ["STABILITY", "BOUNDEDNESS", "CONNECTIVITY", "CONSISTENCY", "RESPONSIVENESS", "HOMEOSTASIS", "CONSERVATION", "MONOTONICITY", null]
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "STABILITY",
+              "BOUNDEDNESS",
+              "CONNECTIVITY",
+              "CONSISTENCY",
+              "RESPONSIVENESS",
+              "HOMEOSTASIS",
+              "CONSERVATION",
+              "MONOTONICITY",
+              null
+            ]
           },
           "severity": {
-            "type": ["string", "null"],
-            "enum": ["critical", "high", "medium", "warning", "low", "info", null]
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "warning",
+              "low",
+              "info",
+              null
+            ]
           },
-          "reason": {"type": "string"}
+          "reason": {
+            "type": "string"
+          }
         },
         "additionalProperties": true
       }
@@ -60,41 +106,85 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["entity_id", "entity_type", "indicator", "axiom", "reason"],
+        "required": [
+          "entity_id",
+          "entity_type",
+          "indicator",
+          "axiom",
+          "reason"
+        ],
         "properties": {
-          "entity_id": {"type": "string"},
-          "entity_type": {"type": "string"},
-          "indicator": {"type": "string"},
+          "entity_id": {
+            "type": "string"
+          },
+          "entity_type": {
+            "type": "string"
+          },
+          "indicator": {
+            "type": "string"
+          },
           "axiom": {
             "type": "string",
-            "enum": ["STABILITY", "BOUNDEDNESS", "CONNECTIVITY", "CONSISTENCY", "RESPONSIVENESS", "HOMEOSTASIS", "CONSERVATION", "MONOTONICITY"]
+            "enum": [
+              "STABILITY",
+              "BOUNDEDNESS",
+              "CONNECTIVITY",
+              "CONSISTENCY",
+              "RESPONSIVENESS",
+              "HOMEOSTASIS",
+              "CONSERVATION",
+              "MONOTONICITY"
+            ]
           },
           "reason": {
             "description": "A CLOSED set, unlike `problem_type`. Read it as three-valued: a member you do not recognise means this engine is newer than your reader, not that the record is malformed.",
             "type": "string",
-            "enum": ["insufficient_samples", "missing_property",
-                     "no_current_value", "missing_entity_type",
-                     "missing_config", "no_threshold", "partially_checked",
-                     "wrong_indicator_type",
-                     "missing_role",
-            "no_rule_for_role", "precondition_unmet",
-                     "undefined_for_values",
-                     "not_applicable", "checker_error"]
+            "enum": [
+              "insufficient_samples",
+              "missing_property",
+              "no_current_value",
+              "missing_entity_type",
+              "missing_config",
+              "no_threshold",
+              "partially_checked",
+              "wrong_indicator_type",
+              "missing_role",
+              "no_rule_for_role",
+              "precondition_unmet",
+              "undefined_for_values",
+              "not_applicable",
+              "checker_error"
+            ]
           },
-          "detail": {"type": "string"},
+          "detail": {
+            "type": "string"
+          },
           "observations": {
             "description": "Count INSIDE the window. Present only where it is meaningful.",
-            "type": "integer", "minimum": 0
+            "type": "integer",
+            "minimum": 0
           },
-          "required": {"type": "integer", "minimum": 0},
-          "window_seconds": {"type": "number"},
-          "total_observations": {"type": "integer", "minimum": 0},
-          "sampling_interval_seconds": {"type": "number"},
+          "required": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "window_seconds": {
+            "type": "number"
+          },
+          "total_observations": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sampling_interval_seconds": {
+            "type": "number"
+          },
           "floor_unreachable_at_this_rate": {
             "description": "True when the floor CANNOT be met at the observed sampling rate, however long you collect. `remedy` then states the conclusion, because a reader will act on it and should not have to do the arithmetic.",
             "type": "boolean"
           },
-          "remedy": {"type": "string"}
+          "remedy": {
+            "type": "string"
+          }
         },
         "additionalProperties": false
       }
@@ -104,20 +194,47 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["question"],
+        "required": [
+          "question"
+        ],
         "properties": {
-          "question": {"type": "string"},
-          "gap_type": {"type": ["string", "null"]},
-          "location": {"type": ["string", "null"]},
-          "priority": {"type": ["number", "null"]},
-          "context_path": {"type": "array", "items": {"type": "string"}}
+          "question": {
+            "type": "string"
+          },
+          "gap_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "location": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "priority": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "context_path": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
         },
         "additionalProperties": true
       }
     },
     "meta": {
       "type": "object",
-      "required": ["schema_version", "source"],
+      "required": [
+        "schema_version",
+        "source"
+      ],
       "properties": {
         "schema_version": {
           "description": "The ENVELOPE's revision, not the package version. It moves when a reader that worked stops working; adding a key does not move it.",
@@ -126,19 +243,133 @@
         },
         "engine_version": {
           "description": "The version of the installed `arbiter-engine` distribution that produced this envelope, or null when the engine runs from a source tree with no distribution installed. Additive and NOT required, so an envelope from an engine predating this key still validates.",
-          "type": ["string", "null"]
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "source": {
           "description": "Where the judgment came from: `live` is a real evaluation, `warming_up` is an engine that has not yet seen enough to judge, and `unavailable` means no evaluation happened at all. `unavailable` carries a `reason` and is never an empty success.",
           "type": "string",
-          "enum": ["live", "warming_up", "unavailable"]
+          "enum": [
+            "live",
+            "warming_up",
+            "unavailable"
+          ]
         },
-        "reason": {"type": "string"}
+        "reason": {
+          "type": "string"
+        }
       },
       "additionalProperties": false
+    },
+    "forecasts": {
+      "description": "The `forecasts` sub-envelope. Present only on the verb that produces it; NOT required, so an envelope from an engine predating it still validates.",
+      "$ref": "#/$defs/sub_envelope"
+    },
+    "shadow": {
+      "description": "The `shadow` sub-envelope. Present only on the verb that produces it; NOT required, so an envelope from an engine predating it still validates.",
+      "$ref": "#/$defs/sub_envelope"
+    },
+    "projection": {
+      "description": "The `projection` sub-envelope. Present only on the verb that produces it; NOT required, so an envelope from an engine predating it still validates.",
+      "$ref": "#/$defs/sub_envelope"
+    },
+    "entailment": {
+      "description": "The `entailment` sub-envelope. Present only on the verb that produces it; NOT required, so an envelope from an engine predating it still validates.",
+      "$ref": "#/$defs/sub_envelope"
+    },
+    "inference": {
+      "description": "The `inference` sub-envelope. Present only on the verb that produces it; NOT required, so an envelope from an engine predating it still validates.",
+      "$ref": "#/$defs/sub_envelope"
+    },
+    "discovery": {
+      "description": "The `discovery` sub-envelope. Present only on the verb that produces it; NOT required, so an envelope from an engine predating it still validates.",
+      "$ref": "#/$defs/sub_envelope"
     }
   },
   "additionalProperties": {
     "description": "Tool-specific payloads ride ALONGSIDE the five legs rather than inside them: `model` and `unconsumed_observations` and `unread_threshold_overrides` from model_describe, `evidence` from attest, `unread_properties` from check and gaps, `dropped_declarations` from check -- that last one carried by check because removing a name-derived rule withdrew a check whose cell has no indicator and no axiom to decline on, and a withdrawn check that leaves the envelope identical to a clean pass is the one thing the compatibility policy forbids a patch release from doing. Additive by design -- the four legs plus meta are what every tool satisfies identically, and a tool-specific key is not a change to that contract. `dropped_declarations` carries the values the loader read and did not recognise, so the declaration was not applied: a misspelled axiom name produced an envelope identical to declaring none, and a decline could not express it because `not_checked[].axiom` is a closed enum of the eight names. Same reason as the key beside it, one field further in."
+  },
+  "$defs": {
+    "sub_envelope": {
+      "title": "Sub-envelope",
+      "description": "ONE DISCIPLINE REPORTING ITS OWN WORK, in the same four-part shape as the envelope above and riding as a payload key beside the legs rather than inside them. A discipline -- forecasts, shadow, projection, entailment, inference, discovery -- does work of a different KIND, and the envelope's own record shape cannot carry it: `not_checked[].axiom` is a closed enum of the eight axiom names and every decline record requires one, so a projection that cannot fit a model would have to invent an axiom to report a refusal. Added because the shape shipped with no schema at all: a downstream reader had nothing to validate against and could only discover the fields by reading the engine's source.",
+      "type": "object",
+      "required": [
+        "checked",
+        "findings",
+        "not_checked",
+        "questions"
+      ],
+      "properties": {
+        "checked": {
+          "description": "THIS DISCIPLINE'S OWN DENOMINATOR, in units it owns -- rules, series, queries, pairs, forecasts. NEVER summed with the top-level `checked.invariants`, which counts axiom evaluations: adding them produces a number that is true of no process. At least one entry is an integer count; non-count entries may sit beside them.",
+          "type": "object",
+          "minProperties": 1
+        },
+        "findings": {
+          "description": "What this discipline found. Each finding carries its `evidence`, which top-level findings do not: a discipline's finding is built from a computation the reader did not watch -- a posterior, a breach probability, a lead-lag -- and the numbers behind it are the only way to tell a measurement from an assertion.",
+          "type": "array"
+        },
+        "not_checked": {
+          "description": "What it refused to judge. `reason` comes from THIS discipline's closed vocabulary and not from `not_checked[].reason` above: the sets are deliberately separate, because `cpt_missing` means nothing to a projector and `filter_not_converged` means nothing to a query planner, and one merged vocabulary would let either accept the other's refusals. Read each as three-valued, the same as the top-level enum: a reason you do not recognise means this engine is newer than your reader.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "reason"
+            ],
+            "properties": {
+              "reason": {
+                "type": "string"
+              },
+              "detail": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "evidence": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "questions": {
+          "description": "What the discipline needs declared before it can answer.",
+          "type": "array"
+        },
+        "meta": {
+          "description": "`source` is `live`, `warming_up` or `unavailable`, and a non-live source ALWAYS carries a `reason` -- the envelope's own rule, applied one level down.",
+          "type": "object",
+          "required": [
+            "source"
+          ],
+          "properties": {
+            "source": {
+              "type": "string",
+              "enum": [
+                "live",
+                "warming_up",
+                "unavailable"
+              ]
+            },
+            "reason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    }
   }
 }

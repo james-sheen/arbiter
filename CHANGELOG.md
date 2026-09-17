@@ -22,6 +22,162 @@ useful-looking document and the less trustworthy one.
 
 Nothing yet.
 
+## [0.1.16] — 2026-09-17
+
+**Everything below was found by RUNNING 0.1.15, against a static review of it
+that ran nothing.** That is worth stating once because of what the two passes
+found: the review's five high-severity items were all real, three of them were
+worse than filed, one more defect turned up only when the first fix was
+executed, and its headline claim -- that the published 0.1.15 cannot start its
+MCP server -- was false, because the tag was re-cut at the fixed commit and the
+wheel on PyPI matches it byte for byte. Reading found the defects; running is
+what settled which of them existed.
+
+### Fixed
+
+- **A forecast check that refused to answer said nothing.** `run_forecasts`
+  composed the shadow run, took its `findings`, and dropped its `checked`, its
+  declines and its questions on the floor. Through `check` a consumer therefore
+  never saw `no_threshold`, `no_report_probability`, `tail_not_declared`,
+  `undefined_for_values`, the `missing_property` for a forecast with no median,
+  or any axiom decline raised on a forecast. Measured on a model with no
+  `dynamics.report_above`: the shadow run declined twice and
+  `check(...)["forecasts"]["not_checked"]` was the empty list -- which reads as
+  *the forecast was compared against its bound and nothing was wrong*, when
+  nothing had been compared. The shadow sub-envelope is now mounted whole, as
+  `payload["shadow"]`, beside the forecasts leg. The two vocabularies stay
+  separate; the findings still climb into `forecasts`, so a reader written
+  against the old shape keeps working.
+
+- **`project` could not read a `{from_property:}` bound, and neither could the
+  forecast axioms.** The projection runner read the four literal threshold
+  slots, which a per-instance declaration leaves `None` -- so every entity
+  declined `no_threshold` with the sentence *no declared line says what would
+  count as breaching it*, which is false of a model that declares one.
+  `examples/margin_book.yaml` declares exactly that shape, so the flagship
+  example could never report a `projected_breach` for any account. Both now
+  resolve through `effective_thresholds` and decline in the resolver's own
+  words when a declared bound cannot be found.
+
+  The second half was found by running the first fix. The shadow check already
+  called the resolver, and called it against the SYNTHETIC entity, which carries
+  forecast medians and nothing else -- so one cycle produced a correct breach
+  probability and a refusal to judge the same declaration. The RESOLVED NUMBER
+  now travels onto the shadow entity rather than the source property: copying
+  the property across would put an observed present value on a forecast entity,
+  judged by its own axioms and reported under the `forecast_` prefix as though
+  somebody had predicted it.
+
+- **A window ended NOW only at one end, so every replay step saw its own
+  future.** `get_values` and `get_states` in both stores computed
+  `now_utc() - window` and applied that cutoff alone. The replay recipe in this
+  file -- feed the history once with real timestamps, then step the clock --
+  therefore handed each step every reading stamped after it. The threshold
+  axioms answered as-of the step while STABILITY, HOMEOSTASIS's baseline,
+  MONOTONICITY, CONSERVATION over a series and every `project` lookback saw the
+  whole run, and the step looked entirely plausible. Four tests asserted the
+  lower cutoff follows the clock; none placed a reading after the frozen
+  instant.
+
+- **The engine's own forecasts were judged as if a producer had sent them.**
+  `project` files under `<model>:<source>` and its reference under
+  `baseline_rw`, and the `forecasts` leg read every distribution record as an
+  outside submission. A model declaring `models:` therefore declined
+  `model_unknown` for the engine's own two records, and once past `max_age`
+  declined `stale_forecast` too. Worse, and invisible by reading: those records
+  also counted as ARRIVED, so a pair whose forecaster sent nothing reported
+  `expected: 1, received: 1` and no `forecast_missing`. An expectation nobody
+  met read as met -- the one shape that leg exists to refuse, produced by the
+  leg itself. `PredictionRecord` now carries `source`, set by the filer, and the
+  split is by that field rather than by the shape of an id.
+
+- **`calendar:` was declared, parsed, stored and read by nothing.**
+  `MODELING.md` says declaring one makes `window: 1h` mean an hour of OPEN
+  time. It did not: `CalendarHistory` existed, was exported, and nothing joined
+  it to the session, so the promise held only for a caller who built the
+  wrapper themselves -- which needed the domain parsed a second time, because
+  `load_model` runs after the session is constructed. `unread_fields` did not
+  report it either, so the engine's own reachability report said the
+  declaration was read. `_history_for` now wraps the store when the model
+  declares a calendar, inside the derived view so operands and joins share one
+  clock.
+
+- **`model_describe` did not carry `dropped_declarations`.** `check` has
+  carried it since it was added; the verb whose entire question is *did my
+  model load the way I wrote it* did not -- so a reader proofreading a
+  generated model through the describe payload got a clean answer from a key
+  that was never there. Measured on a downstream bridge: its read-back looked
+  for exactly this and reported nothing dropped for a model with a misspelled
+  axiom AND for one with an unreadable `{from_property:}` mapping.
+
+- **A `{from_property:}` source counted as a property nobody reads.**
+  `unread_properties` built its readable set from indicator names and derived
+  operands and not from `threshold_sources`, so an author feeding the bound's
+  source was told nothing reads it. The only way to silence that was to declare
+  the source as its own `axioms: []` indicator -- which both the shipped example
+  and the margin-book bridge were doing. A report that trains authors around
+  itself is not a report.
+
+- **A forecast of a DERIVED indicator was always `ungradeable`.** `check`
+  handed `grade_matured` the bare store rather than the view the axioms had
+  just read, and a derived series exists only through the view. Every such
+  record matured with nothing to score against, so the producer looked
+  unscoreable rather than unscored.
+
+- **The changelog over-stated the Granger bug's reach**, and the entry under
+  0.1.15 now says so: no published release contained any Granger code.
+
+- **The README's supported-name count said 11 for a release with 14**, eight
+  paragraphs below the list of fourteen.
+
+### Added
+
+- **A random walk is now filed beside a forecast that arrives from OUTSIDE**,
+  not only beside the engine's own projections. *Does it beat a random walk* is
+  the question a forecast is judged by, and the yardstick was being kept for
+  the one kind of forecast nobody needs it for. It is fitted under the
+  producer's own `issued_at`, so the reference sees what the producer could
+  have seen and not one reading more -- fitted to the present it would be shown
+  the outcome it is being compared on, and would win. `ingest_forecasts`
+  reports how many it filed, because a pair with too little history gets none
+  and *this model did not beat a random walk* must not read the same as
+  *nothing ran a random walk*.
+
+- **`checked.reference` on the `forecasts` leg**, counting the engine's own
+  records now that they are excluded from `received`, `graded` and `pending`.
+  Excluding them silently would leave *no reference was filed* and *references
+  were filed and hidden* reading identically.
+
+- **`PredictionRecord.source`, and `SOURCE_ENGINE` in
+  `projection.projector`.** The filer says who issued a forecast, because
+  nothing can recover it afterwards and the alternative was reading a naming
+  convention as a fact: `project` files under `<model>:<source>` and its
+  reference under `baseline_rw`, and matching on the shape of those strings is
+  the name-heuristic class removed from three axioms. `source` is `None` for
+  every caller that predates the field, which is what they all were: outside.
+
+- **`forecast: {expected_from: [...]}`, an OBLIGATION list.** `models:` is an
+  allow-list and was being read as an obligation, so `forecasts_expected` on
+  the forecaster charged every PERMITTED producer with every subject. Measured
+  on `examples/margin_book.yaml`, which permits two models for six accounts:
+  both were reported 50% and 83% short of a debt nobody had declared, at
+  severity `high`. A desk naming five permitted models would have had four of
+  them delinquent by construction. Without `expected_from:` the figure is
+  absent and CONSERVATION declines `missing_property` -- *nobody said who owes
+  a forecast* is reported instead of a number invented to fill the gap. This
+  is the engine's own rule arriving on its own doorstep, and a wrong finding is
+  worse than a missing one.
+
+- **`$defs/sub_envelope` in the envelope schema**, and a section in
+  COMPATIBILITY.md describing it. The shape shipped in 0.1.15 with neither, so
+  a downstream reader had nothing to validate against.
+
+- **A test that loads and runs every shipped example.** Nothing did. Five files
+  ship as the documentation of how to write a model, two of the defects above
+  live in `margin_book.yaml`'s own declared shape, and every unit test around
+  them passed -- because they call the internal functions directly, and each of
+  these defects lives in the composition.
+
 ## [0.1.15] — 2026-09-17
 
 **The largest release in this line, and the one that finishes the shape.** Four
@@ -440,8 +596,15 @@ forced.
   **What it did to a result**: on series with NO relation, where a test claiming
   5% should reject 5%, the measured false-positive rate was 0.3% at lag 1, 6% at
   lag 2 and 25% at lag 5. The test was not slightly miscalibrated; it was a
-  different function of the lag. Anyone who read a Granger p-value out of this
-  engine at any lag other than 2 should re-read it.
+  different function of the lag.
+
+  **Nobody needs to re-read a published result, and the first wording of this
+  entry said they did.** No release before this one contained any Granger code
+  at all -- the `causal/` package is new here, and at 0.1.14 the word appears
+  only in the `IORelationship` field names. The bug lived in unreleased
+  development and shipped already fixed. Corrected because a changelog that
+  over-states a defect's reach spends the same credit as one that under-states
+  it, and the sentence sent readers to audit results that do not exist.
 
 - **A lag search reported as a single test.** Taking the smallest p across a
   family of lags is several chances to be surprised reported as one; uncorrected

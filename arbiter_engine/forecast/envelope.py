@@ -25,6 +25,7 @@ from datetime import timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..clock import now_utc
+from ..projection.projector import SOURCE_ENGINE
 from ..subenvelope import Decline, SubEnvelope
 from .shadow import run_shadow_check
 
@@ -61,11 +62,35 @@ def _spec_for(session: Any, entity_type: str, indicator: str) -> Any:
     return None
 
 
-def run_forecasts(session: Any) -> SubEnvelope:
-    """The `forecasts` leg: the denominator, the declines, and the shadow run."""
+def run_forecasts(session: Any, *,
+                  shadow: Optional[SubEnvelope] = None) -> SubEnvelope:
+    """The `forecasts` leg: the denominator, the declines, and the shadow run.
+
+    `shadow` lets a caller that also wants the shadow sub-envelope ITSELF hand
+    in the one this leg composed, so the check runs once. `check` does that:
+    it mounts the shadow envelope beside this one, because everything except
+    the findings used to be dropped here -- see the note above the return.
+    """
     pairs, undeclared = _expected_pairs(session)
     records = list(session.ledger.records())
-    distributions = [r for r in records if r.kind == "distribution"]
+    every_distribution = [r for r in records if r.kind == "distribution"]
+    # THIS LEG IS ABOUT WHAT SOMEBODY ELSE OWED, and the engine's own
+    # projections are not that. `project` files under `<model>:<source>` and
+    # its reference under `baseline_rw`; both were being read here as a
+    # producer's submission, which did two wrong things at once. They declined
+    # `model_unknown` against a `models:` list they were never meant to satisfy
+    # -- and, worse, they counted as ARRIVED, so a pair whose outside
+    # forecaster sent nothing reported `expected: 1, received: 1` and no
+    # `forecast_missing`. An expectation nobody met read as met, which is the
+    # one shape this file exists to refuse.
+    #
+    # Split by the `source` the filer SET, never by the shape of the id: an id
+    # containing a colon is a naming convention, and reading a convention as a
+    # fact is the name-heuristic class removed from three axioms.
+    distributions = [r for r in every_distribution
+                     if getattr(r, "source", None) != SOURCE_ENGINE]
+    reference = [r for r in every_distribution
+                 if getattr(r, "source", None) == SOURCE_ENGINE]
     arrived = {(r.entity_id, str(r.indicator)) for r in distributions}
 
     declines: List[Decline] = []
@@ -132,16 +157,31 @@ def run_forecasts(session: Any) -> SubEnvelope:
                              f"on each, so a missing one can be reported."),
             })
 
-    shadow = run_shadow_check(session)
+    shadow = shadow if shadow is not None else run_shadow_check(session)
     graded = sum(1 for r in distributions if r.verdict is not None)
     checked = {
         "expected": len(pairs),
         "received": len(arrived & set(pairs)) if pairs else len(arrived),
         "graded": graded,
         "pending": len(distributions) - graded,
+        # REPORTED, NOT FOLDED IN. The engine's own projections are excluded
+        # from every count above because this leg answers *did the producer
+        # send what was expected*. Excluding them silently would leave a reader
+        # unable to tell "no reference was filed" from "references were filed
+        # and hidden", so they are counted here instead of disappearing.
+        "reference": len(reference),
         # NEVER SUMMED WITH THE AXIOM DENOMINATOR, like every other discipline.
         "invariants": 0,
     }
+    # THE FINDINGS CLIMB AND NOTHING ELSE DID, which was the defect. The shadow
+    # run has its own `checked`, its own declines and its own closed
+    # vocabulary; taking `.findings` and dropping the rest meant a consumer
+    # reading `check` never saw `no_threshold`, `no_report_probability`,
+    # `tail_not_declared` or any axiom decline raised on a forecast -- the leg
+    # read as *nothing to report* while the check had refused to answer. The
+    # caller now gets the whole sub-envelope and mounts it; the two vocabularies
+    # stay separate, because merging them is what stops a closed enum being
+    # evidence about anything.
     return SubEnvelope("forecasts", checked, list(shadow.findings),
                        declines, questions)
 

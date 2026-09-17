@@ -104,6 +104,23 @@ class PredictionRecord:
     # callers have the entity in hand when they file, so the fact is free at
     # the one moment it is known and unrecoverable afterwards.
     entity_type: Optional[str] = None
+    # WHO ISSUED IT -- the engine's own projector, or somebody outside. Supplied
+    # by the caller on the same argument as `entity_type` above: both callers
+    # know it when they file and nothing can recover it afterwards.
+    #
+    # It is here because the alternative was matching on the id. `project`
+    # files under `<model>:<source>` and its reference under `baseline_rw`, and
+    # the `forecasts` leg was reading every distribution record as a producer's
+    # submission -- so a model declaring `models: [garch_v3]` declined
+    # `model_unknown` for the engine's OWN projection, and the leg counted it
+    # as the forecast an outside producer owed. An expectation nobody met read
+    # as met. Telling the two apart by the shape of a string is the
+    # name-heuristic class this package has removed from three axioms; a field
+    # the filer sets is the same fact, stated once, by whoever knows it.
+    #
+    # `None` means outside, because that is what every caller predating this
+    # field was.
+    source: Optional[str] = None
     # Set at grading for distribution records: per-level pinball loss, the
     # 90%-interval hit, and the CRPS approximation built from them.
     scores: Optional[Dict[str, Any]] = None
@@ -316,6 +333,7 @@ class PredictionLedger:
         traversal_id: Optional[str] = None,
         predicted_at: Optional[datetime] = None,
         entity_type: Optional[str] = None,
+        source: Optional[str] = None,
     ) -> str:
         """File a distributional forecast -- entity E's property P will be
         distributed like these quantiles at horizon H, according to model M.
@@ -385,6 +403,7 @@ class PredictionLedger:
             quantiles={str(k): float(v) for k, v in quantiles.items()},
             model_id=str(model_id),
             entity_type=str(entity_type) if entity_type else None,
+            source=str(source) if source else None,
         )
         self._note_eviction()
         self._records.append(record)

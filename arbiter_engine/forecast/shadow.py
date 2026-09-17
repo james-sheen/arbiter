@@ -32,6 +32,8 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..interfaces import Entity, ObservationHistory
+from ..axiom_thresholds import DECLARED_THRESHOLDS_KEY
+from ..projection.projector import SOURCE_ENGINE
 from ..subenvelope import Decline, SubEnvelope
 
 #: The prefix that keeps the two questions apart. Applied to the problem type
@@ -148,6 +150,16 @@ def shadow_entities(session: Any) -> Tuple[List[Entity], List[Decline]]:
     for record in getattr(session.ledger, "pending", lambda: [])():
         if record.kind != "distribution" or not record.quantiles:
             continue
+        if getattr(record, "source", None) == SOURCE_ENGINE:
+            # THE ENGINE'S OWN PROJECTIONS ARE NOT SHADOW-CHECKED HERE. This
+            # run exists to put the eight axioms over a forecast SOMEBODY ELSE
+            # sent; `run_projection` already judges its own against the same
+            # declared lines and reports `projected_breach` for them. Running
+            # both means one prediction reported twice under two names -- and
+            # the reference random walk, which nobody claimed, declining
+            # `no_report_probability` beside the forecast it is the yardstick
+            # for.
+            continue
         median = record.quantiles.get("q50")
         if median is None:
             # THE MEDIAN IS WHAT A SHADOW ENTITY IS MADE OF. A record with q05
@@ -175,6 +187,28 @@ def shadow_entities(session: Any) -> Tuple[List[Entity], List[Decline]]:
     shadows = []
     for entity_id, properties in sorted(by_entity.items()):
         real = session.entities[entity_id]
+        carried = dict(properties)
+        resolved = _bounds_for(session, real, properties)
+        if resolved:
+            # THE BOUND TRAVELS, THE SOURCE PROPERTY DOES NOT.
+            #
+            # A `{from_property:}` bound is read off the entity, and a shadow
+            # entity carries medians and nothing else -- so BOUNDEDNESS ran
+            # against it, found no `margin_requirement`, and declined
+            # `no_threshold` on a model that declares one. Measured: the
+            # breach check beside it resolved the SAME bound correctly off the
+            # real entity, so one cycle produced both an answer and a refusal
+            # to answer about one declaration.
+            #
+            # Copying the source property across would fix the lookup and
+            # introduce a worse thing: an observed present value sitting on a
+            # forecast entity, judged by its own axioms and reported under the
+            # `forecast_` prefix as though somebody had predicted it. So what
+            # travels is the RESOLVED NUMBER, written into the per-instance
+            # table the resolver already consults first. The bound is a
+            # contracted fact about the account and does not change because a
+            # forecast was issued.
+            carried[DECLARED_THRESHOLDS_KEY] = resolved
         shadows.append(Entity(
             id=entity_id, type=real.type,
             # THE SAME NAME, so a finding about a forecast points at the thing
@@ -182,16 +216,48 @@ def shadow_entities(session: Any) -> Tuple[List[Entity], List[Decline]]:
             # says it is about the forecast; renaming the entity too would put
             # a subject in the report that does not exist anywhere else.
             name=getattr(real, "name", entity_id),
-            properties=dict(properties),
+            properties=carried,
             metadata=dict(getattr(real, "metadata", None) or {})))
     return shadows, declines
+
+
+def _bounds_for(session: Any, real: Any,
+                properties: Dict[str, float]) -> Dict[Any, float]:
+    """The real entity's resolved bounds, keyed the way the instance table is.
+
+    Only for the indicators this shadow actually carries: resolving the rest
+    would stamp bounds onto an entity that has no value for them, which is a
+    threshold nobody can reach.
+    """
+    from ..axiom_thresholds import THRESHOLD_FIELDS, effective_thresholds
+
+    if session.model is None:
+        return {}
+    out: Dict[Any, float] = {}
+    for spec in session.model.indicators.get(real.type, []) or []:
+        name = spec.property_name or spec.name
+        if name not in properties:
+            continue
+        values, _origins, _detail = effective_thresholds(real, spec)
+        for field in THRESHOLD_FIELDS:
+            value = values.get(field)
+            if value is not None:
+                out[(name, field)] = float(value)
+    return out
 
 
 def run_shadow_check(session: Any) -> SubEnvelope:
     """The eight axioms, over the forecast rather than over the present."""
     shadows, declines = shadow_entities(session)
     checked = {"entities": len(shadows),
-               "properties": sum(len(e.properties) for e in shadows),
+               # FORECAST VALUES ONLY. The per-instance bound table rides on a
+               # shadow entity as a sentinel property so the resolver can find
+               # it; counting it here would inflate the denominator by one per
+               # entity and claim the axioms looked at something that is not a
+               # reading.
+               "properties": sum(len([k for k in e.properties
+                                      if k != DECLARED_THRESHOLDS_KEY])
+                                 for e in shadows),
                # NEVER SUMMED WITH `checked.invariants`. This counts forecast
                # subjects; that counts axiom evaluations on observed values.
                # Two denominators, two questions.
@@ -247,6 +313,8 @@ def _breach_findings(session: Any, declines: List[Decline]) -> List[Any]:
     for record in session.ledger.pending():
         if record.kind != "distribution" or not record.quantiles:
             continue
+        if getattr(record, "source", None) == SOURCE_ENGINE:
+            continue            # see `shadow_entities` for why
         entity = session.entities.get(record.entity_id)
         if entity is None or session.model is None:
             continue

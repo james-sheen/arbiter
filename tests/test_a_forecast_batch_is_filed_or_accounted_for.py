@@ -90,7 +90,13 @@ def test_one_bad_record_does_not_cost_the_batch():
 
 def test_an_empty_batch_is_not_an_error():
     report = _ingest(_session(), [])
-    assert report == {"received": 0, "filed": 0, "rejected": []}
+    # `baselines` joined the tally when the engine began filing a random walk
+    # beside every forecast it is SENT, not only beside its own projections.
+    # Reported rather than assumed equal to `filed`: a pair with too little
+    # history gets none, and *this model did not beat a random walk* must not
+    # read the same as *nothing ran a random walk*.
+    assert report == {"received": 0, "filed": 0, "rejected": [],
+                      "baselines": 0}
 
 
 # --- what reaches the ledger -------------------------------------------------

@@ -105,23 +105,33 @@ class SqliteObservationHistory(ObservationHistory):
         clock's `as_of` reach this store: freeze the clock and the same call
         answers about that instant, with no argument threaded through the eight
         checkers that make it.
+
+        ENDING NOW IS ENFORCED, not only documented. This docstring said
+        "ending NOW" while the query bounded only the far end, so a store
+        holding real timestamps and read under a frozen clock served rows from
+        after the instant -- the replay recipe's own shape, leaking the future
+        into every step of a backtest.
         """
+        present = _to_seconds(now_utc())
         cutoff = _to_seconds(now_utc() - window)
         with self._lock:
             rows = self._connection.execute(
                 "SELECT ts, value_num FROM obs WHERE entity_id = ? AND property = ?"
-                " AND ts > ? AND value_num IS NOT NULL ORDER BY ts",
-                (str(entity_id), str(property_name), cutoff)).fetchall()
+                " AND ts > ? AND ts <= ? AND value_num IS NOT NULL ORDER BY ts",
+                (str(entity_id), str(property_name), cutoff, present)).fetchall()
         return [(_from_seconds(ts), float(value)) for ts, value in rows]
 
     def get_states(self, entity_id: str, property_name: str,
                    window: timedelta) -> List[Tuple[datetime, str]]:
+        """State observations inside `window`, ending NOW -- see `get_values`
+        for why the upper bound is there."""
+        present = _to_seconds(now_utc())
         cutoff = _to_seconds(now_utc() - window)
         with self._lock:
             rows = self._connection.execute(
                 "SELECT ts, value_num, value_str FROM obs WHERE entity_id = ?"
-                " AND property = ? AND ts > ? ORDER BY ts",
-                (str(entity_id), str(property_name), cutoff)).fetchall()
+                " AND property = ? AND ts > ? AND ts <= ? ORDER BY ts",
+                (str(entity_id), str(property_name), cutoff, present)).fetchall()
         return [(_from_seconds(ts), text if text is not None else str(number))
                 for ts, number, text in rows]
 

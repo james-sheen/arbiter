@@ -56,6 +56,7 @@ def ingest_forecasts(session: Any, records: Iterable[Any], *,
     rejected: List[Dict[str, Any]] = []
     filed = 0
     received = 0
+    baselines = 0
 
     for raw in records:
         received += 1
@@ -67,10 +68,17 @@ def ingest_forecasts(session: Any, records: Iterable[Any], *,
         outcome = _file(session, forecast)
         if outcome is None:
             filed += 1
+            baselines += _file_baseline(session, forecast)
         else:
             rejected.append(outcome.to_dict())
 
-    return {"received": received, "filed": filed, "rejected": rejected}
+    return {"received": received, "filed": filed, "rejected": rejected,
+            # HOW MANY GOT A YARDSTICK. Reported rather than assumed equal to
+            # `filed`: a reference needs a series to fit on, and a producer
+            # forecasting a pair this session has little history for gets no
+            # baseline. Silence there would leave *this model did not beat a
+            # random walk* indistinguishable from *nothing ran a random walk*.
+            "baselines": baselines}
 
 
 def _file(session: Any, forecast: Forecast) -> Optional[ForecastRejected]:
@@ -128,3 +136,74 @@ def _file(session: Any, forecast: Forecast) -> Optional[ForecastRejected]:
         # how the two drift.
         return ForecastRejected("malformed_forecast", str(exc), **identity)
     return None
+
+
+def _file_baseline(session: Any, forecast: Forecast) -> int:
+    """Fit the reference on the same series and horizon, and file it. 1 or 0.
+
+    WHY THIS IS HERE AND NOT ONLY IN `project`. "Does it beat a random walk" is
+    the question a forecast is judged by, and the engine kept the yardstick
+    running for its OWN projections and not for anybody else's -- so a desk
+    whose feed arrives through this function could never be told. The changelog
+    said the reference is filed beside every forecast it judges; it was filed
+    beside one of the two kinds.
+
+    AS OF WHEN THE FORECAST WAS ISSUED. The series is read under the forecast's
+    own instant, so the reference sees what the producer could have seen and
+    not one reading more. Fitting on everything up to now would hand the
+    yardstick a look at the outcome it is being compared on.
+
+    NOTHING RAISES, like everything else on this path. A producer's batch must
+    not fail because a reference could not be fitted.
+    """
+    from ..clock import as_of
+    from ..projection.projector import (BASELINE_MODEL_ID, PROJECTORS,
+                                        SOURCE_ENGINE, RandomWalk)
+    from ..subenvelope import Decline
+
+    if forecast.model_id == BASELINE_MODEL_ID:
+        return 0                      # it IS the reference; do not race itself
+    entity = getattr(session, "entities", {}).get(forecast.entity_id)
+    if entity is None or getattr(session, "model", None) is None:
+        return 0
+    spec = _indicator_for(session, entity, forecast.property_name)
+    if spec is None:
+        return 0
+    lookback = getattr(spec, "lookback", None) or getattr(spec, "time_window", None)
+    if lookback is None:
+        return 0
+
+    # ONE REFERENCE PER SUBJECT AND INSTANT. Two producers forecasting one pair
+    # at one moment are measured against one yardstick; filing a second
+    # identical record would double its weight in every calibration figure that
+    # strata by model.
+    for record in session.ledger.records():
+        if (record.kind == "distribution"
+                and record.model_id == BASELINE_MODEL_ID
+                and record.entity_id == forecast.entity_id
+                and str(record.indicator) == forecast.property_name
+                and record.predicted_at == forecast.issued_at
+                and float(record.horizon_s) == float(forecast.horizon_s)):
+            return 0
+
+    try:
+        with as_of(forecast.issued_at):
+            series = session.history.get_values(
+                forecast.entity_id, forecast.property_name, lookback)
+        scope = {"entity_id": forecast.entity_id,
+                 "property": forecast.property_name}
+        fitted = PROJECTORS[RandomWalk.name].fit(series, {}, scope)
+        if isinstance(fitted, Decline):
+            return 0
+        session.ledger.record_distribution(
+            entity_id=forecast.entity_id,
+            property_name=forecast.property_name,
+            quantiles=fitted.forecast(float(forecast.horizon_s)).quantiles,
+            horizon_s=float(forecast.horizon_s),
+            model_id=BASELINE_MODEL_ID,
+            predicted_at=forecast.issued_at,
+            entity_type=entity.type,
+            source=SOURCE_ENGINE)
+    except (ValueError, KeyError, ArithmeticError, TypeError):
+        return 0
+    return 1

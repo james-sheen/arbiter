@@ -75,10 +75,24 @@ domain:
         # calling that the total is the shape the envelope exists to refuse.
         forecast:
           expected: true
-          # Optional. Without it no id is unknown, because refusing every id
-          # the engine has not seen would refuse the first forecast any
-          # producer ever sends.
+          # Optional, and an ALLOW-LIST. Without it no id is unknown, because
+          # refusing every id the engine has not seen would refuse the first
+          # forecast any producer ever sends. Being permitted to send one is
+          # not the same as owing one, which is what the next key is for.
           models: [garch_v3, lstm_v1]
+          # Optional, and an OBLIGATION list -- who is supposed to supply a
+          # forecast for every account, so `forecasts_expected` on the
+          # forecaster below has a number to be short of.
+          #
+          # SEPARATE FROM `models:` BECAUSE THE ENGINE READ ONE AS THE OTHER.
+          # `forecasts_expected` was derived from the allow-list, so both
+          # producers here were charged with all six accounts and CONSERVATION
+          # reported them 50% and 83% short of a debt nobody had declared. A
+          # desk listing five permitted models would have had four of them
+          # delinquent by construction. Declare this and the check means
+          # something; leave it out and the engine declines rather than
+          # inventing the denominator.
+          expected_from: [garch_v3, lstm_v1]
           # Optional, and invented. How old is too old is a minute for a quote
           # and a day for a balance, so there is no staleness check until
           # somebody declares the number.

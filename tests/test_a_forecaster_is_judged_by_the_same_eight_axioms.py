@@ -44,7 +44,21 @@ MONITOR = [
 ]
 
 
-def _session(models=("garch_v3",), accounts=3):
+def _session(models=("garch_v3",), accounts=3, expected_from=()):
+    """`models:` is the ALLOW-LIST and `expected_from:` is the obligation, and
+    this fixture keeps them apart because the engine did not.
+
+    `forecasts_expected` used to be derived from `models:`, so every producer
+    PERMITTED to send a forecast was charged with every subject. On the shipped
+    margin-book example -- two permitted models, six accounts -- both were
+    reported 50% and 83% short of a debt nobody had declared, at severity
+    `high`. A fixture that passed one list for both would have kept that
+    invisible, so `expected_from` defaults to nothing and every test about an
+    obligation names one.
+    """
+    forecast = {"expected": True, "models": list(models)}
+    if expected_from:
+        forecast["expected_from"] = list(expected_from)
     session = EngineSession()
     session.load_model({"domain": {
         "id": "d", "name": "d", "entity_types": ["Acct", "ForecastModel"],
@@ -52,7 +66,7 @@ def _session(models=("garch_v3",), accounts=3):
             "Acct": [{"name": "balance", "type": "NUMERIC",
                       "axioms": ["BOUNDEDNESS"], "window": "1h",
                       "critical": 1e9,
-                      "forecast": {"expected": True, "models": list(models)}}],
+                      "forecast": forecast}],
             "ForecastModel": MONITOR}}})
     for n in range(accounts):
         session.add_entity(f"a{n}", "Acct", {"balance": 50.0})
@@ -99,8 +113,8 @@ def test_a_miscalibrated_model_is_an_ordinary_finding():
 
 
 def test_a_model_that_skips_its_subjects_is_an_ordinary_finding():
-    """Three accounts declare this model; it forecast one."""
-    session = _session(accounts=3)
+    """Three accounts owe a forecast from this model; it forecast one."""
+    session = _session(accounts=3, expected_from=("garch_v3",))
     _forecast(session)
     _grade(session)
     _cycles(session)
@@ -273,14 +287,65 @@ def test_expected_is_attributed_only_to_models_a_declaration_names():
 
 
 def test_expected_counts_one_per_declared_subject():
-    session = _session(accounts=5)
+    session = _session(accounts=5, expected_from=("garch_v3",))
     _forecast(session)
     with as_of(T0):
         assert model_figures(session)["garch_v3"]["forecasts_expected"] == 5.0
 
 
+def test_being_permitted_to_forecast_is_not_owing_one():
+    """THE FALSE FINDING THIS KEY EXISTS TO END.
+
+    `models:` is an allow-list -- the guide says so on the line beside it, and
+    an id outside it declines `model_unknown`. Deriving the obligation from it
+    charged every permitted producer with every subject: on the shipped
+    margin-book example both listed models were reported short of a debt
+    nobody had declared, at severity `high`. A desk naming five permitted
+    models would have had four delinquent by construction.
+
+    A wrong finding is worse than a missing one, so without `expected_from:`
+    the figure is ABSENT and the CONSERVATION declaration over it declines.
+    """
+    session = _session(models=("garch_v3", "lstm_v1"), accounts=5)
+    _forecast(session)
+    with as_of(T0):
+        figures = model_figures(session)
+    assert "forecasts_expected" not in figures["garch_v3"]
+
+
+def test_an_obligation_reaches_only_the_model_it_names():
+    """Two permitted, one obliged. The other is not silently charged."""
+    session = _session(models=("garch_v3", "lstm_v1"), accounts=4,
+                       expected_from=("garch_v3",))
+    _forecast(session, model="garch_v3")
+    _forecast(session, model="lstm_v1", entity="a1")
+    with as_of(T0):
+        figures = model_figures(session)
+    assert figures["garch_v3"]["forecasts_expected"] == 4.0
+    assert "forecasts_expected" not in figures["lstm_v1"]
+
+
+def test_the_engines_own_records_are_not_monitored_as_producers():
+    """`project` files a projection and a random walk. Monitoring those as
+    forecasters put `baseline_rw` in the report with an age and a coverage
+    rate -- the yardstick lined up on the grid it was measuring."""
+    from arbiter_engine.api import project
+
+    session = _session(accounts=1)
+    base = T0 - timedelta(days=1)
+    session.add_observations("a0", "balance", [
+        (base + timedelta(minutes=7 * i), 50.0 + (i % 5)) for i in range(200)])
+    session.model.indicators["Acct"][0].dynamics_config = {"model": "local_level"}
+    with as_of(T0):
+        project(session, horizon_s=3600.0)
+        figures = model_figures(session)
+    assert "baseline_rw" not in figures
+    assert not [name for name in figures if ":" in name]
+
+
 def test_two_models_are_two_subjects():
-    session = _session(models=("garch_v3", "lstm_v1"), accounts=2)
+    session = _session(models=("garch_v3", "lstm_v1"), accounts=2,
+                       expected_from=("garch_v3", "lstm_v1"))
     _forecast(session, model="garch_v3")
     _forecast(session, model="lstm_v1", entity="a1")
     _forecast(session, model="lstm_v1", entity="a0", minutes_ago=10)

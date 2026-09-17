@@ -258,13 +258,23 @@ class InMemoryObservationHistory(ObservationHistory):
         out-of-order arrivals from batch processing or agent reconnection.
         """
         key = (entity_id, property_name)
-        cutoff = now_utc() - window
+        present = now_utc()
+        cutoff = present - window
 
+        # BOTH ENDS, and the upper one is the whole point of the fix.
+        #
+        # `window` is a span ending NOW, and only the lower cutoff was applied
+        # -- so a store fed once with real timestamps and then read under a
+        # frozen clock returned observations stamped AFTER the instant being
+        # evaluated. The replay recipe in the changelog is exactly that recipe,
+        # which made every backtest step see its own future: the threshold
+        # axioms answered as-of the step while the window axioms saw the whole
+        # series. Nothing looked wrong; a leaked step looks like a good one.
         with self._lock:
             observations = self._history.get(key, [])
             result = []
             for ts, value in observations:
-                if ts > cutoff:
+                if cutoff < ts <= present:
                     try:
                         result.append((ts, float(value)))
                     except (TypeError, ValueError):
@@ -285,14 +295,24 @@ class InMemoryObservationHistory(ObservationHistory):
         temporal ordering prevents false oscillation detections.
         """
         key = (entity_id, property_name)
-        cutoff = now_utc() - window
+        present = now_utc()
+        cutoff = present - window
 
+        # BOTH ENDS, and the upper one is the whole point of the fix.
+        #
+        # `window` is a span ending NOW, and only the lower cutoff was applied
+        # -- so a store fed once with real timestamps and then read under a
+        # frozen clock returned observations stamped AFTER the instant being
+        # evaluated. The replay recipe in the changelog is exactly that recipe,
+        # which made every backtest step see its own future: the threshold
+        # axioms answered as-of the step while the window axioms saw the whole
+        # series. Nothing looked wrong; a leaked step looks like a good one.
         with self._lock:
             observations = self._history.get(key, [])
             result = [
                 (ts, str(value))
                 for ts, value in observations
-                if ts > cutoff
+                if cutoff < ts <= present
             ]
             result.sort(key=lambda x: x[0])
             return result

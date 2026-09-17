@@ -32,6 +32,8 @@ from arbiter_engine.axiom_thresholds import (
 from arbiter_engine.envelope import (
     CheckedSummary, Envelope, build_envelope, unavailable_envelope,
 )
+from arbiter_engine.history.calendar import (
+    CalendarHistory, SessionCalendar)
 from arbiter_engine.history.observation import InMemoryObservationHistory
 from arbiter_engine.interfaces import (
     Entity, RelationshipGraph,
@@ -42,7 +44,7 @@ from arbiter_engine.ontology.axioms.roles import (
 from arbiter_engine.ontology.domain_loader import load_domain
 from arbiter_engine.ontology.reasoner import UnifiedAxiomReasoner
 from arbiter_engine.residual.predict_vs_mirror import PredictionLedger
-from arbiter_engine.forecast import run_forecasts
+from arbiter_engine.forecast import run_forecasts, run_shadow_check
 from arbiter_engine.projection import run_projection
 from arbiter_engine.causal.discovery import (
     DEFAULT_LAGS, run_discovery,
@@ -548,10 +550,22 @@ class EngineSession:
         # model whose only use of them is `derived: futures - spot` reports
         # both as read by nobody -- which is the opposite of true, and would
         # send an author to delete the feed the indicator depends on.
+        # A BOUND'S SOURCE IS READ TOO, by the same argument one line up. A
+        # `{from_property: margin_requirement}` declaration says the engine
+        # goes and reads that property at check time, and it does. Without it
+        # here, an author feeding the requirement was told nobody reads it --
+        # and the only way to silence that was to declare the source as its own
+        # `axioms: []` indicator, which both the shipped example and the
+        # margin-book bridge were doing. Declaring a thing twice to stop being
+        # told it was never declared is a report training authors around
+        # itself.
         declared: Dict[str, set] = {
             etype: ({spec.property_name or spec.name for spec in specs}
                     | {name for spec in specs if spec.derived
-                       for name in operands_of(spec.derived)})
+                       for name in operands_of(spec.derived)}
+                    | {str(source) for spec in specs
+                       for source in (getattr(spec, "threshold_sources", None)
+                                      or {}).values() if source})
             for etype, specs in self.model.indicators.items()
         }
         records: List[Dict[str, Any]] = []
@@ -665,13 +679,30 @@ def model_describe(session: EngineSession) -> Envelope:
         # defect that field exists to end. Five fields share the shape; the
         # report named the newest.
         "unread_fields": model.unread_fields(),
+        # the list, mounted where a MODEL fact belongs. `check` has
+        # carried it since it was added; this verb, whose whole question is
+        # *did my model load the way I wrote it*, did not -- so a reader
+        # proofreading a generated model through the describe payload got a
+        # clean answer from a key that was never there. Measured on the
+        # margin-book bridge: its read-back looked for exactly this, found
+        # nothing, and reported no dropped declarations for a model with a
+        # misspelled axiom AND for one with an unreadable `{from_property:}`
+        # mapping -- the case the changelog names.
+        #
+        # Through the session's own accessor, not re-derived here. The
+        # predicate that says which entries count as dropped exists once; a
+        # second copy of it is the shape this package has been bitten by
+        # before, and it goes stale the first time the predicate moves.
+        "dropped_declarations": session.dropped_declarations(),
         "note": (
             "declared_axioms is what the model declares, not what the engine "
             "evaluates; some axioms have evaluation paths that consult no "
             "declaration. unreachable_declarations lists pairs that "
             "provably cannot evaluate under any input; unread_fields "
             "lists fields whose consuming axiom is absent, so nothing will read "
-            "them; unconsumed_observations lists series no declared "
+            "them; dropped_declarations is the subset of those the "
+            "loader REJECTED, read and not understood; "
+            "unconsumed_observations lists series no declared "
             "indicator reads; unread_properties lists numeric entity "
             "properties no declared indicator reads"
         ),
@@ -705,17 +736,39 @@ def model_describe(session: EngineSession) -> Envelope:
 
 
 def _history_for(session: EngineSession):
-    """The session's history, able to answer for derived indicators too.
+    """The session's history, able to answer for derived indicators too, and
+    for windows measured in OPEN time when the domain declares a calendar.
 
-    Wrapped per call rather than held on the session: the wrapper is a view
+    Wrapped per call rather than held on the session: both wrappers are views
     over a model, and a session whose model is replaced would otherwise carry
     a view of the old one.
+
+    THE CALENDAR WAS PARSED AND NEVER READ. `MODELING.md` says declaring one
+    makes `window: 1h` mean an hour of OPEN time; the loader stored the
+    declaration on the model, `CalendarHistory` existed and was exported, and
+    nothing joined them -- so the promise held only for a caller who built the
+    wrapper themselves, which required parsing the domain a second time because
+    `load_model` runs after construction. `unread_fields` did not report it
+    either, so the engine's own reachability report said the declaration was
+    read. That is the fed-but-never-read shape these reports exist to catch,
+    inside the machinery that catches it.
+
+    ORDER MATTERS: the calendar wraps the STORE, and the derived view wraps
+    whatever answers windows. A derived series is joined from operand series,
+    and those operands must already be answering in open time or the join
+    happens on two different clocks.
     """
-    if session.model is None or not any(
-            spec.derived for specs in (session.model.indicators or {}).values()
-            for spec in specs):
-        return session.history
-    return DerivedHistoryView(session.history, session.model)
+    store = session.history
+    if session.model is None:
+        return store
+    calendar = getattr(session.model, "calendar", None)
+    if calendar:
+        store = CalendarHistory(store, SessionCalendar.from_declaration(calendar))
+    if not any(spec.derived
+               for specs in (session.model.indicators or {}).values()
+               for spec in specs):
+        return store
+    return DerivedHistoryView(store, session.model)
 
 
 def _derive_current_values(session: EngineSession) -> List[Dict[str, Any]]:
@@ -784,7 +837,13 @@ def check(session: EngineSession) -> Envelope:
     session.ledger.grade_matured(
         list(result.problems) + list(result.warnings),
         set(session.entities),
-        histories=[session.history],
+        # THE SAME HISTORY THE AXIOMS JUST READ, which is the view and not the
+        # bare store. Grading against the store alone meant a forecast OF a
+        # derived indicator had nothing to score against -- the derived series
+        # exists only through the view -- so every such record matured straight
+        # to `ungradeable` and the producer looked unscoreable rather than
+        # unscored.
+        histories=[_history_for(session)],
     )
     envelope = build_envelope(result)
     # the one report this verb owes, and the only one carried here.
@@ -836,7 +895,22 @@ def check(session: EngineSession) -> Envelope:
     #
     # Costs nothing when nobody forecasts: with an empty ledger the shadow run
     # returns before it builds an entity.
-    payload["forecasts"] = run_forecasts(session).to_dict()
+    #
+    # TWO KEYS, BECAUSE THEY ARE TWO DISCIPLINES with two closed vocabularies.
+    # `run_forecasts` composes the shadow run for its findings and used to
+    # discard everything else it returned -- so through this verb a consumer
+    # never saw a shadow decline at all, and the leg read as *nothing to
+    # report* on a forecast the engine had refused to judge. Measured on a
+    # model with no `dynamics.report_above`: `not_checked` empty here, while
+    # the shadow run had declined `no_report_probability` and `no_threshold`.
+    #
+    # Merging them into one leg was the other option and is refused for the
+    # reason `subenvelope.py` gives: a vocabulary that accepts another
+    # discipline's reasons has stopped being evidence about either. Run once,
+    # mounted twice, so the two cannot disagree about one cycle.
+    shadow = run_shadow_check(session)
+    payload["forecasts"] = run_forecasts(session, shadow=shadow).to_dict()
+    payload["shadow"] = shadow.to_dict()
     return _WithPayload(envelope, payload)
 
 

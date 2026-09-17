@@ -21,11 +21,13 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
+from ..axiom_thresholds import effective_thresholds
 from ..interfaces import IndicatorSpec
 from ..subenvelope import Decline, SubEnvelope
 from ..types import Axiom, IndicatorType, Severity
 from ..twin.topology import GapType, TopologyGap, TopologyQuestion
 from .projector import (BASELINE_MODEL_ID, MINIMUM_SAMPLES, PROJECTORS,
+                        SOURCE_ENGINE,
                         RandomWalk)
 
 __all__ = ["run_projection"]
@@ -51,20 +53,27 @@ def _question(gap_type, location: str, description: str,
     )
 
 
-def _thresholds(spec: IndicatorSpec) -> Dict[str, float]:
+def _thresholds(entity: Any, spec: IndicatorSpec) -> Tuple[Dict[str, float],
+                                                           Optional[str]]:
     """The declared lines a forecast can be compared against, upper and lower.
 
-    Read off the spec rather than off a config block: these are the same four
-    numbers BOUNDEDNESS judges the current value by, and a projection that
-    invented its own would be reporting a breach of a line nobody declared.
+    Read through `effective_thresholds` rather than off the spec's literal
+    slots, which is the whole of the fix here and worth stating because the
+    literal version looked correct. A `{from_property:}` bound is stored in
+    `spec.threshold_sources` and leaves the literal slot `None`, so reading the
+    slots returned NOTHING for every per-instance bound -- and the caller then
+    declined `no_threshold` saying *no declared line says what would count as
+    breaching it*, which is false of a model that declares one. The shipped
+    `margin_book.yaml` declares exactly that shape, so the flagship example
+    could never report a projected breach.
+
+    Returns the resolver's own detail alongside the values, so an unresolvable
+    bound declines in the resolver's words -- *this entity carries no
+    `margin_requirement`* -- rather than in the words for a model that declared
+    nothing.
     """
-    declared = {
-        "critical": spec.critical_threshold,
-        "warning": spec.warning_threshold,
-        "lower_critical": spec.lower_critical_threshold,
-        "lower_warning": spec.lower_warning_threshold,
-    }
-    return {k: float(v) for k, v in declared.items() if v is not None}
+    values, _origins, detail = effective_thresholds(entity, spec)
+    return ({k: float(v) for k, v in values.items() if v is not None}, detail)
 
 
 def _breach_probabilities(forecast, thresholds: Dict[str, float]) -> Dict[str, float]:
@@ -165,7 +174,12 @@ def run_projection(session, horizon_s: float = 3600.0) -> SubEnvelope:
                 entity_id=entity.id, property_name=spec.property_name,
                 quantiles=forecast.quantiles, horizon_s=horizon,
                 model_id=f"{forecast.model}:{forecast.source}",
-                entity_type=entity.type)
+                entity_type=entity.type,
+                # THE ENGINE'S OWN, SAID SO WHEN IT IS KNOWN. The `forecasts`
+                # leg judges outside submissions against `models:` and
+                # `max_age:`; without this it judged these too, and a reader
+                # could only tell them apart by the shape of the id.
+                source=SOURCE_ENGINE)
 
             # THE REFERENCE, ON THE SAME SERIES AND THE SAME HORIZON. Filed
             # here rather than by a separate pass, because a baseline scored on
@@ -184,13 +198,14 @@ def run_projection(session, horizon_s: float = 3600.0) -> SubEnvelope:
                         entity_id=entity.id, property_name=spec.property_name,
                         quantiles=reference.forecast(horizon).quantiles,
                         horizon_s=horizon, model_id=BASELINE_MODEL_ID,
-                        entity_type=entity.type)
+                        entity_type=entity.type, source=SOURCE_ENGINE)
 
-            thresholds = _thresholds(spec)
+            thresholds, threshold_detail = _thresholds(entity, spec)
             if not thresholds:
                 declines.append(Decline(
                     "no_threshold", scope,
-                    detail=("the forecast stands, and no declared line says what "
+                    detail=(threshold_detail or
+                            "the forecast stands, and no declared line says what "
                             "would count as breaching it"),
                     evidence={"forecast": forecast.quantiles}))
                 continue

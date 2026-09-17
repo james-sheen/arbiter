@@ -337,7 +337,8 @@ is that nobody has said which pairs should carry one.
   axioms: [BOUNDEDNESS]
   forecast:
     expected: true
-    models: [garch_v3, lstm_v1]   # optional; an id outside this list declines model_unknown
+    models: [garch_v3, lstm_v1]   # optional ALLOW-LIST; an id outside it declines model_unknown
+    expected_from: [garch_v3]     # optional OBLIGATION list; who owes one for every subject
     max_age: 15m                  # optional; older than this declines stale_forecast
 ```
 
@@ -368,7 +369,7 @@ scored would look like catastrophic miscalibration, so absent stays absent.
 | property | what it is |
 |---|---|
 | `forecasts_issued` | how many records this model has filed |
-| `forecasts_expected` | how many the model's own `forecast:` declarations call for |
+| `forecasts_expected` | how many `forecast: {expected_from: [...]}` names this model for. ABSENT when nothing does — being in `models:` is permission to send one, not a debt, and deriving the figure from the allow-list charged every permitted producer with the whole book |
 | `graded_n` | how many have matured and been scored — the denominator for the two below |
 | `coverage_90` | the share of matured intervals that contained the outcome |
 | `pinball_loss` | the quantile loss over the same records |

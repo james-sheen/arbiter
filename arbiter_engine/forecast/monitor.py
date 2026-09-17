@@ -41,6 +41,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 
 from ..clock import now_utc
+from ..projection.projector import SOURCE_ENGINE
 
 
 def model_figures(session: Any) -> Dict[str, Dict[str, float]]:
@@ -51,7 +52,13 @@ def model_figures(session: Any) -> Dict[str, Dict[str, float]]:
     the ledger cannot support is omitted.
     """
     calibration = session.ledger.calibration()
-    records = [r for r in session.ledger.records() if r.kind == "distribution"]
+    # THE ENGINE'S OWN RECORDS ARE NOT PRODUCERS. `project` files a projection
+    # and a random walk, and monitoring those as forecasters put `baseline_rw`
+    # in the report as a model with figures, an age and a coverage rate -- the
+    # yardstick lined up on the grid it was measuring.
+    records = [r for r in session.ledger.records()
+               if r.kind == "distribution"
+               and getattr(r, "source", None) != SOURCE_ENGINE]
     present = now_utc()
 
     expected = _expected_per_model(session)
@@ -108,13 +115,25 @@ def feed_model_figures(session: Any, entity_type: str,
 
 
 def _expected_per_model(session: Any) -> Dict[str, int]:
-    """How many forecasts each NAMED model was supposed to supply.
+    """How many forecasts each model was supposed to supply.
 
-    Derived from `forecast: {expected: true, models: [...]}`: a declared pair
-    expects one forecast from each model it names. Only from declarations that
-    NAME models -- `expected: true` on its own says a forecast is due and says
-    nothing about who owes it, so attributing it to whichever model happened to
-    send one would invent an obligation and then report it met.
+    FROM `expected_from:` AND FROM NOTHING ELSE. This used to read `models:`,
+    and `models:` is an ALLOW-LIST -- the guide says so in the line beside it,
+    an id outside it declines `model_unknown` -- so reading it here turned
+    permission into obligation. Measured on the shipped margin-book example,
+    which permits two producers for six accounts: each was charged with all six,
+    CONSERVATION reported deficits of 50% and 83% at severity `high`, and both
+    findings were about a debt nobody had declared. A desk that lists five
+    permitted models would have had four of them delinquent by construction.
+
+    A false finding is worse than a missing one, and this is the engine's own
+    rule arriving on its own doorstep: an obligation is a specification, not an
+    inference from a neighbouring key.
+
+    `expected_from:` is how a desk says who owes one. Without it no model
+    carries `forecasts_expected`, the CONSERVATION declaration over it declines
+    `missing_property`, and *nobody said who owes a forecast* is reported
+    instead of a number invented to fill the gap.
     """
     if session.model is None:
         return {}
@@ -124,6 +143,6 @@ def _expected_per_model(session: Any) -> Dict[str, int]:
             config = spec.forecast_config or {}
             if not config.get("expected"):
                 continue
-            for model_id in config.get("models") or ():
+            for model_id in config.get("expected_from") or ():
                 counts[str(model_id)] = counts.get(str(model_id), 0) + 1
     return counts

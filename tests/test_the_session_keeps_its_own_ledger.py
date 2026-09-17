@@ -114,11 +114,25 @@ def test_check_reports_nothing_new_when_the_ledger_is_empty():
     question, asked of an input surface rather than of a property. A leg
     carrying only what a forecaster HAPPENED to send would not qualify -- it
     would be a summary, like the calibration figures above, and those stay out.
+
+    `shadow` is the fifth, and it earns the place by the same argument from the
+    other direction: it is the eight axioms run over a forecast, so its
+    declines are *checks the model declared that could not be made*. It is a
+    key rather than rows inside `forecasts` because the two disciplines own
+    separate closed vocabularies, and one that accepts the other's reasons has
+    stopped being evidence about either.
+
+    IT WAS ADDED BECAUSE IT WAS BEING COMPUTED AND THROWN AWAY. `run_forecasts`
+    took the shadow run's findings and dropped its `checked`, its declines and
+    its questions -- so a model with no `dynamics.report_above` produced a leg
+    with an empty `not_checked` while the engine had declined twice. A check
+    that refused to answer looked exactly like one that found nothing.
     """
     envelope = check(_checkable_session()).to_dict()
     assert set(envelope) == {
         "checked", "findings", "not_checked", "questions", "meta",
         "unread_properties", "dropped_declarations", "underived", "forecasts",
+        "shadow",
     }
     assert envelope["underived"] == []
 
