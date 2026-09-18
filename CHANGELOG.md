@@ -20,6 +20,10 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.18] — 2026-09-18
+
 **A fourth static review, reproduced item by item before anything was changed.**
 Eight findings and eight trivia, all sixteen confirmed. One claim in the report
 was refuted and it was not a finding: the report recorded 0.1.17 as absent from
