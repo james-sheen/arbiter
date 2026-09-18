@@ -30,8 +30,8 @@ Nothing yet.
 `0.1.x` by decision through eighteen patch releases; `rollout` and `plan` are
 new verbs on `api`, and COMPATIBILITY.md has always said that is a minor.
 
-**0.2.0 AND 0.2.1 were both skipped because both are unavailable**, not because
-anything was wrong with either — see
+**0.2.0, 0.2.1, 0.2.2 and 0.3.0 were all skipped because all four are
+unavailable**, not because anything was wrong with any of them — see
 [Version numbers that do not exist](#version-numbers-that-do-not-exist). PyPI
 permanently reserves any filename it has ever served and had deleted, including
 under an earlier owner of the name, so an upload returns `400 This filename was
@@ -40,10 +40,12 @@ sequence runs 0.1.1 to 0.1.4.
 
 That section predicted this release and named the wrong number: it said *the
 version that first breaks compatibility cannot BE 0.2.0. so it will be
-0.2.1.* 0.2.1 was an INFERENCE from three measured numbers, and it was wrong.
-An upload is the only oracle — a 404 does not mean a filename is free — so the
-prediction could not have been checked when it was written, and it is corrected
-here by having been run.
+0.2.1.* 0.2.1 was an INFERENCE from three measured numbers, and it was wrong —
+as were 0.2.2 and 0.3.0 after it. Three uploads were refused before one landed,
+and the reserved set turned out NOT to be contiguous: 0.3.0 is taken and 0.2.3
+was free. An upload is the only oracle — a 404 does not mean a filename is
+free — so no amount of reading could have ordered these, and nothing shorter
+than trying them would have found it.
 
 Every consumer pinning `<0.2` must move its ceiling to `<0.3` to see this —
 that is the ceiling doing its job, not breaking.
@@ -2229,16 +2231,17 @@ topology traversal, an MCP transport, a YAML domain-model loader; `numpy` and
 
 ## Version numbers that do not exist
 
-**0.1.2, 0.1.3, 0.2.0 and 0.2.1 are permanently unavailable** and were never
-published by this project. PyPI reserves any filename that has ever been used and
+**0.1.2, 0.1.3, 0.2.0, 0.2.1, 0.2.2 and 0.3.0 are permanently unavailable** and
+were never published by this project. The set is NOT a contiguous range and
+cannot be extrapolated: 0.2.3 was free while 0.3.0 was not. PyPI reserves any filename that has ever been used and
 deleted, including from an earlier owner of the name, so an upload under those
 numbers returns `400 This filename was previously used by a file that has since
-been deleted`. The sequence runs 0.1.1 to 0.1.4, and 0.1.18 to 0.2.2, for that
+been deleted`. The sequence runs 0.1.1 to 0.1.4, and 0.1.18 to 0.2.3, for that
 reason and no other.
 
-**0.2.1 was added to this list by trying it**, and that is the point worth
-keeping. Until 2026-09-18 this paragraph named three numbers and then predicted a
-fourth: *the version that first breaks compatibility cannot BE 0.2.0 — the number
+**0.2.1, 0.2.2 and 0.3.0 were added to this list by trying them**, and that is
+the point worth keeping. Until 2026-09-18 this paragraph named three numbers and
+then predicted a fourth: *the version that first breaks compatibility cannot BE 0.2.0 — the number
 is unavailable — so it will be 0.2.1.* The three were measured; the fourth was an
 inference from them, and the release that needed it found it false at the upload.
 
@@ -2246,7 +2249,7 @@ inference from them, and the release that needed it found it false at the upload
 free, the JSON and `/simple/` surfaces list only what is live, and a deleted
 release leaves no trace either serves. So a number in this list was measured and a
 number predicted from it was a guess wearing the same sentence — which is why the
-prediction is gone rather than re-pointed at 0.2.2.
+prediction is gone rather than re-pointed at the next number.
 
 **This matters to anyone pinning `<0.2`.** That ceiling stops at 0.1.18 and does
 not resolve the 0.2 series at all. Move it to `<0.3` deliberately; a tool or a

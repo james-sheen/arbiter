@@ -34,11 +34,12 @@ def _examples_dir() -> pathlib.Path:
     """Whichever copy this tree has: the built package ships `examples/` at its
     root, the source tree keeps them under the publication docs.
 
-    - this was a path assembled from the SOURCE repository's own name,
-    which is two defects at once. It named a private tree in a file that ships,
-    and it could only ever resolve in the tree it was written in, so the shipped
-    copy of this test would have failed at import on a reader's machine. The
-    resolver here is the one `test_every_shipped_example_actually_runs.py`
+    - this was a hard-coded path into a directory that does not exist
+    in the published package, so the shipped copy of this test could only ever
+    fail at import on a reader's machine. It was written where it happened to
+    resolve and nothing between there and the wheel disagreed.
+
+    The resolver here is the one `test_every_shipped_example_actually_runs.py`
     already uses; copying its shape rather than inventing a second one is the
     point, since two resolvers for one fact are what drift.
     """
