@@ -20,6 +20,10 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.17] — 2026-09-18
+
 **A third static review, reproduced item by item before anything was changed.**
 Thirteen findings, all thirteen confirmed, four worse than filed, none refuted.
 The previous round refuted two of nineteen; this one refuted none, and it also
