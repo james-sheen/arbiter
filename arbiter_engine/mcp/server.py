@@ -534,6 +534,29 @@ def build_server(session: EngineSession | None = None):
             "overrides": overrides,
         })
 
+    async def rollout_tool(
+        actions: List[Dict[str, Any]] | None = None,
+        horizon_s: float = 3600.0,
+        step_s: float = 300.0,
+        seed_mode: str = "current",
+        max_transitions: int = 100_000,
+    ) -> str:
+        return _emit("rollout", {
+            "actions": actions, "horizon_s": horizon_s, "step_s": step_s,
+            "seed_mode": seed_mode, "max_transitions": max_transitions,
+        })
+
+    async def plan_tool(
+        candidates: List[Dict[str, Any]] | None = None,
+        horizon_s: float = 3600.0,
+        step_s: float = 300.0,
+        max_transitions: int = 100_000,
+    ) -> str:
+        return _emit("plan", {
+            "candidates": candidates, "horizon_s": horizon_s,
+            "step_s": step_s, "max_transitions": max_transitions,
+        })
+
     async def gaps_tool(start_node: str | None = None) -> str:
         return _emit("gaps", {"start_node": start_node})
 
@@ -610,6 +633,15 @@ def build_server(session: EngineSession | None = None):
         "load_model": load_model_tool,
         "add_entity": add_entity_tool,
         "add_observations": add_observations_tool,
+        # The SAME omission the comment above records, made again by
+        # the world-model arc and caught by the same guard -- at construction,
+        # on the one lane that installs the `mcp` extra, AFTER 0.2.3 shipped.
+        # Every local lane skips the transport test because the SDK is absent,
+        # so 1660 local passes and 14 skips read as green while CI read 1668
+        # passes and 5 skips. The skip count is the tell, and nothing compares
+        # the two.
+        "rollout": rollout_tool,
+        "plan": plan_tool,
     }
     missing = {spec["name"] for spec in TOOL_SPECS} - set(wrappers)
     if missing:

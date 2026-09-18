@@ -24,6 +24,32 @@ Nothing yet.
 
 ---
 
+## [0.2.4] — 2026-09-18
+
+### Fixed
+
+- **The MCP server raised at construction whenever the SDK was installed.**
+  `rollout` and `plan` were added to `TOOL_SPECS` and to `_HANDLERS` in 0.2.3
+  and not to the wrapper table, so `build_server()` hit its own guard —
+  *TOOL_SPECS declares ['plan', 'rollout'] with no wrapper to register* — and
+  the `mcp` extra was unusable for the whole of 0.2.3. `dispatch` served both
+  verbs correctly the entire time; only the transport could not.
+
+  **The guard was right and fired too late.** Constructing a server needs the
+  optional SDK, so the only lane that could reach it was the one installing the
+  extra: every other lane skipped the transport test and reported green. 0.2.3
+  was verified locally at 1660 passed / 14 skipped and was red in CI at 1668
+  passed / 5 skipped. The skip COUNT was the only available signal and nothing
+  compares it across lanes.
+
+  `test_every_declared_tool_has_a_wrapper.py` now reads the wrapper table with
+  the AST instead of importing it, so a declared tool with no wrapper fails on
+  EVERY lane without the SDK present. Installing the extra everywhere would
+  have made an optional dependency required in all but name, which is the
+  measured two-dependency claim this package keeps.
+
+---
+
 ## [0.2.3] — 2026-09-18
 
 **The first MINOR, and it is not numbered 0.2.0.** `arbiter-engine` stayed on
