@@ -22,6 +22,176 @@ useful-looking document and the less trustworthy one.
 
 Nothing yet.
 
+---
+
+## [0.2.3] — 2026-09-18
+
+**The first MINOR, and it is not numbered 0.2.0.** `arbiter-engine` stayed on
+`0.1.x` by decision through eighteen patch releases; `rollout` and `plan` are
+new verbs on `api`, and COMPATIBILITY.md has always said that is a minor.
+
+**0.2.0 AND 0.2.1 were both skipped because both are unavailable**, not because
+anything was wrong with either — see
+[Version numbers that do not exist](#version-numbers-that-do-not-exist). PyPI
+permanently reserves any filename it has ever served and had deleted, including
+under an earlier owner of the name, so an upload returns `400 This filename was
+previously used by a file that has since been deleted`. The same reason the
+sequence runs 0.1.1 to 0.1.4.
+
+That section predicted this release and named the wrong number: it said *the
+version that first breaks compatibility cannot BE 0.2.0. so it will be
+0.2.1.* 0.2.1 was an INFERENCE from three measured numbers, and it was wrong.
+An upload is the only oracle — a 404 does not mean a filename is free — so the
+prediction could not have been checked when it was written, and it is corrected
+here by having been run.
+
+Every consumer pinning `<0.2` must move its ceiling to `<0.3` to see this —
+that is the ceiling doing its job, not breaking.
+
+**A design note proposing a world model, reproduced before any of it was
+built.** The note is a five-stage proposal; every claim it makes about current
+behaviour was re-derived against the tree first. Sixteen were confirmed. Three
+defects it did not know about were found by running the paths it describes, and
+two of those would have made its own Stage 1 unreachable from the published
+surface.
+
+### Fixed
+
+- **A declared floor was invisible to `traverse`.** `lower_warning:` and
+  `lower_critical:` are schema, read by `UnifiedAxiomReasoner`, and were never
+  read by the topology builder — so they never reached the traversal's
+  `AxiomState.evidence` and the traversal had nothing to compare against.
+  Measured on the shipped `water_tank.yaml`: `check` on a pump below its stall
+  floor reported `below_critical_threshold:speed_rpm`; `traverse` on the same
+  entity reported nothing, while its `checked.invariants` said two invariants
+  had been evaluated. One declaration, two verbs, opposite answers, and the
+  denominator asserting the check had happened. An internal ruling fixed this shape for
+  the ceiling half and left the floor half in it.
+
+- **Every declared `temporal:` block was dropped on the published surface.**
+  There are two topology builders; the one `api` uses did not read
+  `relationship_rules`. Measured on a rule declaring 120s / 600s / 0.9: the
+  edge carried 60.0 / 60.0 / 1.0 — three silent defaults — and reported
+  `EdgeSource.AUTO_DISCOVERY`, the engine telling a reader that nobody had
+  declared an edge the author had declared. An author could write a temporal
+  block, traverse through `api`, and get the same answer as an author who
+  wrote nothing. Third instance of the shape and each fixed
+  one parameter of.
+
+### Added
+
+- **`transition:` on a relationship rule** — which property drives which, and
+  by what steady-state gain, with the provenance of the number. `traverse` in
+  a value mode now reports what a downstream value BECOMES rather than only
+  which entities are reachable. All four keys are required and a partial block
+  is refused by name, never completed with a default.
+
+- **`rollout`, a tenth verb on `api` and a thirteenth MCP tool** — the model
+  stepped forward under actions, with the eight axioms evaluated over every
+  imagined state and an imagined history written as it goes, so the temporal
+  axioms can be asked. The clone is private: no imagined observation reaches
+  the session. A rollout carrying actions reports `tier: 3` and never
+  dispatches.
+
+- **`action_templates:` in the open schema** — the effect model only. Which
+  entity property a parameter writes, and whether it sets, adds or scales. The
+  policy gate and the approval chain stay outside the open engine.
+
+- **`plan`, an eleventh verb and a fourteenth MCP tool** — candidate actions
+  ranked by rolling each one forward, against an objective the MODEL declares
+  under `planning:`. Without a declaration every candidate is still evaluated
+  and none is ranked. Doing nothing is always a candidate, ties break toward
+  fewer actions, and nothing is dispatched.
+
+- **`candidates:` on an action parameter** — what values a planner may try.
+  Declared, because sweeping a range the author never wrote would be the
+  engine choosing the operating envelope.
+
+- **A durable prediction ledger.** `SqlitePredictionLedger` subclasses the
+  in-memory one and changes exactly one thing: where records live between
+  processes. This closes the boundary README.md names — *treat calibration as
+  out of reach until the ledger is persistent* — so a one-shot process can now
+  file predictions and a later one can grade them. The ring cap still applies
+  to the file, deliberately: a store that kept everything would make the
+  calibration denominator depend on when the process started.
+
+- **`gain: estimate` and fitted gains as proposals.** An author declares the
+  COUPLING and withholds the number; the engine fits it and reports it under
+  `model_describe.proposed_transitions` with `n`, r-squared and an interval. A
+  transition carrying it projects nothing and declines `gain_not_adopted`
+  until a number is adopted. Where a gain IS declared and the interval
+  excludes it, the disagreement is reported with both numbers and the
+  declaration is not touched. The engine never searches for which properties
+  are coupled.
+
+- **`payload.simulation`** — the simulation's own denominators beside the
+  generic legs and never summed into them: transitions attempted against
+  applied, steps requested against completed, the values with their provenance
+  and the edges they came through, and the engine's assumptions stamped.
+
+- **A `simulation` decline vocabulary**, including `missing_dynamics` for an
+  edge that declares no transition and `budget_exhausted`, which is reported
+  ONCE carrying the count of what it skipped.
+
+- **`not_a_producers_submission`, a `shadow` decline.** Records carrying a
+  `source` are not a producer's submission, so the eight axioms do not run
+  over them. That exclusion is correct and was the one silent skip in
+  `shadow_entities` — every other files a decline. A batch that was entirely
+  stamped therefore produced `checked {entities: 0}` beside `not_checked []`:
+  a zero denominator with nothing saying why, which a reader cannot
+  distinguish from a clean run. Reported ONCE with the count and the SOURCE
+  NAMES, on the `budget_exhausted` precedent — the engine stamps its own
+  projections every cycle, and a per-record decline would bury the
+  interesting case under them. The names are what matter: a bridge author
+  finds their own `model_id` in the list and learns why their shadow leg is
+  empty. Patch-legal; a check that speaks where it was previously silent.
+
+### Changed
+
+- **A warning-severity finding is reported on every surface that reports
+  findings.** `DetectionResult` carries findings in two legs, `problems` and
+  `warnings`; `check` has summed them since it was written, and three readers
+  in the published cut took the first only. Measured: a model declaring
+  `warning: 80` and `critical: 95`, given a forecast of 98, produced
+  `forecast_threshold_exceeded`; given a forecast of 85 it produced NOTHING,
+  with no decline saying why. The shadow pass — *the eight axioms over the
+  forecast itself* — was checking one severity. `forecast/shadow.py` and
+  `twin/monte_carlo_predictor.py` are both fixed. Patch-legal: a check that
+  fires where it was previously silent, and the silence was a defect.
+
+- **Findings drawn from imagined values are prefixed `imagined_`.** See
+  COMPATIBILITY.md; this is patch-legal and is the rule that stops a
+  simulated breach reading as a live one.
+
+- **A declared transition is no longer pruned by an undeclared reachability
+  probability.** `propagation_probability` is P(target fails | source fails)
+  and is 0.3 when nothing has been learned; a transition is a declared
+  coupling between two values. Multiplying them silenced a declared gain three
+  hops out — 0.3³ = 0.027 against a `min_probability` of 0.05 — with nothing
+  said. Undeclared edges prune exactly as before.
+
+### New public constants, on deep paths
+
+Named here because `release_note_surface.py` requires it and the requirement is
+the point: these are importable, so a reader can come to depend on one, and
+COMPATIBILITY.md says a deep path may move without a major version. A name that
+moved and was never written down leaves that reader with a `NameError` and
+nothing to search for.
+
+- `twin.topology.REQUIRED_TRANSITION_KEYS`, `twin.topology.ESTIMATE_SENTINEL` —
+  the four keys a `transition:` block must carry, and the token that declares a
+  coupling while withholding its magnitude.
+- `twin.traverser.IMAGINED_PREFIX` — what a finding drawn from an imagined value
+  is prefixed with.
+- `twin.actions.EFFECTS`, `twin.actions.REQUIRED_TEMPLATE_KEYS` — the three
+  effect kinds an action template may declare, and its required keys.
+- `twin.rollout.MIN_STEP_S` — the floor under a rollout step.
+- `twin.planner.OBJECTIVES`, `twin.planner.DEFAULT_MAX_DEPTH`,
+  `twin.planner.DEFAULT_MAX_ROLLOUTS` — the two objectives a model may declare
+  and which direction each is optimised in, and the search bounds.
+
+---
+
 ## [0.1.18] — 2026-09-18
 
 **A fourth static review, reproduced item by item before anything was changed.**
@@ -2059,13 +2229,26 @@ topology traversal, an MCP transport, a YAML domain-model loader; `numpy` and
 
 ## Version numbers that do not exist
 
-**0.1.2, 0.1.3 and 0.2.0 are permanently unavailable** and were never published
-by this project. PyPI reserves any filename that has ever been used and deleted,
-including from an earlier owner of the name, so an upload under those numbers
-returns `400 This filename was previously used by a file that has since been
-deleted`. The sequence runs 0.1.1 to 0.1.4 for that reason and no other.
+**0.1.2, 0.1.3, 0.2.0 and 0.2.1 are permanently unavailable** and were never
+published by this project. PyPI reserves any filename that has ever been used and
+deleted, including from an earlier owner of the name, so an upload under those
+numbers returns `400 This filename was previously used by a file that has since
+been deleted`. The sequence runs 0.1.1 to 0.1.4, and 0.1.18 to 0.2.2, for that
+reason and no other.
 
-**This matters to anyone pinning `<0.2`.** The version that first breaks
-compatibility cannot BE 0.2.0 — the number is unavailable — so it will be 0.2.1.
-A pin of `>=0.1.7,<0.2` still does what you want; a tool or a human reading the
-gap in this list should not conclude that a 0.2.0 exists somewhere.
+**0.2.1 was added to this list by trying it**, and that is the point worth
+keeping. Until 2026-09-18 this paragraph named three numbers and then predicted a
+fourth: *the version that first breaks compatibility cannot BE 0.2.0 — the number
+is unavailable — so it will be 0.2.1.* The three were measured; the fourth was an
+inference from them, and the release that needed it found it false at the upload.
+
+**There is no way to check a filename except by uploading.** A 404 does not mean
+free, the JSON and `/simple/` surfaces list only what is live, and a deleted
+release leaves no trace either serves. So a number in this list was measured and a
+number predicted from it was a guess wearing the same sentence — which is why the
+prediction is gone rather than re-pointed at 0.2.2.
+
+**This matters to anyone pinning `<0.2`.** That ceiling stops at 0.1.18 and does
+not resolve the 0.2 series at all. Move it to `<0.3` deliberately; a tool or a
+human reading the gaps in this list should not conclude that a 0.2.0 or a 0.2.1
+exists somewhere.

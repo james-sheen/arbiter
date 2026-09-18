@@ -787,7 +787,13 @@ def make_layered_detector_runtime_callable(
         # sync MonteCarloPredictor.predict() loop. Inside-event-loop
         # callers use the _async variant below.
         result = _asyncio.run(detector.detect_all(entities, graph, history))
-        problems = getattr(result, "problems", None) or []
+        # both legs, for the reason `forecast/shadow.py` states: a
+        # warning-severity finding is a finding, and an outcome computed from
+        # `problems` alone cannot see one. A sampler whose outcomes silently
+        # exclude a severity reports a probability for a different question
+        # than the one asked.
+        problems = (list(getattr(result, "problems", None) or [])
+                    + list(getattr(result, "warnings", None) or []))
         return build_detection_outcome_dict(problems)
 
     return detection_callable

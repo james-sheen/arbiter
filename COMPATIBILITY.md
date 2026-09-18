@@ -70,10 +70,28 @@ Three things about it are promises and not accidents:
   that the record is malformed. A reader that switches exhaustively over it and
   raises on the default will break, and that is the reader's bug — the set has
   grown four times.
+- **Add a member to a DISCIPLINE's decline vocabulary**, on the same argument
+  and with the same three-valued reading. Spelled out because the entry above
+  names the axiom enum and reads as covering only it: the sets are separate,
+  and a reader that switches over `payload.shadow.not_checked[].reason` needs
+  the same default branch. `not_a_producers_submission` arrived this way,
+  turning a zero denominator that had been reported with no reason beside it
+  into one that names what it set aside and whose it was.
 - **Add an axiom, an indicator field, or a nested config block.** A model
   written before the field keeps its behaviour; that is a rule this project
   enforces on itself, not a courtesy.
 - **Change a `problem_type` that did not exist in the previous release.**
+- **Prefix a finding drawn from a value the engine IMAGINED rather than read.**
+  Added at 0.1.19 with `imagined_`. A what-if that pushed a reading past a
+  declared line used to return the same `problem_type` as a reading that was
+  actually past it, so a consumer routing on the type could not tell an
+  incident from a simulation. Findings about real readings are untouched, and
+  the rule is per-VALUE rather than per-verb: a hypothetical traversal reads
+  most of the topology at its current reading, and a finding drawn from a real
+  reading stays unprefixed whichever verb found it. `forecast_` is the sibling
+  prefix for a forecast a PRODUCER supplied and is deliberately not reused —
+  one prefix for both would make `forecast_boundedness:x` mean two different
+  things depending on which verb produced it.
 - **Change finding text, decline `detail` text, and evidence values.** These are
   for humans and for logs. Matching on them is understandable and unsupported —
   if you need to branch, branch on `axiom`, `severity`, or the part of

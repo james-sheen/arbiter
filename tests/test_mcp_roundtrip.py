@@ -65,6 +65,14 @@ ARGUMENTS = {
     "discover": {"alpha": 0.01, "budget_pairs": 4},
     "entail": {},
     "infer": {"target": ENTITY_ID},
+    # No `actions`: a rollout with none is still a rollout, and the
+    # transport's job is to carry the shape, so the routable case must not
+    # depend on the model declaring an action template.
+    "rollout": {"horizon_s": 120.0, "step_s": 60.0},
+    # No candidates and no declared objective: `plan` must still
+    # answer, because reporting the field and refusing to rank it is the
+    # behaviour, not an error path.
+    "plan": {"horizon_s": 120.0, "step_s": 60.0},
     "load_model": {"model": _MINIMAL_MODEL},
     "add_entity": {"entity_id": "x", "entity_type": "Unit"},
     "add_observations": {"entity_id": ENTITY_ID,
@@ -87,7 +95,8 @@ class TestTheRoutingTable:
         you it came back.
         """
         reads = {"model_describe", "check", "traverse", "gaps", "attest",
-                 "project", "discover", "entail", "infer"}
+                 "project", "discover", "entail", "infer", "rollout",
+                 "plan"}
         feeders = {"load_model", "add_entity", "add_observations"}
         assert reads | feeders == set(TOOL_NAMES)
 

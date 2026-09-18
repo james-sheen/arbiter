@@ -699,6 +699,115 @@ _FEEDERS_ON_THE_SUPPORTED_SURFACE = (
 )
 
 
+def _proposed_transitions(session: EngineSession) -> Dict[str, Any]:
+    """Fitted gains, their support, and any that contradict a declaration.
+
+    Reported from `model_describe` rather than from a verb of its
+    own, because *what does the data say about my declarations* is the
+    question this payload already answers for `unread_fields` and
+    `unreachable_declarations`.
+
+    A DISAGREEMENT IS A FINDING AND NEVER AN EDIT. `causal/discovery.py` sets
+    the precedent: it proposes and never promotes. A declaration is the
+    author's claim about the system, and an engine that silently replaced it
+    with a fitted number would leave nobody able to say what the model
+    asserts -- the file would no longer be the model.
+    """
+    from arbiter_engine.twin.transition_learner import (
+        MINIMUM_PAIRED_SAMPLES, learn_transitions,
+    )
+
+    topology = _build_topology(session)
+    if topology is None:
+        return {"fitted": [], "not_fitted": [], "disagreements": [],
+                "checked": {"couplings_seen": 0, "fitted": 0,
+                            "sample_floor": MINIMUM_PAIRED_SAMPLES}}
+    proposals, refusals = learn_transitions(session, topology)
+    disagreements = [p for p in proposals if p.contradicts_declaration]
+    return {
+        "fitted": [
+            {"edge": p.edge, "from": p.from_property, "to": p.to_property,
+             "gain": p.gain, "n": p.n, "r_squared": p.r_squared,
+             "interval": [p.ci_low, p.ci_high],
+             "declared_gain": p.declared_gain, "source": p.source}
+            for p in proposals],
+        "not_fitted": [
+            {"edge": r.location, "reason": r.reason, "detail": r.detail}
+            for r in refusals],
+        "disagreements": [
+            {"edge": p.edge, "from": p.from_property, "to": p.to_property,
+             "declared_gain": p.declared_gain, "fitted_gain": p.gain,
+             "interval": [p.ci_low, p.ci_high], "n": p.n,
+             "remedy": (f"the data put the gain in "
+                        f"[{p.ci_low:.6g}, {p.ci_high:.6g}] over {p.n} "
+                        f"paired changes and the model declares "
+                        f"{p.declared_gain:.6g}. Nothing has been changed: "
+                        f"correct the declaration, or explain the "
+                        f"measurement.")}
+            for p in disagreements],
+        "checked": {
+            "couplings_seen": len(proposals) + len(refusals),
+            "fitted": len(proposals),
+            "not_fitted": len(refusals),
+            "disagreements": len(disagreements),
+            "sample_floor": MINIMUM_PAIRED_SAMPLES,
+        },
+    }
+
+
+def _transition_coverage(model) -> Dict[str, Any]:
+    """Which relationship rules declare value dynamics, and which do not.
+
+    A rule with a `temporal:` block says how FAST and how LIKELY a
+    change crosses the edge; only a `transition:` block says how MUCH. The
+    difference decides whether `traverse` in a value mode can project across
+    that edge at all, and before this key the only way to find out was to run
+    a traversal and read `missing_dynamics` out of the declines.
+
+    Refused blocks are listed too, with the key they were missing -- a
+    partial declaration is the case an author most needs told, because it
+    looks declared in the file and is not.
+    """
+    from arbiter_engine.twin.builder import TopologyBuilder
+    declared: List[Dict[str, Any]] = []
+    without: List[Dict[str, Any]] = []
+    refused: List[str] = []
+    rules = list(getattr(model, "relationship_rules", None) or [])
+    for rule in rules:
+        if not isinstance(rule, dict):
+            continue
+        label = (f"{rule.get('source_type', '?')}"
+                 f"-{rule.get('type', '?')}->"
+                 f"{rule.get('target_type', '?')}")
+        transitions, gaps = TopologyBuilder._transitions_from_rule(
+            rule, rule.get('source_type', '?'), rule.get('target_type', '?'))
+        refused.extend(g.description for g in gaps)
+        if not transitions:
+            without.append({
+                "rule": label,
+                "has_temporal": bool(rule.get('temporal')),
+            })
+            continue
+        for transition in transitions:
+            declared.append({
+                "rule": label,
+                "from": transition.from_property,
+                "to": transition.to_property,
+                "gain": transition.gain,
+                "source": transition.source,
+            })
+    return {
+        "declared": declared,
+        "rules_without_dynamics": without,
+        "refused_blocks": refused,
+        "checked": {
+            "relationship_rules": len(rules),
+            "with_transition": len(rules) - len(without),
+            "without_transition": len(without),
+        },
+    }
+
+
 def model_describe(session: EngineSession) -> Envelope:
     """What domain is loaded: entity types, indicators, declared axioms.
 
@@ -788,6 +897,17 @@ def model_describe(session: EngineSession) -> Envelope:
         # defect that field exists to end. Five fields share the shape; the
         # report named the newest.
         "unread_fields": model.unread_fields(),
+        # the DYNAMICS coverage of the model, answerable before a
+        # single observation is fed. Same job `unreachable_declarations` and
+        # `unread_fields` already do for the axiom side: an author who wants
+        # to know what a simulation will be able to project should not have
+        # to run one and read the declines.
+        "transitions": _transition_coverage(model),
+        # gains FITTED from this session's observations, beside the
+        # ones the author declared. Proposals: nothing here has changed the
+        # model, and a `gain: estimate` transition projects no value until a
+        # number is adopted into the YAML.
+        "proposed_transitions": _proposed_transitions(session),
         # the list, mounted where a MODEL fact belongs. `check` has
         # carried it since it was added; this verb, whose whole question is
         # *did my model load the way I wrote it*, did not -- so a reader
@@ -1046,7 +1166,9 @@ def traverse(session: EngineSession, start_nodes: Sequence[str],
     from arbiter_engine.twin.topology import (
         TraversalDirection, TraversalRequest, ValueMode,
     )
-    from arbiter_engine.twin.traverser import TopologyTraverser
+    from arbiter_engine.twin.traverser import (
+        IMAGINED_PREFIX, TopologyTraverser,
+    )
 
     # this function takes TWO closed vocabularies and treated them
     # differently in three ways, none of them intended.
@@ -1086,7 +1208,23 @@ def traverse(session: EngineSession, start_nodes: Sequence[str],
         )
     value_mode = resolved_mode
 
-    topology = _build_topology(session)
+    # inside the boundary below, for the reason `rollout` states:
+    # building a topology is real work over caller-supplied data, and a raise
+    # out of it escaped this verb uncaught. Measured: patching
+    # `_build_topology` to raise propagated a bare RuntimeError out of a
+    # library whose product is saying what it could not do.
+    try:
+        topology = _build_topology(session)
+    except Exception as exc:  # noqa: BLE001 - see `_raised`
+        sub = _raised("simulation", exc,
+                      {"transitions_attempted": 0, "transitions_applied": 0,
+                       "nodes_projected": 0})
+        envelope = Envelope(
+            checked=CheckedSummary(invariants=0, steps=0, entities=0),
+            findings=list(sub.findings), questions=[])
+        payload = envelope.to_dict()
+        payload["simulation"] = sub.to_dict()
+        return _WithPayload(envelope, payload)
     if topology is None:
         return unavailable_envelope(
             "no topology available: supply entities before traversing")
@@ -1132,7 +1270,29 @@ def traverse(session: EngineSession, start_nodes: Sequence[str],
                 "topology do, which is why this is not an empty-history "
                 "error. Add observations for them or use 'current'."
             )
-    result = traverser.traverse(request)
+    # the exception boundary 0.1.18 put on the other five verbs.
+    # It was not needed here while a traversal produced only findings and
+    # questions; it is needed now that it produces a discipline sub-envelope,
+    # and it is what makes `internal_error` reachable in that vocabulary
+    # rather than a member nothing can emit.
+    simulation_raised: Optional[BaseException] = None
+    try:
+        result = traverser.traverse(request)
+    except Exception as exc:  # noqa: BLE001 - see `_raised`
+        simulation_raised = exc
+        result = None
+    if result is None:
+        sub = _raised("simulation", simulation_raised,
+                      {"transitions_attempted": 0, "transitions_applied": 0,
+                       "nodes_projected": 0})
+        envelope = Envelope(
+            checked=CheckedSummary(invariants=0, steps=0, entities=0),
+            findings=list(sub.findings),
+            questions=[],
+        )
+        payload = envelope.to_dict()
+        payload["simulation"] = sub.to_dict()
+        return _WithPayload(envelope, payload)
 
     # An internal ruling set this to 0 on the premise that a traversal evaluates no
     # invariants. That was true when written and stopped being true at
@@ -1164,7 +1324,327 @@ def traverse(session: EngineSession, start_nodes: Sequence[str],
         findings=list(result.problems_detected),
         questions=[_q(q) for q in result.questions_generated],
     )
-    return envelope
+    if value_mode == "current":
+        # A CURRENT walk asks for no values, so it simulates nothing and
+        # reports no simulation leg. An empty payload would be a denominator
+        # of zero over zero -- the shape `checked` exists to prevent.
+        return envelope
+
+    # the simulation's own accounting, beside the generic legs and
+    # never summed into them. `checked.invariants` counts axioms evaluated;
+    # `simulation.checked` counts transitions and nodes, which are not
+    # invariants and are not interchangeable with them.
+    declines = [
+        Decline(d.reason, {"location": d.location}, detail=d.detail)
+        for d in result.simulation_declines
+    ]
+    imagined_findings = [f for f in result.problems_detected
+                         if f.problem_type.startswith(IMAGINED_PREFIX)]
+    sub = SubEnvelope(
+        kind="simulation",
+        checked={
+            "transitions_attempted": result.transitions_attempted,
+            "transitions_applied": len(result.transitions_applied),
+            "transitions_declined": len(declines),
+            "nodes_projected": len(result.imagined_values),
+            "nodes_not_projected": len(result.nodes_not_projected),
+        },
+        findings=imagined_findings,
+        not_checked=declines,
+        questions=[_q(q) for q in result.questions_generated],
+    )
+    payload = envelope.to_dict()
+    simulation = sub.to_dict()
+    # Beside the sub-envelope's own keys: what the values BECAME, where each
+    # number came from, and what the engine assumed to get there.
+    simulation["values"] = {
+        entity_id: {
+            prop: {
+                "value": value,
+                "source": result.imagined_sources.get(
+                    entity_id, {}).get(prop, ""),
+                "via": sorted({t.edge for t in result.transitions_applied
+                               if t.to_property == prop}),
+            }
+            for prop, value in props.items()
+        }
+        for entity_id, props in result.imagined_values.items()
+    }
+    simulation["assumptions"] = list(result.assumptions)
+    simulation["not_projected"] = list(result.nodes_not_projected)
+    payload["simulation"] = simulation
+    return _WithPayload(envelope, payload)
+
+
+def rollout(session: EngineSession,
+            actions: Optional[Sequence[Any]] = None,
+            horizon_s: float = 3600.0,
+            step_s: float = 60.0,
+            seed_mode: str = "current",
+            max_transitions: int = 100_000) -> Envelope:
+    """Run the model forward under actions, and judge each imagined state.
+
+    `traverse(value_mode='hypothetical')` answers *what does this
+    become* in one hop at one horizon. This answers *what happens, and when*:
+    the state is stepped, actions enter at the times they are scheduled, the
+    declared transitions move downstream values each step, and the eight
+    axioms are run over every imagined state with the imagined history behind
+    it.
+
+    WHICH LEGS THIS VERB CAN HONESTLY FILL, following `project`.
+
+    `checked.invariants` counts axiom evaluations the reasoner attempted over
+    imagined states. `simulation.checked` carries the rollout's own
+    denominators -- steps requested against steps completed, transitions
+    attempted against applied -- in the units a rollout owns, and the two are
+    NEVER summed. A step is not an invariant.
+
+    `findings` carries the imagined findings, every one prefixed, so no
+    consumer routing on `problem_type` can mistake a simulated breach for a
+    live one.
+
+    ACTIONS ARE PROPOSALS AND NOTHING IS DISPATCHED. A rollout carrying
+    actions reports `tier: 3` for the same reason `traverse` does when it
+    carries overrides -- it describes a world somebody would have to decide to
+    create. The open engine reports; approval and dispatch are not v0.1.
+
+    `seed_mode='projected'` starts from fitted projections rather than present
+    readings, and declines rather than falling back when nothing could be
+    fitted -- the rule, that a mode which cannot be honoured is
+    declined and not silently downgraded.
+    """
+    from arbiter_engine.twin import rollout as _rollout
+
+    if session.model is None:
+        return unavailable_envelope("no domain model loaded")
+    if not session.entities:
+        return unavailable_envelope("no entities supplied")
+
+    seed = _fold(seed_mode, ("current", "projected"))
+    if seed is None:
+        return unavailable_envelope(
+            f"seed_mode {seed_mode!r} is not supported; this build accepts "
+            f"current, projected.")
+
+    # the boundary starts HERE, before the topology is built, and
+    # not after it. Building a topology and fitting projections are both real
+    # work over caller-supplied data, and a raise out of either escaped this
+    # verb uncaught while the step AFTER them was guarded. `internal_error`
+    # was in the vocabulary and no input could reach it through this verb,
+    # which is the dead-member shape one layer out from the reason itself.
+    try:
+        topology = _build_topology(session)
+        if topology is None:
+            return unavailable_envelope(
+                "no topology available: supply entities before rolling out")
+
+        if seed == "projected":
+            from arbiter_engine.twin.traverser import (
+                TopologyTraverser,
+            )
+            TopologyTraverser(
+                topology, observation_history=_history_for(session)
+            ).project_values(horizon_s=horizon_s)
+
+        result = _rollout.run(
+            session, topology, actions=list(actions or ()),
+            horizon_s=horizon_s, step_s=step_s, seed_mode=seed,
+            max_transitions=max_transitions)
+    except Exception as exc:  # noqa: BLE001 - see `_raised`
+        sub = _raised("simulation", exc,
+                      {"steps_requested": 0, "steps_completed": 0,
+                       "transitions_applied": 0})
+        envelope = Envelope(
+            checked=CheckedSummary(invariants=0, entities=len(session.entities)),
+            findings=list(sub.findings), questions=[])
+        payload = envelope.to_dict()
+        payload["simulation"] = sub.to_dict()
+        return _WithPayload(envelope, payload)
+
+    findings = [f for step in result.steps for f in step.findings]
+    declines = [
+        Decline(d.reason, {"location": d.location}, detail=d.detail or None)
+        for d in list(result.declines)
+        + [s for step in result.steps for s in step.declines]
+    ]
+    for refusal in result.refused_actions:
+        declines.append(Decline(
+            refusal.reason, {"location": refusal.location},
+            detail=refusal.detail or None))
+
+    sub = SubEnvelope(
+        kind="simulation",
+        checked={
+            "steps_requested": result.steps_requested,
+            "steps_completed": result.steps_completed,
+            "transitions_attempted": result.transitions_attempted,
+            "transitions_applied": result.transitions_applied,
+            "actions_scheduled": len(list(actions or ())),
+            "actions_refused": len(result.refused_actions),
+            "history_seeded": result.history_seeded,
+        },
+        findings=findings,
+        not_checked=declines,
+        questions=[],
+    )
+    envelope = Envelope(
+        checked=CheckedSummary(
+            invariants=len(findings) + len(
+                [d for d in declines if d.reason not in _ROLLOUT_NON_AXIOM]),
+            steps=result.steps_completed,
+            entities=len(session.entities),
+        ),
+        findings=list(findings),
+        questions=[],
+    )
+    payload = envelope.to_dict()
+    simulation = sub.to_dict()
+    simulation["assumptions"] = list(result.assumptions)
+    simulation["tier"] = result.tier
+    if result.tier_reason:
+        simulation["tier_reason"] = result.tier_reason
+    simulation["per_step"] = [
+        {
+            "step": step.index,
+            "at_s": step.at_s,
+            "actions_applied": list(step.actions_applied),
+            "transitions_applied": step.transitions_applied,
+            "findings": sorted({f.problem_type for f in step.findings}),
+            "declines": sorted({d.reason for d in step.declines}),
+            "values": {eid: dict(vals) for eid, vals in step.values.items()},
+        }
+        for step in result.steps
+    ]
+    payload["simulation"] = simulation
+    return _WithPayload(envelope, payload)
+
+
+#: Reasons that are NOT an axiom declining -- they are the rollout refusing to
+#: run, so they must not be counted into `checked.invariants`, which means
+#: axiom evaluations attempted.
+_ROLLOUT_NON_AXIOM = frozenset({
+    "malformed_request", "settle_exceeds_step", "unknown_action",
+    "unknown_parameter", "wrong_entity_type", "missing_entity",
+    "malformed_action", "missing_dynamics", "missing_declaration",
+    "budget_exhausted", "cycle_unsupported", "internal_error",
+})
+
+
+def plan(session: EngineSession,
+         candidates: Optional[Sequence[Any]] = None,
+         horizon_s: float = 1800.0,
+         step_s: float = 60.0,
+         max_transitions: int = 100_000) -> Envelope:
+    """Rank candidate actions by rolling each one forward — if told how.
+
+    `rollout` answers *what happens if I do this*; this answers
+    *which of these should I do*, and the difference is an objective the
+    arithmetic cannot supply. Minimising expected findings and maximising the
+    chance of clearing a severity disagree on real inputs, so the model
+    declares which one it means:
+
+        planning:
+          objective: expected_findings # or clearance_probability
+          min_severity: high # required by the second
+          max_rollouts: 200
+          max_depth: 1
+
+    **Without a declaration every candidate is still evaluated and none is
+    ranked.** That is the same refusal `project` makes when it has computed a
+    breach probability and no `report_above:` says what counts as a finding:
+    the work is done, the numbers are reported, and the judgement that is not
+    the engine's to make is not made.
+
+    THE ENGINE PROPOSES AND NEVER DISPATCHES. Nothing here mutates the
+    session, calls a collector, or returns anything an executor could act on
+    without a person in between. A ranked list is a recommendation.
+
+    `checked.invariants` counts axiom evaluations across every rollout run;
+    `plan.checked` carries the search's own denominators -- rollouts run,
+    candidates evaluated, plans left untested -- and the two are never summed.
+    """
+    from arbiter_engine.twin import planner as _planner
+
+    if session.model is None:
+        return unavailable_envelope("no domain model loaded")
+    if not session.entities:
+        return unavailable_envelope("no entities supplied")
+
+    try:
+        topology = _build_topology(session)
+        if topology is None:
+            return unavailable_envelope(
+                "no topology available: supply entities before planning")
+        result = _planner.search(
+            session, topology, candidates=list(candidates or ()),
+            horizon_s=horizon_s, step_s=step_s,
+            max_transitions=max_transitions)
+    except Exception as exc:  # noqa: BLE001 - see `_raised`
+        sub = _raised("simulation", exc,
+                      {"rollouts_run": 0, "candidates_evaluated": 0})
+        envelope = Envelope(
+            checked=CheckedSummary(invariants=0, entities=len(session.entities)),
+            findings=list(sub.findings), questions=[])
+        payload = envelope.to_dict()
+        payload["plan"] = sub.to_dict()
+        return _WithPayload(envelope, payload)
+
+    declines = [
+        Decline(d.reason, {"location": d.location}, detail=d.detail or None)
+        for d in result.declines
+    ]
+    for refusal in result.refused_actions:
+        declines.append(Decline(
+            refusal.reason, {"location": refusal.location},
+            detail=refusal.detail or None))
+
+    best = result.candidates[0] if (result.ranked and result.candidates) else None
+    sub = SubEnvelope(
+        kind="simulation",
+        checked={
+            "candidates_evaluated": len(result.candidates),
+            "rollouts_run": result.rollouts_run,
+            "plans_untested": result.plans_untested,
+            "ranked": int(bool(result.ranked)),
+        },
+        findings=[],
+        not_checked=declines,
+        questions=[],
+    )
+    envelope = Envelope(
+        checked=CheckedSummary(
+            invariants=result.invariants,
+            steps=result.rollouts_run,
+            entities=len(session.entities),
+        ),
+        findings=[],
+        questions=[],
+    )
+    payload = envelope.to_dict()
+    plan_payload = sub.to_dict()
+    plan_payload["objective"] = result.objective
+    plan_payload["direction"] = result.direction
+    plan_payload["ranked"] = result.ranked
+    plan_payload["assumptions"] = list(result.assumptions)
+    plan_payload["candidates"] = [
+        {
+            "plan": c.label,
+            "actions": [
+                {"template": a.template, "entity_id": a.entity_id,
+                 "parameters": dict(a.parameters), "at_s": a.at_s}
+                for a in c.actions],
+            "objective": c.objective,
+            "interval": list(c.interval) if c.interval else None,
+            "findings": list(c.findings),
+            "declines": list(c.declines),
+            "checked": dict(c.checked),
+        }
+        for c in result.candidates
+    ]
+    if best is not None:
+        plan_payload["best"] = best.label
+    payload["plan"] = plan_payload
+    return _WithPayload(envelope, payload)
 
 
 def gaps(session: EngineSession,
@@ -1642,5 +2122,11 @@ def _build_topology(session: EngineSession):
     # empty questions leg for every model, which is indistinguishable from
     # "this model has no gaps" and is why the demo showed none.
     indicators = getattr(session.model, "indicators", None) if session.model else None
+    # and the declared relationship rules, for the same reason
+    # passed the indicators: this builder cannot read what it is not
+    # given, and what it was not given was every `temporal:` block in the
+    # model. An author who declared a 120-second propagation delay got the
+    # 60-second default and an edge stamped `auto`.
+    rules = getattr(session.model, "relationship_rules", None) if session.model else None
     return builder.build_from_relationship_graph(
-        dict(session.entities), session.graph, indicators)
+        dict(session.entities), session.graph, indicators, rules)

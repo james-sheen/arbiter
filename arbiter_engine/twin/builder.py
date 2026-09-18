@@ -18,7 +18,8 @@ from ..propagation.weight_learner import LearnedWeight
 
 from .topology import (
     TwinNode, TwinEdge, TopologyGap, DigitalTwinTopology,
-    AxiomState, NodeConfidence,
+    AxiomState, NodeConfidence, Transition, REQUIRED_TRANSITION_KEYS,
+    ESTIMATE_SENTINEL,
     EdgeDirection, FlowType, EdgeSource, GapType, ResolutionStrategy,
 )
 
@@ -152,8 +153,29 @@ class TopologyBuilder:
         entities: Dict[str, Entity],
         graph: RelationshipGraph,
         indicators_by_type: Optional[Dict[str, List]] = None,
+        relationship_rules: Optional[List[Dict[str, Any]]] = None,
     ) -> DigitalTwinTopology:
         """Minimal topology from an existing RelationshipGraph (no YAML).
+
+        ``relationship_rules`` is the THIRD parameter added to this
+        builder for the same reason as the first two, and the reason is worth
+        stating once more because it keeps recurring. This is the builder the
+        published `api` uses. ``build_from_yaml`` is the one that reads
+        relationship rules. So every declared ``temporal:`` block -- delay,
+        time constant, coupling, response model -- was dropped on the only
+        path a released caller can reach, and the edge was stamped
+        ``EdgeSource.AUTO_DISCOVERY``: the engine telling a reader that
+        nobody declared an edge the author had declared.
+
+        Measured before the fix, on a rule declaring 120s / 600s / 0.9: the
+        edge carried 60.0 / 60.0 / 1.0, three silent defaults. A model author
+        could write a temporal block, run `traverse` through `api`, and get
+        the same answer as an author who wrote nothing.
+
+        Same shape as (gap discovery) and (axiom states): a
+        leg structurally unable to perform rather than under-performing, on
+        the builder nobody was looking at. Passed as a parameter rather than
+        by switching to ``build_from_yaml`` for the reason below.
 
         ``indicators_by_type`` is optional and, when supplied, runs
         the same structural gap discovery the YAML path runs. Without it this
@@ -188,6 +210,7 @@ class TopologyBuilder:
                         entity.type, indicators_by_type),
                 ))
         aliases = self._build_id_alias_map(entities)
+        rules_by_key = self._index_rules(relationship_rules or [])
         for source_id, edge_tuples in graph.edges.items():
             resolved_source = self._resolve_id(source_id, aliases)
             for rel_type, target_id in edge_tuples:
@@ -199,6 +222,17 @@ class TopologyBuilder:
                     source=EdgeSource.AUTO_DISCOVERY,
                     confidence=0.5,
                 )
+                # a declared rule, when one matches, overrides the
+                # defaults above and says so in `source`. No match leaves the
+                # edge exactly as it was, so a graph built without a model is
+                # unaffected: this widens what a declaration can reach, it
+                # does not change what an undeclared edge does.
+                self._apply_declared_rule(
+                    edge,
+                    self._rule_for(
+                        rules_by_key, entities.get(resolved_source),
+                        entities.get(resolved_target), rel_type),
+                )
                 topology.add_edge(edge)
         if indicators_by_type:
             self._detect_structural_gaps(
@@ -209,9 +243,26 @@ class TopologyBuilder:
     # -- Private helpers ---------------------------------------------------
 
     @staticmethod
-    def _read_indicator(ind) -> Tuple[str, List[str], Optional[float],
-                                      Optional[float]]:
-        """Read (name, axiom names, warning, critical) from an indicator.
+    def _read_indicator(ind) -> Tuple[str, List[str],
+                                      Dict[str, Optional[float]]]:
+        """Read (name, axiom names, bounds) from an indicator.
+
+        the bounds are returned as a MAPPING rather than as a
+        ``warning, critical`` pair, and that is the fix rather than an
+        incidental refactor. The pair shape is what made the floor half of
+        BOUNDEDNESS unreachable: ``lower_warning`` / ``lower_critical`` are
+        declared in the schema, read by ``UnifiedAxiomReasoner``, and were
+        never read HERE, so they never reached ``AxiomState.evidence`` and
+        ``TopologyTraverser._evaluate_axioms`` had nothing to compare against.
+        A traversal over a stalled pump reported no finding while ``check``
+        on the same entity reported ``below_critical_threshold`` — one
+        declaration, two verbs, opposite answers.
+
+        An internal ruling fixed exactly this shape for the CEILING half and its
+        docstring below describes the failure it closed. The floor half was
+        left in that state, which is the instance-not-class shape: widening
+        the return to a mapping is what stops the next bound being added to
+        one reader and not the other.
 
         indicators reach the two builders in **two different shapes
         with two different threshold names**, and nothing previously bridged
@@ -226,17 +277,27 @@ class TopologyBuilder:
         if hasattr(ind, 'get'):
             name = ind.get('name', '') or ''
             axioms = list(ind.get('axioms', []) or [])
-            warning = ind.get('warning')
-            critical = ind.get('critical')
+            bounds = {
+                'warning': ind.get('warning'),
+                'critical': ind.get('critical'),
+                'lower_warning': ind.get('lower_warning'),
+                'lower_critical': ind.get('lower_critical'),
+            }
         else:
             name = getattr(ind, 'name', '') or ''
             axioms = [
                 getattr(a, 'value', str(a))
                 for a in (getattr(ind, 'relevant_axioms', None) or [])
             ]
-            warning = getattr(ind, 'warning_threshold', None)
-            critical = getattr(ind, 'critical_threshold', None)
-        return name, axioms, warning, critical
+            bounds = {
+                'warning': getattr(ind, 'warning_threshold', None),
+                'critical': getattr(ind, 'critical_threshold', None),
+                'lower_warning': getattr(
+                    ind, 'lower_warning_threshold', None),
+                'lower_critical': getattr(
+                    ind, 'lower_critical_threshold', None),
+            }
+        return name, axioms, bounds
 
     def _flow_directions_from_indicators(
         self,
@@ -263,7 +324,7 @@ class TopologyBuilder:
         """
         out: Dict[str, str] = {}
         for ind in (indicators_by_type or {}).get(entity_type, []) or []:
-            name, _, _, _ = self._read_indicator(ind)
+            name, _, _ = self._read_indicator(ind)
             if not name:
                 continue
             if hasattr(ind, 'get'):
@@ -298,17 +359,19 @@ class TopologyBuilder:
         states: Dict[str, AxiomState] = {}
         type_indicators = indicators_by_type.get(entity_type, [])
         for ind in type_indicators:
-            name, axiom_names, warning, critical = self._read_indicator(ind)
+            name, axiom_names, bounds = self._read_indicator(ind)
             for ax_name in axiom_names:
                 try:
                     axiom = Axiom(ax_name)
                 except ValueError:
                     continue
-                evidence: Dict[str, Any] = {}
-                if warning is not None:
-                    evidence['warning'] = warning
-                if critical is not None:
-                    evidence['critical'] = critical
+                # every declared bound is carried, floors included.
+                # Enumerating the two upper ones by hand is what left the two
+                # lower ones behind when they were added to the schema.
+                evidence: Dict[str, Any] = {
+                    key: value for key, value in bounds.items()
+                    if value is not None
+                }
                 key = f"{axiom.value}:{name}"
                 states[key] = AxiomState(
                     axiom=axiom,
@@ -317,6 +380,138 @@ class TopologyBuilder:
                     evidence=evidence,
                 )
         return states
+
+    @staticmethod
+    def _rule_for(
+        rules_by_key: Dict, source_entity: Optional[Entity],
+        target_entity: Optional[Entity], rel_type: str,
+    ) -> Optional[Dict[str, Any]]:
+        """The declared rule for this edge, or None.
+
+        Keyed the way ``_index_rules`` keys them: by the two entity TYPES and
+        the relation type, because a rule describes a kind of relationship
+        rather than a pair of instances.
+        """
+        if not rules_by_key or source_entity is None or target_entity is None:
+            return None
+        return rules_by_key.get(
+            (source_entity.type, target_entity.type, rel_type))
+
+    def _apply_declared_rule(
+        self, edge: TwinEdge, rule: Optional[Dict[str, Any]],
+    ) -> None:
+        """Overlay a declared relationship rule onto an edge, in place.
+
+        ONE implementation, called from both builders. The temporal
+        block was previously read only inside ``_build_edge``; a second copy
+        here is the shape that drifts, and this file already carries two
+        docstrings about readers that disagreed because the same fact was
+        read in two places.
+        """
+        if not rule:
+            return
+        temporal_block = rule.get('temporal') or {}
+        if temporal_block:
+            edge.propagation_delay_s = float(temporal_block.get(
+                'propagation_delay_s', edge.propagation_delay_s))
+            edge.time_constant_s = float(temporal_block.get(
+                'time_constant_s', edge.time_constant_s))
+            edge.coupling_strength = float(temporal_block.get(
+                'coupling_strength', edge.coupling_strength))
+            try:
+                edge.response_model = ResponseModel(
+                    temporal_block.get('response_model',
+                                       edge.response_model.value))
+            except ValueError:
+                pass
+        transitions, gaps = self._transitions_from_rule(
+            rule, edge.source_id, edge.target_id)
+        edge.transitions = transitions
+        edge.gaps = list(edge.gaps) + gaps
+        # The edge IS declared, and `source` is the field that says so. It
+        # read `auto` for every edge on this path, including edges a model
+        # author wrote a rule for.
+        edge.source = EdgeSource.YAML
+        edge.confidence = 1.0
+
+    @staticmethod
+    def _transitions_from_rule(
+        rule: Dict[str, Any], source_id: str, target_id: str,
+    ) -> Tuple[List[Transition], List[TopologyGap]]:
+        """Read `transition:` off a relationship rule.
+
+        Accepts a single mapping or a list of them, because one
+        relationship can drive more than one property. Returns the
+        transitions it could build AND a gap for every block it refused, so a
+        partial declaration is REPORTED rather than dropped: a block that
+        names `from` and `to` and forgets `gain` is an author who meant to
+        declare a coupling, and silently building an edge without one turns
+        that into a value nobody projects and nobody asks about.
+
+        Nothing here is defaulted. `REQUIRED_TRANSITION_KEYS` is the whole
+        contract and a missing member names itself in the gap.
+        """
+        raw = rule.get('transition')
+        if not raw:
+            return [], []
+        blocks = raw if isinstance(raw, list) else [raw]
+        transitions: List[Transition] = []
+        gaps: List[TopologyGap] = []
+        location = f"{source_id}->{target_id}"
+        for index, block in enumerate(blocks):
+            if not isinstance(block, dict):
+                gaps.append(TopologyGap(
+                    gap_type=GapType.MISSING_DECLARATION,
+                    location=location,
+                    description=(
+                        f"transition[{index}] on {rule.get('type', '?')} is "
+                        f"{type(block).__name__}, not a mapping"),
+                    discovered_during="build",
+                ))
+                continue
+            missing = [k for k in REQUIRED_TRANSITION_KEYS
+                       if block.get(k) is None]
+            if missing:
+                gaps.append(TopologyGap(
+                    gap_type=GapType.MISSING_DECLARATION,
+                    location=location,
+                    description=(
+                        f"transition[{index}] is missing "
+                        f"{', '.join(missing)}; a transition without all of "
+                        f"{', '.join(REQUIRED_TRANSITION_KEYS)} is not "
+                        f"completed with a default"),
+                    discovered_during="build",
+                ))
+                continue
+            # `gain: estimate` declares the pair and withholds the
+            # number. Checked before the float conversion, because `estimate`
+            # is not a malformed gain; it is a different kind of claim.
+            estimated = (isinstance(block.get('gain'), str)
+                         and block['gain'].strip().lower()
+                         == ESTIMATE_SENTINEL)
+            try:
+                gain = 0.0 if estimated else float(block['gain'])
+                offset = float(block.get('offset', 0.0))
+            except (TypeError, ValueError):
+                gaps.append(TopologyGap(
+                    gap_type=GapType.MISSING_DECLARATION,
+                    location=location,
+                    description=(
+                        f"transition[{index}] declares a non-numeric gain "
+                        f"{block.get('gain')!r}"),
+                    discovered_during="build",
+                ))
+                continue
+            transitions.append(Transition(
+                from_property=str(block['from']),
+                to_property=str(block['to']),
+                gain=gain,
+                source=str(block['source']),
+                estimated=estimated,
+                offset=offset,
+                clamp_to_bounds=bool(block.get('clamp_to_bounds', False)),
+            ))
+        return transitions, gaps
 
     def _index_rules(
         self, rules: List[Dict],
@@ -409,6 +604,12 @@ class TopologyBuilder:
 
         conservation_tol = float(rule.get('conservation_tolerance', 0.05))
 
+        # declared value dynamics. The gaps ride on the edge so the
+        # traverser can report a refused block at the point a caller asks for
+        # the value it would have produced.
+        transitions, transition_gaps = self._transitions_from_rule(
+            rule or {}, source_id, target_id)
+
         return TwinEdge(
             source_id=source_id,
             target_id=target_id,
@@ -426,6 +627,8 @@ class TopologyBuilder:
             observation_count=obs_count,
             confidence=1.0 if rule else 0.5,
             source=EdgeSource.YAML if rule else EdgeSource.AUTO_DISCOVERY,
+            transitions=transitions,
+            gaps=transition_gaps,
         )
 
     def _detect_unobserved_target_types(

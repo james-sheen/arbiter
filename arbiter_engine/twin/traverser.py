@@ -33,6 +33,7 @@ from .topology import (
     TopologyQuestion, ProjectedValue,
     TraversalDirection, ValueMode, EdgeDirection, FlowType,
     GapType, ResolutionStrategy,
+    TransitionApplied, SimulationDecline,
 )
 from ..axiom_thresholds import (
     resolve_axiom_threshold,
@@ -99,6 +100,23 @@ def suggest_flow_direction(prop_name: str) -> Optional[str]:
     return None
 
 
+#: the prefix on a finding drawn from a value that is not a reading.
+#:
+#: `forecast/shadow.py` already prefixes `forecast_` for findings about a
+#: forecast a PRODUCER supplied, and this is deliberately not that. The engine
+#: separates its own output from a producer's everywhere else -- the
+#: `project` verb's result is never counted as a bridge's forecast -- and a
+#: what-if is the engine imagining, not a producer predicting. One prefix for
+#: both would make `forecast_boundedness:x` mean two different things
+#: depending on which verb produced it, which is the collision the prefix
+#: exists to prevent.
+#:
+#: The rule is per-VALUE, not per-verb: a HYPOTHETICAL walk reads most of the
+#: topology at its current reading, and a finding drawn from a real reading is
+#: a real finding whichever walk found it.
+IMAGINED_PREFIX = "imagined_"
+
+
 class TopologyTraverser:
     """Unified traversal engine for the Digital Twin topology."""
 
@@ -158,6 +176,18 @@ class TopologyTraverser:
         result = TraversalResult()
         visited: Set[str] = set()
 
+        # value propagation. `imagined` holds per-node DELTAS away
+        # from the node's current reading, accumulated as in-edges are walked;
+        # `_get_values` overlays them. Only PROJECTED and HYPOTHETICAL ask for
+        # values at all, so a CURRENT walk builds none of this and behaves
+        # exactly as it did.
+        simulating = request.value_mode in (
+            ValueMode.PROJECTED, ValueMode.HYPOTHETICAL)
+        imagined: Dict[str, Dict[str, float]] = {}
+        imagined_via: Dict[str, Dict[str, str]] = {}
+        edges_without_dynamics: Set[str] = set()
+        budget_left = max(0, int(request.max_transitions))
+
         # BFS queue: (entity_id, hop, cum_prob, cum_delay, path)
         queue: deque = deque()
         for start_id in request.start_nodes:
@@ -193,12 +223,19 @@ class TopologyTraverser:
                 continue
 
             # Get property values based on value_mode
-            values = self._get_values(node, request)
+            values = self._get_values(node, request, imagined)
+            imagined_properties: Set[str] = set()
+            if simulating:
+                for prop_name, value in values.items():
+                    current = node.entity.properties.get(prop_name)
+                    if isinstance(value, (int, float)) and value != current:
+                        imagined_properties.add(prop_name)
 
             # Evaluate axiom states
             step_violations: List[Problem] = []
             if request.collect_axiom_violations:
-                step_violations, attempted = self._evaluate_axioms(node, values)
+                step_violations, attempted = self._evaluate_axioms(
+                    node, values, imagined_properties)
                 result.problems_detected.extend(step_violations)
                 # Accumulated inside the `collect_axiom_violations`
                 # guard on purpose: with collection off nothing is evaluated,
@@ -260,13 +297,71 @@ class TopologyTraverser:
                         result.conservation_violations.extend(
                             conservation_problems
                         )
+                    # a declared transition on an edge that closes a
+                    # LOOP. This `continue` predates value propagation and was
+                    # right for reachability: a node already visited needs no
+                    # second visit. For a VALUE it is not right, and it was
+                    # silent: A->B->A dropped B's contribution back into A and
+                    # reported A's number as though nothing were missing.
+                    #
+                    # Resolving it needs iteration to a fixpoint, which leaves
+                    # first-order. So the loop is reported and the value is
+                    # not adjusted -- the same choice every other refusal here
+                    # makes. `cycle_unsupported` was in the vocabulary from
+                    # the start and NOTHING COULD REACH IT, because this
+                    # branch returns before the transition code runs: a dead
+                    # member found by constructing the input for each reason
+                    # rather than by grepping for the literal.
+                    if simulating and edge.transitions:
+                        label = f"{current_id}->{next_id}"
+                        decline = SimulationDecline(
+                            reason="cycle_unsupported", location=label,
+                            detail=(
+                                f"this edge closes a loop back to {next_id}, "
+                                f"which this walk has already evaluated; its "
+                                f"contribution is NOT in the reported value, "
+                                f"because resolving a feedback path needs "
+                                f"iteration to a fixpoint and that is not "
+                                f"first-order"))
+                        if decline not in result.simulation_declines:
+                            result.simulation_declines.append(decline)
                     continue
 
                 new_prob = cum_prob * edge.propagation_probability
                 new_delay = cum_delay + edge.propagation_delay_s
 
+                # a DECLARED transition is applied before the
+                # reachability prune, and the prune does not discard the edge
+                # that carries one.
+                #
+                # `propagation_probability` is P(target has a problem | source
+                # has a problem) -- the co-occurrence `weight_learner` fits,
+                # and 0.3 when nothing has been learned. A transition is a
+                # different quantity entirely: a declared coupling between two
+                # VALUES, with no probability attached. Multiplying the two
+                # meant a declared gain three hops out was silenced by an
+                # undeclared default: measured on a four-entity chain, hop 3
+                # fell to 0.027 against `min_probability` 0.05 and the value
+                # was never projected, with nothing said.
+                #
+                # Undeclared edges prune exactly as before, so a topology that
+                # declares no transitions is unaffected.
+                simulated_here = False
+                if simulating:
+                    budget_left = self._apply_transitions(
+                        edge=edge, source_id=current_id, target_id=next_id,
+                        source_values=values, node=node,
+                        cum_delay_at_source=cum_delay,
+                        request=request, result=result,
+                        imagined=imagined, imagined_via=imagined_via,
+                        budget_left=budget_left,
+                        already_final=(next_id in visited),
+                        edges_without_dynamics=edges_without_dynamics,
+                    )
+                    simulated_here = bool(edge.transitions)
+
                 # Pruning
-                if new_prob < request.min_probability:
+                if new_prob < request.min_probability and not simulated_here:
                     continue
                 if new_delay > request.max_delay_s:
                     continue
@@ -313,6 +408,10 @@ class TopologyTraverser:
                     ))
 
         result.total_nodes_visited = len(visited)
+        if simulating:
+            self._finalise_simulation(
+                result, request, imagined, imagined_via, visited,
+                edges_without_dynamics)
         result.traversal_time_ms = (time.monotonic() - start_time) * 1000
         self.topology.last_traversal_at = now_utc()
 
@@ -619,24 +718,237 @@ class TopologyTraverser:
 
     def _get_values(
         self, node: TwinNode, request: TraversalRequest,
+        imagined: Optional[Dict[str, Dict[str, float]]] = None,
     ) -> Dict[str, Any]:
-        """Get property values based on value_mode."""
+        """Get property values based on value_mode.
+
+        ``imagined`` carries the DELTAS this traversal derived from
+        declared transitions, and is overlaid last. Before it existed this
+        method overlaid and never derived: a HYPOTHETICAL walk moved the
+        properties the caller named on the nodes the caller named, and every
+        other node in the topology was read at its present value. So a
+        what-if on a pump reported which tank was reachable and reported the
+        tank's level unchanged.
+
+        ``None`` reproduces exactly the old behaviour, which is what a
+        CURRENT-mode walk wants: it asks for no values, so it derives none.
+        """
         if request.value_mode == ValueMode.CURRENT:
             return dict(node.entity.properties)
-        elif request.value_mode == ValueMode.PROJECTED:
-            values = dict(node.entity.properties)
+        values = dict(node.entity.properties)
+        if request.value_mode == ValueMode.PROJECTED:
             for prop_name, pv in node.projected_values.items():
                 values[prop_name] = pv.value
-            return values
         elif request.value_mode == ValueMode.HYPOTHETICAL:
-            values = dict(node.entity.properties)
-            overrides = request.overrides.get(node.entity.id, {})
-            values.update(overrides)
-            return values
-        return dict(node.entity.properties)
+            values.update(request.overrides.get(node.entity.id, {}))
+        deltas = (imagined or {}).get(node.entity.id) or {}
+        for prop_name, delta in deltas.items():
+            base = values.get(prop_name)
+            if isinstance(base, (int, float)) and not isinstance(base, bool):
+                values[prop_name] = base + delta
+        return values
+
+    def _apply_transitions(
+        self, *, edge, source_id: str, target_id: str,
+        source_values: Dict[str, Any], node: TwinNode,
+        cum_delay_at_source: float, request: TraversalRequest,
+        result: TraversalResult,
+        imagined: Dict[str, Dict[str, float]],
+        imagined_via: Dict[str, Dict[str, str]],
+        budget_left: int, already_final: bool,
+        edges_without_dynamics: Set[str],
+    ) -> int:
+        """Push one edge's declared transitions onto the target's deltas.
+
+        Returns the remaining budget. Every refusal is recorded; none of them
+        is a default.
+        """
+        label = f"{source_id}->{target_id}"
+
+        refused = [g for g in edge.gaps
+                   if g.gap_type is GapType.MISSING_DECLARATION]
+
+        if not edge.transitions:
+            if label in edges_without_dynamics:
+                return budget_left
+            edges_without_dynamics.add(label)
+            if refused:
+                # The author DID declare dynamics here and the block did not
+                # load. Reporting `missing_dynamics` -- *no transition
+                # declared* -- would be false, and false in the direction that
+                # wastes the reader's time: they would go looking for a block
+                # that is sitting in the file in front of them. Say which key
+                # is missing instead.
+                for gap in refused:
+                    result.simulation_declines.append(SimulationDecline(
+                        reason="missing_declaration", location=label,
+                        detail=gap.description))
+                return budget_left
+            # The edge says how fast and how likely, and not how much. That is
+            # a gap in the MODEL, and it already has a name.
+            if True:
+                result.simulation_declines.append(SimulationDecline(
+                    reason="missing_dynamics", location=label,
+                    detail=(f"no transition declared on "
+                            f"{edge.relation_type!r}; the value the caller "
+                            f"asked for is not projected across this edge")))
+                if request.collect_gaps:
+                    gap = TopologyGap(
+                        gap_type=GapType.MISSING_DYNAMICS,
+                        location=label,
+                        description=(
+                            f"edge {label} ({edge.relation_type}) declares no "
+                            f"transition, so no downstream value follows "
+                            f"from it"),
+                        discovered_during="traverse",
+                    )
+                    result.gaps_discovered.append(gap)
+                    result.questions_generated.append(TopologyQuestion(
+                        gap=gap, question_text=gap.question,
+                        priority=self._compute_priority(gap, 1),
+                        context_path=[source_id, target_id],
+                    ))
+            return budget_left
+
+        # A partial block beside valid ones: the valid transitions apply and
+        # the refused one is still reported, because an author who declared
+        # two couplings and got one is exactly who needs telling.
+        for gap in refused:
+            decline = SimulationDecline(
+                reason="missing_declaration", location=label,
+                detail=gap.description)
+            if decline not in result.simulation_declines:
+                result.simulation_declines.append(decline)
+
+        # Time available for the response to develop, measured from when the
+        # SOURCE moved. `response_fraction` subtracts this edge's own
+        # propagation delay internally, so subtracting it here too would
+        # charge it twice -- which reports zero response for the whole window
+        # between one delay and two.
+        elapsed = float(request.horizon_s) - float(cum_delay_at_source)
+
+        for transition in edge.transitions:
+            result.transitions_attempted += 1
+            if transition.estimated:
+                # the pair is declared and the magnitude is not, so
+                # nothing is projected across it. Reported rather than treated
+                # as a zero gain: a zero gain is a claim that the coupling has
+                # no effect, and this says nobody has supplied one yet.
+                result.simulation_declines.append(SimulationDecline(
+                    reason="gain_not_adopted", location=label,
+                    detail=(f"{transition.from_property} -> "
+                            f"{transition.to_property} declares "
+                            f"`gain: estimate`; a fitted gain is a proposal "
+                            f"and projects nothing until it is adopted")))
+                continue
+            if budget_left <= 0:
+                # ONE decline carrying the count, filed in
+                # `_finalise_simulation`. `causal/discovery.py` reports
+                # `pairs_untested` as a single number for the same reason: a
+                # decline per skipped item makes an exhausted budget look like
+                # many different refusals, and buries the one fact the caller
+                # needs, which is how much was left.
+                result.transitions_unapplied += 1
+                continue
+            budget_left -= 1
+
+            base = node.entity.properties.get(transition.from_property)
+            now = source_values.get(transition.from_property)
+            if not isinstance(now, (int, float)) or isinstance(now, bool):
+                result.simulation_declines.append(SimulationDecline(
+                    reason="missing_property", location=label,
+                    detail=(f"{source_id}.{transition.from_property} is not a "
+                            f"number, so no change can be measured from it")))
+                continue
+            if not isinstance(base, (int, float)) or isinstance(base, bool):
+                base = now
+            delta_source = float(now) - float(base)
+            if delta_source == 0.0:
+                continue
+
+            if already_final:
+                # The target was evaluated before this contribution arrived.
+                # Applying it now would leave the reported value disagreeing
+                # with the findings already drawn from it, so it is refused
+                # with the reason that says why: resolving it needs iteration
+                # to a fixpoint, which is not first-order.
+                result.simulation_declines.append(SimulationDecline(
+                    reason="cycle_unsupported", location=label,
+                    detail=(f"{target_id} was already evaluated when this "
+                            f"edge contributed; a feedback path needs "
+                            f"iteration this first-order pass does not do")))
+                continue
+
+            fraction = edge.response_fraction(elapsed)
+            delta_target = (transition.gain * delta_source * fraction
+                            + transition.offset)
+            imagined.setdefault(target_id, {}).setdefault(
+                transition.to_property, 0.0)
+            imagined[target_id][transition.to_property] += delta_target
+            imagined_via.setdefault(target_id, {})[
+                transition.to_property] = transition.source
+            result.transitions_applied.append(TransitionApplied(
+                edge=label, relation_type=edge.relation_type,
+                from_property=transition.from_property,
+                to_property=transition.to_property,
+                delta_source=delta_source, gain=transition.gain,
+                fraction=fraction, delta_target=delta_target,
+                source=transition.source, elapsed_s=elapsed,
+            ))
+        return budget_left
+
+    def _finalise_simulation(
+        self, result: TraversalResult, request: TraversalRequest,
+        imagined: Dict[str, Dict[str, float]],
+        imagined_via: Dict[str, Dict[str, str]],
+        visited: Set[str], edges_without_dynamics: Set[str],
+    ) -> None:
+        """Turn the delta map into absolute values and stamp the assumptions.
+
+        The assumptions are stamped because the engine made them, not because
+        the author declared them -- the same contract
+        `forecast/contract.py` follows when it widens a `mean`+`sigma` record
+        into quantiles and says `gaussian_from_mean_sigma` out loud.
+        """
+        for entity_id, deltas in imagined.items():
+            node = self.topology.get_node(entity_id)
+            if node is None:
+                continue
+            for prop_name, delta in deltas.items():
+                base = node.entity.properties.get(prop_name)
+                if not isinstance(base, (int, float)) or isinstance(base, bool):
+                    continue
+                result.imagined_values.setdefault(entity_id, {})[
+                    prop_name] = float(base) + delta
+                result.imagined_sources.setdefault(entity_id, {})[
+                    prop_name] = imagined_via.get(entity_id, {}).get(
+                        prop_name, "")
+
+        if result.transitions_unapplied:
+            result.simulation_declines.append(SimulationDecline(
+                reason="budget_exhausted",
+                location=f"max_transitions={request.max_transitions}",
+                detail=(f"{result.transitions_unapplied} of "
+                        f"{result.transitions_attempted} transitions were not "
+                        f"applied: the budget was reached. Raise "
+                        f"`max_transitions` to widen the walk.")))
+
+        projected = set(result.imagined_values)
+        result.nodes_not_projected = sorted(
+            n for n in visited
+            if n not in projected and n not in request.start_nodes)
+
+        if result.transitions_applied:
+            result.assumptions.append("linear_superposition")
+            result.assumptions.append("first_order_response")
+            result.assumptions.append("exogenous_inputs_held")
+            if any(t.fraction >= 1.0 for t in result.transitions_applied):
+                result.assumptions.append("steady_state_reached")
+            result.assumptions.append("declared_coupling_not_probability_pruned")
 
     def _evaluate_axioms(
         self, node: TwinNode, values: Dict[str, Any],
+        imagined_properties: Optional[Set[str]] = None,
     ) -> Tuple[List[Problem], int]:
         """Evaluate axiom states against current/projected values.
 
@@ -649,7 +961,18 @@ class TopologyTraverser:
         builder seeded, which is how a walk that evaluated one invariant came
         to report four.
 
-        **BOUNDEDNESS only.** The line this docstring used to carry — "other
+        **BOUNDEDNESS only** — and, until, only HALF of BOUNDEDNESS.
+        The body compared against `warning` and `critical` and never against
+        `lower_warning` / `lower_critical`, so a declared FLOOR was invisible
+        here while `UnifiedAxiomReasoner` reported it: a traversal over a
+        pump below its stall floor returned no finding and an
+        `invariants` denominator saying two invariants had been evaluated.
+        A count that says a check ran is worse than a silent gap, because it
+        is the surface a caller would use to notice one. Both directions are
+        read now; see `TwinBuilder._read_indicator` for the other half of the
+        fix, which is where the floors were being dropped.
+
+        The line this docstring used to carry — "other
         axioms delegate to registered checkers if available" — described an
         intention, not the code: the body has only ever handled BOUNDEDNESS,
         and the `axiom_checkers` constructor argument it referred to was
@@ -664,6 +987,8 @@ class TopologyTraverser:
         """
         problems: List[Problem] = []
         attempted = 0
+        imagined_properties = imagined_properties or set()
+        before = 0
         for key, axiom_state in node.axiom_states.items():
             prop_name = axiom_state.indicator_name
             if not prop_name or prop_name not in values:
@@ -672,7 +997,7 @@ class TopologyTraverser:
             if value is None or not isinstance(value, (int, float)):
                 continue
 
-            # Check BOUNDEDNESS thresholds from evidence
+            # Check BOUNDEDNESS bounds from evidence — both directions.
             if axiom_state.axiom == Axiom.BOUNDEDNESS:
                 # Counted HERE and not at the top of the loop: the two
                 # `continue`s above skip states that were never evaluated, and
@@ -680,8 +1005,11 @@ class TopologyTraverser:
                 # either. The denominator has to mean attempted, so it is
                 # incremented at the point an attempt actually begins.
                 attempted += 1
+                before = len(problems)
                 warning = axiom_state.evidence.get('warning')
                 critical = axiom_state.evidence.get('critical')
+                lower_warning = axiom_state.evidence.get('lower_warning')
+                lower_critical = axiom_state.evidence.get('lower_critical')
                 if critical is not None and value > critical:
                     problems.append(Problem.from_entity(
                         entity=node.entity,
@@ -716,6 +1044,57 @@ class TopologyTraverser:
                             'warning': warning,
                         },
                     ))
+                # the floor half. `elif` against the ceiling chain
+                # deliberately: one reading cannot be both above a ceiling and
+                # below a floor unless the declaration itself is inverted, and
+                # reporting one finding for one reading is what the dedup in
+                # the reasoner assumes.
+                elif lower_critical is not None and value < lower_critical:
+                    problems.append(Problem.from_entity(
+                        entity=node.entity,
+                        problem_type=f'twin_boundedness:{prop_name}',
+                        severity=Severity.CRITICAL,
+                        reason=(
+                            f"{prop_name}={value} is below "
+                            f"lower_critical={lower_critical}"
+                        ),
+                        axiom=Axiom.BOUNDEDNESS,
+                        source_layer=DetectionLayer.ONTOLOGY,
+                        evidence={
+                            'property': prop_name,
+                            'value': value,
+                            'lower_critical': lower_critical,
+                        },
+                    ))
+                elif lower_warning is not None and value < lower_warning:
+                    problems.append(Problem.from_entity(
+                        entity=node.entity,
+                        problem_type=f'twin_boundedness:{prop_name}',
+                        severity=Severity.WARNING,
+                        reason=(
+                            f"{prop_name}={value} is below "
+                            f"lower_warning={lower_warning}"
+                        ),
+                        axiom=Axiom.BOUNDEDNESS,
+                        source_layer=DetectionLayer.ONTOLOGY,
+                        evidence={
+                            'property': prop_name,
+                            'value': value,
+                            'lower_warning': lower_warning,
+                        },
+                    ))
+                # a finding drawn from a value this traversal
+                # IMAGINED says so in its own type. Before this, a what-if
+                # that pushed a pump past its ceiling reported
+                # `twin_boundedness:speed_rpm` -- byte-identical to the
+                # finding a pump actually past its ceiling produces. A reader
+                # holding the two envelopes could not tell "your system is
+                # breaking" from "your model of your system would break".
+                if prop_name in imagined_properties:
+                    for problem in problems[before:]:
+                        problem.problem_type = (
+                            IMAGINED_PREFIX + problem.problem_type)
+                        problem.evidence['imagined'] = True
         return problems, attempted
 
     def _compute_priority(self, gap: TopologyGap, hop: int) -> float:

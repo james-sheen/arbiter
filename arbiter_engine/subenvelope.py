@@ -84,6 +84,12 @@ _SHADOW_VOCABULARY = frozenset({
     "precondition_unmet",          # a subject this session cannot place
     "no_report_probability",       # results, and no declared line for them
     "tail_not_declared",           # the line falls outside the sent quantiles
+    # Records that name a `source` are not a producer's submission,
+    # so the axioms do not run over them. Counted and named in one decline
+    # rather than dropped: the path used to be the only silent skip in
+    # `shadow_entities`, and a batch that was entirely stamped produced a zero
+    # denominator with nothing beside it to say why.
+    "not_a_producers_submission",
     # Every discipline carries this and a standing test says so. The axioms'
     # own enum has `checker_error`, which is a different statement -- that one
     # names a checker that raised, and this one is the discipline itself
@@ -94,6 +100,39 @@ _SHADOW_VOCABULARY = frozenset({
 
 VOCABULARIES: Dict[str, frozenset] = {
     "shadow": _SHADOW_VOCABULARY,
+    "simulation": frozenset({
+        # What a traversal asked for a VALUE and would not produce.
+        "missing_dynamics",      # the edge declares no transition
+        "missing_declaration",   # a `transition:` block missing a required key
+        "missing_property",      # the driving property is absent or not a number
+        "cycle_unsupported",     # a feedback path needs iteration, not one pass
+        "budget_exhausted",      # max_transitions reached; the count is carried
+        "internal_error",
+        # the rollout's own. A rollout can refuse for reasons a
+        # single what-if cannot have: a malformed request, an actuator slower
+        # than the step, and an axiom the reasoner declined over the imagined
+        # state -- the last carrying whatever `NotEvaluatedReason` it gave,
+        # which is why the axiom vocabulary is folded in below rather than
+        # re-listed and left to drift.
+        "malformed_request",
+        "settle_exceeds_step",
+        "unknown_action",
+        "unknown_parameter",
+        "wrong_entity_type",
+        "missing_entity",
+        "malformed_action",
+        "precondition_unmet",
+        "insufficient_samples",
+        # the planner's two. Both are the same refusal in different
+        # places: a choice the model did not supply. `plan` evaluates its
+        # candidates either way and reports what each does; what it will not
+        # do is rank them against an objective nobody declared, or invent the
+        # values to try.
+        "no_objective",
+        "no_candidates",
+        # the pair is declared, the magnitude is not yet.
+        "gain_not_adopted",
+    }) | {reason.value for reason in NotEvaluatedReason},
     "forecasts": frozenset({
         "forecast_missing",     # declared expected, and nothing arrived
         "stale_forecast",       # older than the declared `max_age`

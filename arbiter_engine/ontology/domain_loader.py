@@ -262,12 +262,40 @@ class DomainModel:
     #: so rather than concluding from silence.
     closure: List[str] = field(default_factory=list)
     #: Per-edge semantics, keyed by (source type, target type, relation): which
-    #: edges are CAUSAL, how strongly a fault travels one, and any declared
-    #: unobserved common cause. The format has carried these since the twin
-    #: builder read them, and nothing on the public surface could: `traverse`
-    #: builds its topology from the relationship graph, which has no access to
-    #: them. Carried here so `infer` can read what the author declared.
+    #: edges are CAUSAL, how strongly a fault travels one, any declared
+    #: unobserved common cause, and -- since -- the `transition:` block
+    #: saying which property drives which and by how much.
+    #:
+    #: CORRECTED THE SENTENCE THAT USED TO END THIS COMMENT. It said
+    #: *nothing on the public surface could [read them]: `traverse` builds its
+    #: topology from the relationship graph, which has no access to them* --
+    #: an accurate description of a defect, recorded here as though it were a
+    #: property of the design. `api._build_topology` now passes these to the
+    #: builder the same way passed it the indicators, so a declared
+    #: `temporal:` block reaches the edge a released caller traverses. Before
+    #: that, a rule declaring 120s/600s/0.9 produced an edge carrying
+    #: 60.0/60.0/1.0 and stamped `auto`.
     relationship_rules: List[Dict[str, Any]] = field(default_factory=list)
+    #: the EFFECT model of an operator action, and only that.
+    #:
+    #: `evidence/tech_brief.md` shows the unpublished operator half carrying
+    #: `action_templates:` with an `active_mode_policy` and an
+    #: `approval_chain`. Neither is here and neither belongs here: the open
+    #: engine reports what an action WOULD do and never decides whether it may
+    #: run or dispatches it. What is brought across is the mapping from a
+    #: parameter to the entity property it writes, which is the one fact a
+    #: rollout needs to know where the first delta enters.
+    action_templates: List[Dict[str, Any]] = field(default_factory=list)
+    #: what `plan` is asked to optimise, and what it may spend.
+    #:
+    #: DECLARED, because which objective a plan pursues is a domain question
+    #: and not a property of the arithmetic. Minimising expected findings and
+    #: maximising the chance of clearing a severity are different questions
+    #: with different answers, and an engine that picked one would be deciding
+    #: what the operator cares about. Absent, `plan` reports its candidates
+    #: and ranks nothing -- the same refusal `project` makes when it computes
+    #: a breach probability and no `report_above:` says what counts.
+    planning: Dict[str, Any] = field(default_factory=dict)
     #: When the world this model describes is OPEN, as declared sessions and
     #: holidays. A domain that declares none is always open and behaves exactly
     #: as it did before this existed; one that declares sessions has its
@@ -1164,6 +1192,11 @@ def load_domain(source: Union[str, Path, Dict[str, Any]]) -> DomainModel:
                 domain.get("relationship_rules"), "relationship_rules")
             if isinstance(r, dict)],
         calendar=dict(domain.get("calendar") or {}),
+        action_templates=[
+            t for t in _require_sequence(
+                domain.get("action_templates"), "action_templates")
+            if isinstance(t, dict)],
+        planning=dict(domain.get("planning") or {}),
         indicators=indicators,
     )
 

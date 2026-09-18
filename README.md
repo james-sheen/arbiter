@@ -63,11 +63,11 @@ reason all three exist: the describe payload's nesting moved once between releas
 all, and a consumer who had written against the earlier layout got `None` back from a lookup — which
 reads as *this engine does not support that* rather than *this moved*.
 
-`not_checked` entries carry a reason from a closed vocabulary of thirteen — `not_applicable`,
+`not_checked` entries carry a reason from a closed vocabulary of fourteen — `not_applicable`,
 `insufficient_samples`, `missing_property`, `no_current_value`, `missing_config`,
 `missing_entity_type`, `missing_role`, `no_rule_for_role`, `no_threshold`,
-`precondition_unmet`, `undefined_for_values`, `wrong_indicator_type`, `checker_error` — so a
-decline is data, not a log line.
+`partially_checked`, `precondition_unmet`, `undefined_for_values`, `wrong_indicator_type`,
+`checker_error` — so a decline is data, not a log line.
 
 Three of them will account for most of what you see. `insufficient_samples` reports both the
 count it had and the count it needed, so it tells you how much longer to collect.
@@ -303,7 +303,7 @@ from arbiter_engine import (
 ```
 
 **Thirteen of those are types and the kernel; the fourteenth is a module, and the split is
-deliberate.** `arbiter_engine.api` is the tool surface: nine verbs over a session, each returning the
+deliberate.** `arbiter_engine.api` is the tool surface: eleven verbs over a session, each returning the
 envelope above. Five answer for the eight axioms; four answer for a DISCIPLINE — work of a different
 kind, with its own denominator and its own vocabulary of refusals, reported in a payload beside the
 legs rather than inside them.
@@ -354,7 +354,7 @@ a peer of `Entity`, and flattening them into one namespace would say it was. The
 its membership is documented here and does not change inside a minor version.
 
 Those verbs, and the three session-setup calls beside them, are exposed over MCP by
-`arbiter_engine.mcp.server` — twelve tools, a thin transport over exactly these functions, needing
+`arbiter_engine.mcp.server` — fourteen tools, a thin transport over exactly these functions, needing
 the optional `mcp` extra. That module is a deep path: importable, and not one of the supported names
 above. The sentence here read *the same five … not part of the eleven* through 0.1.16, naming a verb
 count that was never five and a name count two releases stale.
@@ -399,7 +399,7 @@ The engine is open. The knowledge and the operations are not.
 
 ## Status
 
-**v0.1.** 87 Python files, 85 modules importing on the declared dependencies alone, 14 supported
+**v0.2.** 92 Python files, 90 modules importing on the declared dependencies alone, 14 supported
 names — **counted in this repository**, which is the package you are holding.
 
 That basis is stated because it is easy to get wrong in a way nobody notices. The build adds one
@@ -408,7 +408,7 @@ are holding — and this line published the smaller figure until 2026-08-12, whe
 falsify it with `find . -name '*.py' | wc -l`. A checkable false claim, in the Status section of a
 project whose subject is checkable claims. Count the artifact, never an earlier stage of it.
 
-The import figure carries the same hazard one layer down, and it depends on what you have installed. Sweeping the package where `scipy` happens to be present imports 86; on the declared dependencies alone it is the 85 above, because `propagation.lp_confidence` is the one module that needs `scipy` and it is a deep path outside the supported surface. Count the artifact **in the state the reader will have it**, not in the state the person measuring happens to be standing in — this line quoted the with-`scipy` figure until 2026-08-12, which no reader installing normally could reproduce.
+The import figure carries the same hazard one layer down, and it depends on what you have installed. Sweeping the package where `scipy` happens to be present imports 91; on the declared dependencies alone it is the 90 above, because `propagation.lp_confidence` is the one module that needs `scipy` and it is a deep path outside the supported surface. Count the artifact **in the state the reader will have it**, not in the state the person measuring happens to be standing in — this line quoted the with-`scipy` figure until 2026-08-12, which no reader installing normally could reproduce.
 
 **The supported-name count went stale in exactly the way this section warns about.** It read
 `11` for the release that added `SqliteObservationHistory`, `SessionCalendar` and
@@ -417,7 +417,7 @@ heading **14 names**. One number stated twice will drift, and the copy that drif
 reader is looking at while they read the other. It is now derived from `arbiter_engine.__all__`
 by a test rather than typed, which is the only version of this fix that stays fixed.
 
-**And the count is of SUBMODULES: the root package is not one of them.** Walking `arbiter_engine` for what it contains gives 85; adding the package you imported to reach them gives 86. Both are honest and they are answers to different questions, so a reader who recounts and gets one more has not found a defect — they have used the other convention. Stated because someone did exactly that from outside, and a number published without its predicate can only be agreed with or disagreed with, never checked.
+**And the count is of SUBMODULES: the root package is not one of them.** Walking `arbiter_engine` for what it contains gives 90; adding the package you imported to reach them gives 91. Both are honest and they are answers to different questions, so a reader who recounts and gets one more has not found a defect — they have used the other convention. Stated because someone did exactly that from outside, and a number published without its predicate can only be agreed with or disagreed with, never checked.
 
 Honest boundaries, stated because you would otherwise find them yourself:
 

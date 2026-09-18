@@ -230,6 +230,17 @@ class PredictionLedger:
         # /pump-state surface.
         self.evicted_pending = 0
 
+    def _append(self, record: PredictionRecord) -> None:
+        """The ONE place a record enters the ledger.
+
+        four `record_*` methods appended to the deque directly, so a
+        durable backend would have had to override all four and would have
+        gone stale the first time a fifth kind was added. This is the hook a
+        subclass overrides instead; `SqlitePredictionLedger` writes through
+        here and nowhere else.
+        """
+        self._records.append(record)
+
     def _note_eviction(self) -> None:
         if (self._records.maxlen is not None
                 and len(self._records) == self._records.maxlen
@@ -266,7 +277,7 @@ class PredictionLedger:
                 path=tuple(str(n) for n in (getattr(imp, "path", None) or ())),
             )
             self._note_eviction()
-            self._records.append(record)
+            self._append(record)
             ids.append(record.prediction_id)
         return ids
 
@@ -296,7 +307,7 @@ class PredictionLedger:
             indicator=str(indicator) if indicator else None,
         )
         self._note_eviction()
-        self._records.append(record)
+        self._append(record)
         return record.prediction_id
 
     def record_value_prediction(
@@ -329,7 +340,7 @@ class PredictionLedger:
             tolerance=float(tolerance),
         )
         self._note_eviction()
-        self._records.append(record)
+        self._append(record)
         return record.prediction_id
 
     def record_distribution(
@@ -421,7 +432,7 @@ class PredictionLedger:
             source=str(source) if source is not None else None,
         )
         self._note_eviction()
-        self._records.append(record)
+        self._append(record)
         return record.prediction_id
 
     def record_projected_values(

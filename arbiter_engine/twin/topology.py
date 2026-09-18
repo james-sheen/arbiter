@@ -120,6 +120,15 @@ class ProjectedValue:
     confidence: float
     horizon_s: float
     model: str = ""
+    #: where the NUMBER came from, carried so a value produced by a
+    #: declared transition can be told from one fitted off a series. Empty
+    #: means the producer did not say, which is how every value read before
+    #: transitions existed.
+    source: str = ""
+    #: Engine-made assumptions this value rests on, stamped the way
+    #: `forecast/contract.py` stamps `gaussian_from_mean_sigma` rather than
+    #: quietly choosing on the caller's behalf.
+    assumptions: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -225,6 +234,84 @@ class TwinNode:
 
 
 # ---------------------------------------------------------------------------
+# Transition — declared dynamics on an edge
+# ---------------------------------------------------------------------------
+
+#: the keys a `transition:` block must carry to load at all. A block
+#: missing any of them is refused and reported, not completed with a default:
+#: a gain the author did not write is a guess wearing a declaration's clothes,
+#: and the same argument `consistency:` makes about a tolerance and
+#: `homeostasis:` makes about a setpoint applies here with more force, because
+#: a wrong gain moves a NUMBER a reader will act on.
+REQUIRED_TRANSITION_KEYS = ("from", "to", "gain", "source")
+
+#: `gain: estimate` says the author declares the COUPLING and asks
+#: the engine to fit the MAGNITUDE.
+#:
+#: This is what lets a learned gain exist without the engine guessing which
+#: properties are coupled. Pairing every numeric property on one entity with
+#: every numeric property on another and keeping whatever correlates is the
+#: inference this package removed from `role:`, from flow direction and from
+#: `agrees_with:` -- it would find a gain between a pump's run-hours counter
+#: and a tank's level, because both rise.
+#:
+#: So the pair is always declared. Only the number may be learned, the fitted
+#: value is a PROPOSAL until adopted, and a transition carrying it projects
+#: nothing until then.
+ESTIMATE_SENTINEL = "estimate"
+
+
+@dataclass
+class Transition:
+    """How much a target property moves per unit of a source property.
+
+    The edge already carried the TIME COURSE of a propagation
+    (``propagation_delay_s``, ``time_constant_s``, ``response_model``) and had
+    no way to say WHICH property drives WHICH, or by how much. So
+    ``traverse()`` could report that a tank was reachable from a pump with a
+    probability and a delay, and could not report what the tank's level
+    became. This is the missing half.
+
+    ``gain`` is a STEADY-STATE gain in units of ``to_property`` per unit of
+    ``from_property``. The transient comes from the edge's own temporal block
+    through ``TwinEdge.response_fraction``; the two are deliberately separate
+    because the same coupling can be declared with or without a time course,
+    and a model that knows the end state but not the rate should be able to
+    say so.
+
+    ``source`` is the provenance of the NUMBER and is required. ``datasheet``
+    and ``contract`` are claims the author is standing behind; ``measured``
+    and ``estimated`` say a human fitted it; a learned gain carries the
+    identity of whatever produced it. Nothing in the engine infers a
+    transition from a property's name, its units, or a correlation -- the
+    inference the repository spent several releases removing from `role:`,
+    from flow direction and from `agrees_with:`.
+    """
+    from_property: str
+    to_property: str
+    gain: float
+    source: str
+    #: True when the block said `gain: estimate`. The pair is
+    #: declared and the magnitude is not, so `gain` is 0.0 and this
+    #: transition moves NOTHING until a fitted value is adopted. A
+    #: zero-gain transition that reported a value would be the engine
+    #: answering with a number nobody supplied.
+    estimated: bool = False
+    offset: float = 0.0
+    clamp_to_bounds: bool = False
+    #: Sample support behind a fitted gain. Zero for a declared one, and that
+    #: asymmetry is the point: a declaration is not evidence with n=0, it is a
+    #: different KIND of claim.
+    observation_count: int = 0
+    confidence: float = 1.0
+
+    @property
+    def is_declared(self) -> bool:
+        """True when a human wrote this number down rather than fitting it."""
+        return self.source in ("datasheet", "contract", "runbook")
+
+
+# ---------------------------------------------------------------------------
 # TwinEdge
 # ---------------------------------------------------------------------------
 
@@ -255,6 +342,15 @@ class TwinEdge:
     # Learning (absorbs LearnedWeight)
     learned_weight: float = 1.0
     observation_count: int = 0
+
+    #: declared value dynamics, seeded by the builder from the
+    #: relationship rule's `transition:` block. Empty means the edge says how
+    #: FAST and how LIKELY a change propagates and not how MUCH, which is a
+    #: `missing_dynamics` gap the moment a caller asks for a value.
+    #:
+    #: A list because one relationship can drive more than one property: a
+    #: pump feeding a tank moves both its level and its inflow.
+    transitions: List['Transition'] = field(default_factory=list)
 
     # Metadata
     confidence: float = 1.0
@@ -302,6 +398,11 @@ class TraversalRequest:
     flow_filter: Optional[Set[FlowType]] = None
     overrides: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     horizon_s: float = 3600.0
+    #: a ceiling on transitions applied in one walk. Exhausting it
+    #: is a DECLINE carrying the number, never a timeout: `inference/ve.py`
+    #: states the rule this follows -- an engine that does not return is
+    #: worse than one that refuses.
+    max_transitions: int = 100_000
 
 
 @dataclass
@@ -327,9 +428,60 @@ class TopologyQuestion:
 
 
 @dataclass
+class TransitionApplied:
+    """One declared transition, fired across one edge, with its arithmetic.
+
+    Recorded rather than summarised so a reader can reconstruct the
+    number: which edge, which properties, what the source moved by, what
+    fraction of the response the horizon allowed, and where the gain came
+    from. A projected value whose derivation cannot be inspected is the kind
+    of confident number this engine declines to produce.
+    """
+    edge: str                      # "source->target"
+    relation_type: str
+    from_property: str
+    to_property: str
+    delta_source: float
+    gain: float
+    fraction: float
+    delta_target: float
+    source: str
+    elapsed_s: float
+
+
+@dataclass
+class SimulationDecline:
+    """A value this traversal would not compute, and why.
+
+    Mirrors `Decline` in the discipline sub-envelopes rather than importing
+    it: the traverser is below that layer and `api` translates.
+    """
+    reason: str
+    location: str
+    detail: str = ""
+
+
+@dataclass
 class TraversalResult:
     """Output of a topology traversal."""
     steps: List[TraversalStep] = field(default_factory=list)
+    #: the simulation legs. Empty on a CURRENT-mode walk, which
+    #: asks for no values and therefore projects none.
+    transitions_applied: List['TransitionApplied'] = field(
+        default_factory=list)
+    simulation_declines: List['SimulationDecline'] = field(
+        default_factory=list)
+    #: entity_id -> {property -> imagined absolute value}
+    imagined_values: Dict[str, Dict[str, float]] = field(default_factory=dict)
+    #: entity_id -> {property -> provenance of the number}
+    imagined_sources: Dict[str, Dict[str, str]] = field(default_factory=dict)
+    #: Engine-made assumptions the imagined values rest on.
+    assumptions: List[str] = field(default_factory=list)
+    transitions_attempted: int = 0
+    #: Transitions the budget stopped. Reported as ONE decline carrying this
+    #: count, not one decline each.
+    transitions_unapplied: int = 0
+    nodes_not_projected: List[str] = field(default_factory=list)
     total_nodes_visited: int = 0
     problems_detected: List[Problem] = field(default_factory=list)
     impacts_predicted: List[DownstreamImpact] = field(default_factory=list)

@@ -392,6 +392,16 @@ out of the shadow axiom pass, and out of the producer figures. Before the
 parameter existed a bridge's own model was judged as a submission and could raise
 the exit code of the audit it was being measured inside.
 
+**And the exclusion now says so.** Setting `source=` on records you wanted
+shadow-checked used to be undetectable from the envelope: the shadow leg
+reported `checked {entities: 0}` with an empty `not_checked`, which reads
+exactly like a clean run. It now declines `not_a_producers_submission` once,
+carrying `records` and the `sources` it set aside. **Look for your own
+`model_id` in that list** — the engine stamps its own projections and its own
+random walks, so a non-empty list is normal and yours being in it is not. The
+count alone will not tell you: filing three stamped records sets aside six,
+because a random walk is fitted and stamped beside each one.
+
 **History before ingest, and the ordering is load-bearing.** Filing a forecast
 fits a random walk beside it on the history the session is holding *at that
 moment*, and that baseline is what the forecast is later raced against. Ingest

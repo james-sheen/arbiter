@@ -42,12 +42,13 @@ from typing import Any, Dict, List
 
 from arbiter_engine.api import (
     EngineSession, attest, check, discover, entail, gaps, infer,
-    model_describe, project, traverse,
+    model_describe, plan, project, rollout, traverse,
 )
 from arbiter_engine.envelope import Envelope, unavailable_envelope
 
 #: The primitives, in the order that an internal ruling lists them, plus `project`
-#: since 2026-09-16. Each entry is the
+#: since 2026-09-16 and `rollout` / `plan` since and.
+#: Each entry is the
 #: name, a one-line description for the client, and the JSON-Schema input.
 TOOL_SPECS: List[Dict[str, Any]] = [
     {
@@ -282,6 +283,52 @@ TOOL_SPECS: List[Dict[str, Any]] = [
         },
     },
     {
+        "name": "rollout",
+        "description": (
+            "Run the model forward under actions and judge every imagined "
+            "state. Actions are (template, entity_id, parameters, at_s) and "
+            "enter at the step containing their time; declared transitions "
+            "move downstream values each step; the eight axioms are "
+            "evaluated over each imagined state with the imagined history "
+            "behind it. Every finding is prefixed imagined_ so a simulated "
+            "breach can never be read as a live one. The engine proposes and "
+            "never dispatches: a rollout carrying actions reports tier 3."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "actions": {"type": "array"},
+                "horizon_s": {"type": "number"},
+                "step_s": {"type": "number"},
+                "seed_mode": {"type": "string",
+                              "enum": ["current", "projected"]},
+                "max_transitions": {"type": "integer"},
+            },
+        },
+    },
+    {
+        "name": "plan",
+        "description": (
+            "Rank candidate actions by rolling each one forward. The "
+            "objective is declared in the model under `planning:` -- "
+            "expected_findings or clearance_probability -- and WITHOUT one "
+            "every candidate is still evaluated and none is ranked, because "
+            "which objective a plan pursues is a domain question. Candidates "
+            "come from `candidates:` on an action parameter, or are supplied "
+            "by the caller. Doing nothing is always among them. The engine "
+            "proposes and never dispatches."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "candidates": {"type": "array"},
+                "horizon_s": {"type": "number"},
+                "step_s": {"type": "number"},
+                "max_transitions": {"type": "integer"},
+            },
+        },
+    },
+    {
         "name": "add_observations",
         "description": (
             "Feed a series for one entity property. Values are either bare "
@@ -301,6 +348,59 @@ TOOL_SPECS: List[Dict[str, Any]] = [
         },
     },
 ]
+
+def _rollout(session: EngineSession, arguments: Dict[str, Any]) -> Envelope:
+    """Coerce JSON action mappings into `ActionInstance` before dispatch.
+
+    Over the wire an action is a plain object. The verb takes dataclasses, and
+    building them HERE keeps the transport thin in the direction that matters:
+    the MCP layer translates shapes and decides nothing. A malformed action
+    mapping is passed through as an instance with whatever it carried, so the
+    rollout's own refusal vocabulary names the problem rather than this
+    function inventing a second one.
+    """
+    from arbiter_engine.twin.actions import ActionInstance
+
+    instances = []
+    for raw in arguments.get("actions") or []:
+        if not isinstance(raw, dict):
+            continue
+        instances.append(ActionInstance(
+            template=str(raw.get("template", "")),
+            entity_id=str(raw.get("entity_id", "")),
+            parameters=dict(raw.get("parameters") or {}),
+            at_s=float(raw.get("at_s", 0.0) or 0.0),
+        ))
+    return rollout(
+        session, actions=instances,
+        horizon_s=float(arguments.get("horizon_s", 3600.0)),
+        step_s=float(arguments.get("step_s", 60.0)),
+        seed_mode=str(arguments.get("seed_mode", "current")),
+        max_transitions=int(arguments.get("max_transitions", 100_000)),
+    )
+
+
+def _plan(session: EngineSession, arguments: Dict[str, Any]) -> Envelope:
+    """Coerce JSON candidate mappings into `ActionInstance`, as `_rollout` does."""
+    from arbiter_engine.twin.actions import ActionInstance
+
+    candidates = []
+    for raw in arguments.get("candidates") or []:
+        if not isinstance(raw, dict):
+            continue
+        candidates.append(ActionInstance(
+            template=str(raw.get("template", "")),
+            entity_id=str(raw.get("entity_id", "")),
+            parameters=dict(raw.get("parameters") or {}),
+            at_s=float(raw.get("at_s", 0.0) or 0.0),
+        ))
+    return plan(
+        session, candidates=candidates,
+        horizon_s=float(arguments.get("horizon_s", 1800.0)),
+        step_s=float(arguments.get("step_s", 60.0)),
+        max_transitions=int(arguments.get("max_transitions", 100_000)),
+    )
+
 
 def _load_model(session: EngineSession, arguments: Dict[str, Any]) -> Envelope:
     """A feeder answering in the envelope every other tool answers in.
@@ -366,6 +466,8 @@ _HANDLERS = {
     "entail": lambda s, a: entail(s, bool(a.get("adopt", False))),
     "infer": lambda s, a: infer(
         s, a["target"], a.get("do"), a.get("report_above")),
+    "rollout": _rollout,
+    "plan": _plan,
     "load_model": _load_model,
     "add_entity": _add_entity,
     "add_observations": _add_observations,

@@ -147,10 +147,13 @@ def shadow_entities(session: Any) -> Tuple[List[Entity], List[Decline]]:
     """
     by_entity: Dict[str, Dict[str, float]] = {}
     declines: List[Decline] = []
+    #:. WHO WAS SET ASIDE, counted and named. See the decline below.
+    set_aside: Dict[str, int] = {}
     for record in getattr(session.ledger, "pending", lambda: [])():
         if record.kind != "distribution" or not record.quantiles:
             continue
-        if getattr(record, "source", None) is not None:
+        source = getattr(record, "source", None)
+        if source is not None:
             # THE ENGINE'S OWN PROJECTIONS ARE NOT SHADOW-CHECKED HERE. This
             # run exists to put the eight axioms over a forecast SOMEBODY ELSE
             # sent; `run_projection` already judges its own against the same
@@ -159,6 +162,7 @@ def shadow_entities(session: Any) -> Tuple[List[Entity], List[Decline]]:
             # the reference random walk, which nobody claimed, declining
             # `no_report_probability` beside the forecast it is the yardstick
             # for.
+            set_aside[str(source)] = set_aside.get(str(source), 0) + 1
             continue
         median = record.quantiles.get("q50")
         if median is None:
@@ -183,6 +187,47 @@ def shadow_entities(session: Any) -> Tuple[List[Entity], List[Decline]]:
                         "unknown and no indicator can be looked up for it")))
             continue
         by_entity.setdefault(record.entity_id, {})[str(record.indicator)] = float(median)
+
+    if set_aside:
+        # -- ONE DECLINE, COUNTED, NAMING THE SOURCES.
+        #
+        # Every other skip in this loop files a decline, and this docstring
+        # says why: *a forecast that went nowhere is exactly what the ingest
+        # report exists to surface.* The `source is not None` path was the one
+        # exception, and it dropped silently -- so a session whose every filed
+        # record carried a source produced `checked {entities: 0}` with
+        # `not_checked []`. A zero denominator and no reason beside it is the
+        # one shape this envelope is built to never emit.
+        #
+        # THIS IS NOT HYPOTHETICAL. `arbiter-world-model-design-note.md`
+        # Sec. 6.2 instructs a bridge to call `ingest_forecasts` "with a
+        # `source=` naming the producer" -- the exact inversion of the rule,
+        # since `source=` names who is NOT a producer. Measured on a book
+        # declaring a `role: count` indicator and a forecast of -3 for it:
+        # `source=None` checked 1 entity / 2 properties and found
+        # `forecast_impossible_value`; `source="learned-producer"` checked 0
+        # and 0, found nothing, and said nothing. A bridge following that
+        # sentence loses the coherence pass Sec. 6.3 advertises as the whole
+        # reason to route a learned model through this engine, and the
+        # envelope it reads back looks exactly like a clean one.
+        #
+        # NAMED, NOT JUST COUNTED. The count alone says *some records were set
+        # aside* and a bridge author reads it as the engine's own projections,
+        # which is usually true. Their own `model_id` sitting in this list is
+        # what turns a number into a diagnosis.
+        #
+        # ONE DECLINE RATHER THAN ONE PER RECORD, on the precedent
+        # `budget_exhausted` set in the simulation leg: the engine's own
+        # projections are stamped every cycle, and a per-record decline would
+        # bury the interesting case under them.
+        declines.append(Decline(
+            "not_a_producers_submission",
+            {"records": sum(set_aside.values()),
+             "sources": sorted(set_aside)},
+            detail=("these records name a source, which marks them as NOT a "
+                    "producer's submission, so the axioms did not run over "
+                    "them; leave `source=` unset for a forecast you want "
+                    "shadow-checked")))
 
     shadows = []
     for entity_id, properties in sorted(by_entity.items()):
@@ -283,7 +328,19 @@ def run_shadow_check(session: Any) -> SubEnvelope:
 
     findings.extend(_breach_findings(session, declines))
 
-    for problem in getattr(result, "problems", []) or []:
+    # BOTH LEGS. `DetectionResult` separates `problems` from
+    # `warnings`, and this read only the first, so the shadow pass was
+    # silently CRITICAL-ONLY. Measured on a model declaring `warning: 80` and
+    # `critical: 95`: a forecast of 98 produced
+    # `forecast_threshold_exceeded`, a forecast of 85 produced NOTHING, and
+    # no decline said why. *The eight axioms over the forecast itself* is the
+    # claim this function exists to make, and it was making it for one
+    # severity.
+    #
+    # `check` has summed the two legs since it was written and `envelope.py`
+    # does too; this reader and the Monte Carlo one did not.
+    for problem in (list(getattr(result, "problems", []) or [])
+                    + list(getattr(result, "warnings", []) or [])):
         problem.problem_type = f"{SHADOW_PREFIX}{problem.problem_type}"
         findings.append(problem)
     for record in getattr(result, "not_evaluated", []) or []:

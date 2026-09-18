@@ -692,6 +692,144 @@ that carry no such property, each decline — `precondition_unmet` and
 into a 100% deficit reported as a fault in the system, which sends somebody
 looking for a leak that is a missing relationship.
 
+## Dynamics on an edge: `transition`
+
+An edge already says how FAST a change crosses it and how LIKELY a fault is to
+follow it. Neither says how MUCH. A `transition:` block on a relationship rule
+says which property drives which, and by what gain:
+
+```yaml
+relationship_rules:
+  - type: feeds
+    source_type: Pump
+    target_type: Tank
+    temporal:                    # the TIME COURSE -- optional, and separate
+      propagation_delay_s: 120
+      time_constant_s: 600
+      response_model: exponential
+    transition:                  # the MAGNITUDE
+      from: speed_rpm            # a property of the source type
+      to: level_pct              # a property of the target type
+      gain: 0.003                # units of `to` per unit of `from`, at steady state
+      source: datasheet          # datasheet | contract | measured | estimated
+      # offset: 0.0
+      # clamp_to_bounds: false
+```
+
+With this declared, `traverse` in a value mode reports what the downstream
+value BECOMES rather than only who is reachable, and `rollout` steps that
+forward under actions.
+
+**All four of `from`, `to`, `gain` and `source` are required, and a block
+missing any of them is refused rather than completed.** This is the same rule
+`consistency:` follows for its tolerance and `homeostasis:` for its setpoint,
+and it matters more here: a gain nobody declared is a number a reader would
+act on, invented by the engine. A refused block is reported by name — in
+`model_describe` under `transitions.refused_blocks`, before anything is run,
+and again as a `missing_declaration` decline if a traversal needed it.
+
+**`source:` is the provenance of the NUMBER and is not optional.** A gain off a
+datasheet and a gain somebody fitted are different claims, and a reader
+deciding whether to act on a projection is entitled to know which they have.
+
+**An edge without a `transition:` projects nothing across itself, and says
+so.** The decline is `missing_dynamics`, with the question *how fast does a
+change propagate through this edge* — which is the model edit that would
+answer it. Nothing is inferred from a property's name, its units, or a
+correlation between two series; that inference is the class this format
+removed from `role:`, from flow direction and from `agrees_with:`.
+
+**`gain: estimate` declares the coupling and withholds the number.** The
+engine then fits it from observations and reports it under
+`model_describe.proposed_transitions` with its sample count and a confidence
+interval — as a PROPOSAL. A transition carrying it projects nothing and
+declines `gain_not_adopted` until a number is written into the model. This is
+the only way a learned gain comes to exist: the engine never searches for
+which properties are coupled, because that search finds a gain between a
+pump's lifetime run-hours counter and a tank's level, since over any window
+where the pump ran, both rise.
+
+**Where a gain IS declared and the data contradict it, that is a finding and
+never an edit.** The disagreement is reported with both numbers and the
+interval; the declaration is not changed. A declaration is the author's claim
+about the system, and a tool that rewrote its own input would leave nobody
+able to say what the model asserts.
+
+**Several transitions may ride on one rule**, as a list, when one relationship
+drives more than one property. Contributions from concurrent edges to the same
+property ADD, and `linear_superposition` is stamped on any result that relied
+on it.
+
+## Acting on the model: `action_templates`
+
+A rollout needs to know where and when a change enters. An action template
+declares which entity property a parameter writes:
+
+```yaml
+action_templates:
+  - name: throttle_pump
+    applies_to: Pump
+    parameters_schema:
+      speed_rpm:
+        type: number
+        entity_property: speed_rpm   # the property this parameter writes
+    effect: set                      # set | add | scale
+    settle_s: 60                     # 0 is a step
+    source: runbook
+```
+
+**The effect model only.** Whether an action may run, who approves it and how
+it is dispatched are not part of this format and not part of the engine. A
+rollout carrying actions reports `tier: 3` — the same classification a
+hypothetical traversal carrying overrides already reports — and then reports
+what would happen. It never acts.
+
+**`effect:` is declared because the same number means three different things.**
+`set` moves the property to the value, `add` moves it by the value, `scale`
+multiplies it. Nothing about the number says which, so the model does.
+
+## Choosing between actions: `planning`
+
+`rollout` answers *what happens if I do this*. Ranking candidates needs an
+objective, and which objective is a domain question:
+
+```yaml
+planning:
+  objective: expected_findings      # or clearance_probability
+  min_severity: high                # required by clearance_probability
+  max_rollouts: 200
+  max_depth: 1
+
+action_templates:
+  - name: throttle_pump
+    applies_to: Pump
+    parameters_schema:
+      speed_rpm:
+        entity_property: speed_rpm
+        candidates: [1000, 2000, 3000]   # what a planner may try
+```
+
+**Without `planning.objective` every candidate is still evaluated and none is
+ranked.** The rollouts run, each candidate reports what it does, and the
+judgement that is not the engine's to make is not made — the same refusal
+`project` makes when it has computed a breach probability and no
+`report_above:` says what counts.
+
+**`candidates:` is a declaration, not a range to sweep.** A template says which
+property a parameter writes; it does not say which values are worth trying,
+and searching a numeric range the author never wrote would be the engine
+choosing the operating envelope. A template with no `candidates:` is reported
+and not searched, and a caller may pass candidate actions to `plan` instead.
+
+**Doing nothing is always a candidate, and ties break toward fewer actions.** A
+planner that cannot return *leave it alone* will always recommend acting; and
+where acting buys nothing the model can measure, recommending it is worse than
+recommending none, because a person has to carry it out.
+
+**The cost of a finding is derived from `Severity.priority_score`, not declared
+again.** A second severity table is how two parts of one engine come to
+disagree about which finding is worse.
+
 ## When the world is open: `calendar`
 
 Every window in this format is a span of time, and by default that is wall-clock
