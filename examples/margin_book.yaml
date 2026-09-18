@@ -113,9 +113,20 @@ domain:
         horizon: 1h
         lookback: 7d
 
-      # Recorded, carried in history, never judged. It exists so the bound
-      # above has somewhere to be read from. An indicator with no axioms is a
-      # deliberate declaration, not an omission.
+      # Recorded, carried in history, never judged. An indicator with no
+      # axioms is a deliberate declaration, not an omission.
+      #
+      # WHAT IT IS ACTUALLY FOR, corrected in 0.1.17. The comment used to say
+      # it exists so the bound above has somewhere to be read from. That was
+      # never true -- `lower_critical: {from_property: margin_requirement}`
+      # reads the ENTITY property and needs no indicator at all. Declaring it
+      # here was a workaround for two reports that disagreed: the history
+      # report called a fed `margin_requirement` an `undeclared_property`
+      # while the entity report counted it as read, and a replay advanced only
+      # declared indicators, so the floor never moved. Both are fixed. What the
+      # declaration buys now is the SERIES: history for this property is
+      # carried, so a replay can restore it and `unconsumed_observations` has a
+      # denominator for it. Drop it and the bound still resolves.
       - name: margin_requirement
         type: NUMERIC
         axioms: []

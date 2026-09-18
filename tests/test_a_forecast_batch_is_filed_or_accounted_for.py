@@ -95,8 +95,18 @@ def test_an_empty_batch_is_not_an_error():
     # Reported rather than assumed equal to `filed`: a pair with too little
     # history gets none, and *this model did not beat a random walk* must not
     # read the same as *nothing ran a random walk*.
+    #
+    # `raced` joined it next, for the half `baselines` could not carry. A desk
+    # with six forecasts and four baselines could read the shortfall and not
+    # WHICH two went unraced, nor whether the cause was a missing `lookback:`,
+    # a series too short to fit, or a fit that failed -- three different things
+    # to do about it. The count stays; the account sits beside it.
+    #
+    # THE ASSERTION IS STILL EXHAUSTIVE and that is the point of writing it
+    # this way: an added key is a wire change, and it should have to be argued
+    # for here rather than arriving unnoticed.
     assert report == {"received": 0, "filed": 0, "rejected": [],
-                      "baselines": 0}
+                      "baselines": 0, "raced": []}
 
 
 # --- what reaches the ledger -------------------------------------------------

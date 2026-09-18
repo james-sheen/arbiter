@@ -58,7 +58,7 @@ def model_figures(session: Any) -> Dict[str, Dict[str, float]]:
     # yardstick lined up on the grid it was measuring.
     records = [r for r in session.ledger.records()
                if r.kind == "distribution"
-               and getattr(r, "source", None) != SOURCE_ENGINE]
+               and getattr(r, "source", None) is None]
     present = now_utc()
 
     expected = _expected_per_model(session)

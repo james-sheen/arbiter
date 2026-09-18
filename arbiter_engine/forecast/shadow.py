@@ -150,7 +150,7 @@ def shadow_entities(session: Any) -> Tuple[List[Entity], List[Decline]]:
     for record in getattr(session.ledger, "pending", lambda: [])():
         if record.kind != "distribution" or not record.quantiles:
             continue
-        if getattr(record, "source", None) == SOURCE_ENGINE:
+        if getattr(record, "source", None) is not None:
             # THE ENGINE'S OWN PROJECTIONS ARE NOT SHADOW-CHECKED HERE. This
             # run exists to put the eight axioms over a forecast SOMEBODY ELSE
             # sent; `run_projection` already judges its own against the same
@@ -313,7 +313,7 @@ def _breach_findings(session: Any, declines: List[Decline]) -> List[Any]:
     for record in session.ledger.pending():
         if record.kind != "distribution" or not record.quantiles:
             continue
-        if getattr(record, "source", None) == SOURCE_ENGINE:
+        if getattr(record, "source", None) is not None:
             continue            # see `shadow_entities` for why
         entity = session.entities.get(record.entity_id)
         if entity is None or session.model is None:

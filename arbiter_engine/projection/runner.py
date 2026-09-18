@@ -98,6 +98,10 @@ def run_projection(session, horizon_s: float = 3600.0) -> SubEnvelope:
         return SubEnvelope("projection", {"series_seen": 0}, source="unavailable",
                            reason="no domain model loaded")
 
+    # THE VIEW, NOT THE RAW STORE -- open time when a calendar is declared,
+    # and a joined series for a derived indicator. Hoisted out of the loop
+    # because it is rebuilt per call by design.
+    history = session.reading_history()
     for entity in session.entities.values():
         for spec in session.model.indicators.get(entity.type, []) or []:
             if spec.indicator_type is not IndicatorType.NUMERIC:
@@ -146,7 +150,7 @@ def run_projection(session, horizon_s: float = 3600.0) -> SubEnvelope:
                             "there is no span of history to fit on")))
                 continue
 
-            series = session.history.get_values(
+            series = history.get_values(
                 entity.id, spec.property_name, lookback)
             if len(series) < MINIMUM_SAMPLES:
                 declines.append(Decline(
@@ -201,7 +205,18 @@ def run_projection(session, horizon_s: float = 3600.0) -> SubEnvelope:
                         entity_type=entity.type, source=SOURCE_ENGINE)
 
             thresholds, threshold_detail = _thresholds(entity, spec)
-            if not thresholds:
+            # ONE DECLARATION, ONE ANSWER. BOUNDEDNESS and the shadow breach
+            # check decline whenever ANY declared bound fails to resolve; this
+            # reader used to decline only when NONE resolved, so an indicator
+            # with a literal `critical` and an unresolvable per-instance
+            # `lower_critical` got breach probabilities against the ceiling
+            # and silence about the floor -- from the same declaration the
+            # other two readers refused to judge. Measured: `critical: 2000`
+            # plus `lower_critical: {from_property: margin_requirement}` on an
+            # entity carrying no requirement gave BOUNDEDNESS and the shadow a
+            # `no_threshold` naming the missing property, and this reader no
+            # decline at all. A partial band is not a band.
+            if threshold_detail is not None or not thresholds:
                 declines.append(Decline(
                     "no_threshold", scope,
                     detail=(threshold_detail or

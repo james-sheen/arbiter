@@ -20,7 +20,92 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
-Nothing yet.
+**A third static review, reproduced item by item before anything was changed.**
+Thirteen findings, all thirteen confirmed, four worse than filed, none refuted.
+The previous round refuted two of nineteen; this one refuted none, and it also
+withdrew a finding of its own from the round before — which is the first time a
+report here has corrected itself.
+
+### Fixed
+
+- **Four verbs read the feed; `check` read the model.** `project`, `discover`,
+  `traverse` and the random walk filed beside an ingested forecast took
+  `session.history` directly, so a declared `calendar:` and a `derived:`
+  indicator changed the answer for one verb and not the others. Measured on a
+  three-day series at 10:30 inside a 09:30–16:00 session: `lookback: 4h` reached
+  06:31 through the store and the previous afternoon through the view. On a
+  derived indicator the gap was total — `project` declined `insufficient_samples`
+  with `evidence {"n": 0}` while the view could join 200 readings, so the
+  evidence was not a shortfall but a false count. All five readers now take
+  `EngineSession.reading_history()`.
+- **A partially resolved band was projected against and not declined.**
+  BOUNDEDNESS and the shadow breach check decline whenever ANY declared bound
+  fails to resolve; `project` declined only when NONE did. An indicator with a
+  literal `critical` and an unresolvable `{from_property:}` floor therefore got
+  breach probabilities against the ceiling and silence about the floor. Now all
+  three readers decline together, in the resolver's own words. This is the
+  *decline where a guess was previously answered* clause of the compatibility
+  policy, and the measurement is the reason.
+- **Three reports disagreed about which properties a model reads.**
+  `unread_properties` counted indicator names, derived operands and
+  `{from_property:}` sources; `unconsumed_observations` counted only the first,
+  so one report called a fed bound-source `undeclared_property` while its
+  sibling counted it as read. `sync_current_from_history` iterated indicator
+  specs, so **a replay never advanced a per-instance floor at all** — every step
+  after the first checked a moving balance against step one's bound, silently,
+  because the bound still resolved. One definition now
+  (`EngineSession.readable_properties`) feeds all three.
+- **A caller's own reference forecaster was judged as a producer.**
+  `ingest_forecasts` now takes `source=`; a record filed with one is kept out of
+  the producer counts and out of the shadow axiom pass, as the engine's own
+  projections already were. Measured downstream on `margin-book-audit`: a clean
+  three-account book exited 0 with `findings 0`, and 1 with `findings 6` — three
+  of them `forecast_below_critical_threshold` at severity **critical** — purely
+  because a reference forecaster was switched on.
+- **`forecast:` block keys were not validated.** A misspelled `expected_from`
+  reported `missing_property` on `forecasts_expected`, sending the author to look
+  at their feed for a figure their model had caused to be absent. The block's
+  keys are now checked like an indicator's, with `did_you_mean`. `dynamics:` is
+  deliberately still not checked this way: its keys belong to the model.
+
+### Added
+
+- `checked.baselines` and `checked.engine_projections` in the forecasts leg.
+  `checked.reference` counts both and its name reads as though it counted
+  yardsticks only; it keeps its meaning and its value, because renaming a key a
+  reader is already looking up is not something a patch release may do.
+- `raced` in the `ingest_forecasts` report: one row per filed forecast saying
+  whether it got a yardstick and, when it did not, which of five reasons.
+  `baselines: 4` out of six told a desk the shortfall and not which two, nor
+  whether to declare a `lookback:`, feed more history, or read a fit failure.
+- A test deriving the README's supported-name count from `arbiter_engine.__all__`
+  — **the README has claimed since 0.1.16 that this test existed, and it did
+  not.** The count was right only because someone had retyped it.
+
+### Documentation
+
+- **The prediction ledger is in-memory, and the README now says so where the
+  limit bites.** `grade_matured` scores a record only if it is still in the live
+  session's ledger when its horizon passes, so a one-shot process cannot answer
+  *did it beat a random walk* — and feeding already-matured forecasts is declined
+  `stale_forecast`, because the leg asks whether a producer is current and cannot
+  tell late from here-to-be-scored. Stated rather than fixed: a durable ledger is
+  a new public surface with its own compatibility promise.
+- **`.github/PUBLISH_FROM_CI` described a publish path the releases did not
+  take.** It read *no API token is stored anywhere; the index mints a short-lived
+  one per run*. PyPI's own file metadata shows 0.1.14, 0.1.15 and 0.1.16 uploaded
+  without Trusted Publishing, by `twine` from a maintainer's machine, because the
+  reviewed environment gate had not been clicked. The file now separates the path
+  that exists from the path those releases took; the guard behind them is
+  `verify-tag-artifact.yml` comparing the index against the tag after the fact,
+  which is a real check and a weaker one.
+- The README's MCP sentence read *the same five … not part of the eleven*: the
+  server exposes twelve tools and the package exports fourteen names.
+- `clock.py`'s docstring still described the lower-bound-only window 0.1.16 fixed;
+  the schema's description said `dropped_declarations` comes from `check` only,
+  which 0.1.16 also changed; and the shipped `margin_book.yaml` explained its
+  `axioms: []` indicator as existing so a bound had somewhere to be read from,
+  which was never true — it was a workaround for the two reports above.
 
 ## [0.1.16] — 2026-09-17
 

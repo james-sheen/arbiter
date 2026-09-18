@@ -130,6 +130,8 @@ def run_discovery(session, alpha: Optional[float] = None,
 
     series = _numeric_series(session)
     results = []
+    # Same clock for both legs of every pair -- see `reading_history`.
+    history = session.reading_history()
     for entity_a, spec_a, entity_b, spec_b, relation in _ordered_pairs(session, series):
         checked["pairs_seen"] += 1
         pair_name = (f"{entity_a.id}.{spec_a.property_name}"
@@ -145,8 +147,8 @@ def run_discovery(session, alpha: Optional[float] = None,
             checked["pairs_untested"] += 1
             continue
         xa, xb = align(
-            session.history.get_values(entity_a.id, spec_a.property_name, span),
-            session.history.get_values(entity_b.id, spec_b.property_name, span))
+            history.get_values(entity_a.id, spec_a.property_name, span),
+            history.get_values(entity_b.id, spec_b.property_name, span))
         if len(xa) < MINIMUM_PAIRED_SAMPLES:
             declines.append(Decline("insufficient_samples", scope,
                                     evidence={"paired": int(len(xa)),

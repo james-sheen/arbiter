@@ -105,8 +105,10 @@ def as_of(at: datetime) -> Iterator[datetime]:
     Every window, retention cut-off and grading deadline in the engine is
     anchored at ``now_utc()``, so this is the whole of what a replay or a
     backtest needs: feed history once with real timestamps, then step the
-    clock. ``InMemoryObservationHistory.get_values`` computes
-    ``cutoff = now_utc() - window`` and needs no change to follow.
+    clock. ``InMemoryObservationHistory.get_values`` reads
+    ``cutoff = now_utc() - window`` and bounds the far end at ``now_utc()``
+    too, so a step reads the span that ended at the instant asked for and not
+    the one running past it into the recorded future.
 
     The instant is normalised ONCE, here, by :func:`as_naive_utc` -- so an
     aware ``at`` is converted rather than stripped, and the block cannot

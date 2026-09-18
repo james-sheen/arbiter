@@ -178,6 +178,47 @@ class EngineSession:
                 now - timedelta(seconds=(count - i) * interval_seconds),
             )
 
+    def reading_history(self):
+        """The store every reader should ask, rather than `self.history`.
+
+        `self.history` is what was FED. This is what the model says that feed
+        MEANS: windows in open time when a calendar is declared, and a series
+        for a derived indicator nobody fed directly. The two differ, so a
+        reader that takes the raw store answers a different question from one
+        that takes this -- about the same declaration.
+
+        FOUR READERS TOOK THE RAW STORE while `check` took the view, and the
+        split was invisible because each was correct in isolation. Measured on
+        a three-day series at 10:30 inside a 09:30-16:00 session: a `lookback:
+        4h` reached Thu 06:31 through the store (239 readings, most of them
+        overnight) and Wed 13:01 through the view (1,289 readings, four hours
+        of trading). On a derived indicator the gap is total -- the store holds
+        nothing under that name, so `project` declined `insufficient_samples`
+        with `evidence {"n": 0}` while the view could join 200 readings. That
+        evidence was not a shortfall being reported; it was a false count.
+
+        Built per call, not held: both wrappers are views over a model, and a
+        session whose model is replaced would otherwise carry a view of the old
+        one.
+
+        ORDER MATTERS: the calendar wraps the STORE, and the derived view wraps
+        whatever answers windows. A derived series is joined from operand
+        series, and those operands must already be answering in open time or
+        the join happens on two different clocks.
+        """
+        store = self.history
+        if self.model is None:
+            return store
+        calendar = getattr(self.model, "calendar", None)
+        if calendar:
+            store = CalendarHistory(
+                store, SessionCalendar.from_declaration(calendar))
+        if not any(spec.derived
+                   for specs in (self.model.indicators or {}).values()
+                   for spec in specs):
+            return store
+        return DerivedHistoryView(store, self.model)
+
     def add_relationship(self, source_id: str, relation_type: str,
                          target_id: str) -> None:
         """The third input kind. CONNECTIVITY reads this and nothing else.
@@ -456,10 +497,13 @@ class EngineSession:
         """
         if self.model is None:
             return []
-        declared: Dict[str, set] = {
-            etype: {spec.property_name for spec in specs}
-            for etype, specs in self.model.indicators.items()
-        }
+        # THE SAME SET `unread_properties` USES. Counting only indicator names
+        # here reported a `{from_property:}` bound's source, and the operands
+        # of a derived indicator, as `undeclared_property` -- while the sibling
+        # report on the other input surface counted them as read. One
+        # declaration, two verdicts, and the only way to silence the wrong one
+        # was to declare the property a second time.
+        declared: Dict[str, set] = self.readable_properties()
         records: List[Dict[str, Any]] = []
         for entity_id, prop in self.history.series_keys():
             entity = self.entities.get(entity_id)
@@ -477,6 +521,42 @@ class EngineSession:
                 "reason": reason,
             })
         return records
+
+    def readable_properties(self) -> Dict[str, set]:
+        """Per entity type, every property name the MODEL reads.
+
+        THREE READERS HAD THREE ANSWERS to one question. `unread_properties`
+        counted an indicator's own name, a derived indicator's operands and a
+        `{from_property:}` bound's source; `unconsumed_observations` counted
+        only the first, so feeding a bound's source was reported
+        `undeclared_property` by one report and read by another; and
+        `sync_current_from_history` iterated indicator specs, so a replay never
+        advanced the source of a per-instance bound at all.
+
+        THE REPLAY CASE IS THE ONE THAT BITES. A model whose floor is
+        `lower_critical: {from_property: margin_requirement}` has its floor
+        advanced by nothing: the balance moves with the clock, the requirement
+        stays at whatever was fed at construction, and every step after the
+        first checks today's balance against the first step's floor. Nothing
+        declines, because from the axiom's point of view the bound resolved.
+
+        Derived operands are read by the join, threshold sources by the
+        resolver, and both are declarations -- which is why an author had to
+        declare the source a second time as an `axioms: []` indicator to stop
+        the reports contradicting each other. The shipped example still carries
+        one of those.
+        """
+        if self.model is None:
+            return {}
+        return {
+            etype: ({spec.property_name or spec.name for spec in specs}
+                    | {name for spec in specs if spec.derived
+                       for name in operands_of(spec.derived)}
+                    | {str(source) for spec in specs
+                       for source in (getattr(spec, "threshold_sources", None)
+                                      or {}).values() if source})
+            for etype, specs in self.model.indicators.items()
+        }
 
     def dropped_declarations(self) -> List[Dict[str, Any]]:
         """Declarations the loader did not recognise, so it did not apply them.
@@ -559,15 +639,7 @@ class EngineSession:
         # margin-book bridge were doing. Declaring a thing twice to stop being
         # told it was never declared is a report training authors around
         # itself.
-        declared: Dict[str, set] = {
-            etype: ({spec.property_name or spec.name for spec in specs}
-                    | {name for spec in specs if spec.derived
-                       for name in operands_of(spec.derived)}
-                    | {str(source) for spec in specs
-                       for source in (getattr(spec, "threshold_sources", None)
-                                      or {}).values() if source})
-            for etype, specs in self.model.indicators.items()
-        }
+        declared: Dict[str, set] = self.readable_properties()
         records: List[Dict[str, Any]] = []
         for entity in self.entities.values():
             readable = declared.get(entity.type, set())
@@ -736,39 +808,13 @@ def model_describe(session: EngineSession) -> Envelope:
 
 
 def _history_for(session: EngineSession):
-    """The session's history, able to answer for derived indicators too, and
-    for windows measured in OPEN time when the domain declares a calendar.
+    """The session's reading history. See `EngineSession.reading_history`.
 
-    Wrapped per call rather than held on the session: both wrappers are views
-    over a model, and a session whose model is replaced would otherwise carry
-    a view of the old one.
-
-    THE CALENDAR WAS PARSED AND NEVER READ. `MODELING.md` says declaring one
-    makes `window: 1h` mean an hour of OPEN time; the loader stored the
-    declaration on the model, `CalendarHistory` existed and was exported, and
-    nothing joined them -- so the promise held only for a caller who built the
-    wrapper themselves, which required parsing the domain a second time because
-    `load_model` runs after construction. `unread_fields` did not report it
-    either, so the engine's own reachability report said the declaration was
-    read. That is the fed-but-never-read shape these reports exist to catch,
-    inside the machinery that catches it.
-
-    ORDER MATTERS: the calendar wraps the STORE, and the derived view wraps
-    whatever answers windows. A derived series is joined from operand series,
-    and those operands must already be answering in open time or the join
-    happens on two different clocks.
+    Kept as a module function because callers and tests import it by this
+    name; the logic lives on the session so that `projection`, `causal` and
+    `forecast` can reach it without importing this module.
     """
-    store = session.history
-    if session.model is None:
-        return store
-    calendar = getattr(session.model, "calendar", None)
-    if calendar:
-        store = CalendarHistory(store, SessionCalendar.from_declaration(calendar))
-    if not any(spec.derived
-               for specs in (session.model.indicators or {}).values()
-               for spec in specs):
-        return store
-    return DerivedHistoryView(store, session.model)
+    return session.reading_history()
 
 
 def _derive_current_values(session: EngineSession) -> List[Dict[str, Any]]:
@@ -1001,7 +1047,8 @@ def traverse(session: EngineSession, start_nodes: Sequence[str],
         max_hops=max_hops,
         overrides=dict(overrides or {}),
     )
-    traverser = TopologyTraverser(topology, observation_history=session.history)
+    traverser = TopologyTraverser(
+        topology, observation_history=_history_for(session))
     projected_count = 0
     if value_mode == "projected":
         # the producer must run or PROJECTED silently reads present

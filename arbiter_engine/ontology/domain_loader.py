@@ -364,6 +364,28 @@ class DomainModel:
                             f"only by {names}; add it to this indicator's "
                             f"`axioms:` list, or remove the field"),
                     })
+                # ONE LEVEL DOWN, same rule. `forecast:` is the only
+                # nested block with a closed key set the engine reads by name;
+                # `dynamics:` carries a model's own parameters, which are the
+                # model's to define, so it is deliberately not checked here.
+                forecast_block = spec.forecast_config or {}
+                if isinstance(forecast_block, dict):
+                    for key in sorted(set(forecast_block) - _KNOWN_FORECAST_KEYS):
+                        near = _did_you_mean(
+                            key, sorted(_KNOWN_FORECAST_KEYS), cutoff=0.8)
+                        remedy = (f"`forecast.{key}` is not a key this engine "
+                                  f"reads, so nothing will ever consume it")
+                        if near:
+                            remedy += f" — did you mean `{near}`?"
+                        out.append({
+                            "entity_type": entity_type,
+                            "indicator": spec.name,
+                            "field": f"forecast.{key}",
+                            "reason": "unknown_key",
+                            "read_by": [],
+                            "did_you_mean": near,
+                            "remedy": remedy,
+                        })
                 for key in sorted(typed - _KNOWN_INDICATOR_KEYS):
                     near = _did_you_mean(
                         key, sorted(_KNOWN_INDICATOR_KEYS), cutoff=0.8)
@@ -623,6 +645,17 @@ _SHARED_FIELDS = frozenset({
 #: it because our own documentation offered it, and that cause is closed. The
 #: typo case, which was their stronger argument, is caught regardless.
 _NON_AXIOM_KEYS = frozenset({"plausible_range"})
+
+#: The keys the `forecast:` block carries. A NESTED block is a second surface
+#: with the same failure mode as the first, and it had no check: the loader
+#: stored the mapping whole, `run_forecasts` read `expected`/`models`/`max_age`
+#: and `_expected_per_model` read `expected_from`, and anything else the author
+#: typed was accepted and consumed by nothing. A misspelled `expected_from` did
+#: not report an unknown key -- it reported `missing_property` on
+#: `forecasts_expected`, which sends the author to look at their feed.
+_KNOWN_FORECAST_KEYS = frozenset({
+    "expected", "models", "expected_from", "max_age",
+})
 
 _KNOWN_INDICATOR_KEYS = frozenset({
     "name", "type", "axioms", "window", "warning", "critical", "role",

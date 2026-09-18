@@ -45,20 +45,27 @@ def sync_current_from_history(session: EngineSession, at: datetime,
                               "lookback_s": lookback.total_seconds()}
     if session.model is None:
         return synced
+    # EVERY NAME THE MODEL READS, not only the indicators' own. A bound
+    # declared `{from_property: margin_requirement}` is resolved off the
+    # entity at check time, so a replay that advances the balance and not the
+    # requirement checks every later step against the FIRST step's floor --
+    # silently, because the bound still resolves. Derived operands are the same
+    # argument: the join reads them, so a replay must move them.
+    readable = session.readable_properties()
     for entity in session.entities.values():
-        for spec in session.model.indicators.get(entity.type, []) or []:
-            observations = session.history.get_observations(
-                entity.id, at - lookback, at)
+        observations = session.history.get_observations(
+            entity.id, at - lookback, at)
+        for name in sorted(readable.get(entity.type, set())):
             latest = None
             for observation in observations:
-                if observation.property_name != spec.property_name:
+                if observation.property_name != name:
                     continue
                 if latest is None or observation.timestamp > latest.timestamp:
                     latest = observation
             if latest is None:
                 synced["absent"] += 1
                 continue
-            entity.properties[spec.property_name] = latest.value
+            entity.properties[name] = latest.value
             synced["set"] += 1
     return synced
 

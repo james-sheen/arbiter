@@ -25,7 +25,7 @@ from datetime import timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..clock import now_utc
-from ..projection.projector import SOURCE_ENGINE
+from ..projection.projector import BASELINE_MODEL_ID, SOURCE_ENGINE
 from ..subenvelope import Decline, SubEnvelope
 from .shadow import run_shadow_check
 
@@ -87,10 +87,17 @@ def run_forecasts(session: Any, *,
     # Split by the `source` the filer SET, never by the shape of the id: an id
     # containing a colon is a naming convention, and reading a convention as a
     # fact is the name-heuristic class removed from three axioms.
+    # A PRODUCER'S SUBMISSION IS ONE WITH NO SOURCE. `None` is what the ingest
+    # path sets for a forecast that arrived from outside; the engine stamps its
+    # own, and a caller running a reference forecaster beside the desk's can
+    # now stamp that too. Testing `!= SOURCE_ENGINE` made the engine the only
+    # thing that could be a non-producer, which left a bridge's own yardstick
+    # counted as a submission, judged by the shadow axioms, and able to raise
+    # the exit code of the audit it was supposed to be measured inside.
     distributions = [r for r in every_distribution
-                     if getattr(r, "source", None) != SOURCE_ENGINE]
+                     if getattr(r, "source", None) is None]
     reference = [r for r in every_distribution
-                 if getattr(r, "source", None) == SOURCE_ENGINE]
+                 if getattr(r, "source", None) is not None]
     arrived = {(r.entity_id, str(r.indicator)) for r in distributions}
 
     declines: List[Decline] = []
@@ -170,6 +177,16 @@ def run_forecasts(session: Any, *,
         # unable to tell "no reference was filed" from "references were filed
         # and hidden", so they are counted here instead of disappearing.
         "reference": len(reference),
+        # THE SPLIT, because `reference` counts BOTH kinds and its name reads
+        # as though it counted yardsticks. `project` files its own model under
+        # `<model>:<source>` and a random walk under `baseline_rw`; only the
+        # second is a yardstick. The name is kept and the two counts added
+        # beside it rather than renamed: a rename is not something a patch
+        # release may do to a key a reader is already looking up.
+        "baselines": sum(1 for r in reference
+                         if str(r.model_id) == BASELINE_MODEL_ID),
+        "engine_projections": sum(1 for r in reference
+                                  if str(r.model_id) != BASELINE_MODEL_ID),
         # NEVER SUMMED WITH THE AXIOM DENOMINATOR, like every other discipline.
         "invariants": 0,
     }

@@ -134,3 +134,56 @@ class TestWhenThereIsNoYardstickItSaysSo:
         """A reference that could not be fitted must not cost the batch."""
         session = _session(samples=3)
         assert _feed(session)["filed"] == 1
+
+
+class TestTheAccountSaysWHICHOneWentUnraced:
+    """`baselines: 4` out of six forecasts is a shortfall a desk can read and
+    cannot act on. Which two? And was the cause a missing `lookback:`, a series
+    too short to fit, or a fit that failed -- three different things to do.
+
+    The count stays, because a reader who only wants the headline should not
+    have to walk a list. The account sits beside it.
+    """
+
+    def _report(self):
+        from datetime import datetime, timedelta
+
+        from arbiter_engine.api import EngineSession
+        from arbiter_engine.clock import as_of
+        from arbiter_engine.forecast import ingest_forecasts
+
+        t0 = datetime(2026, 9, 17, 9, 35)
+        session = EngineSession()
+        session.load_model({"domain": {
+            "id": "b", "name": "b", "entity_types": ["A"],
+            "indicators": {"A": [
+                {"name": "fed", "type": "NUMERIC", "axioms": ["BOUNDEDNESS"],
+                 "critical": 5000.0, "window": "1h", "lookback": "7d",
+                 "horizon": "1h"},
+                {"name": "unfed", "type": "NUMERIC", "axioms": ["BOUNDEDNESS"],
+                 "critical": 5000.0, "window": "1h", "lookback": "7d",
+                 "horizon": "1h"},
+            ]}}})
+        session.add_entity("a1", "A", {"fed": 1000.0, "unfed": 1.0})
+        base = t0 - timedelta(days=1)
+        session.add_observations("a1", "fed", [
+            (base + timedelta(minutes=7 * i), 1000.0 + (i % 11))
+            for i in range(50)])
+        rows = [{"model_id": "m1", "entity_id": "a1", "property": name,
+                 "horizon_s": 3600.0, "issued_at": t0 - timedelta(minutes=5),
+                 "quantiles": {"q05": 0.5, "q50": 1.0, "q95": 1.5}}
+                for name in ("fed", "unfed")]
+        with as_of(t0):
+            return ingest_forecasts(session, rows, at=t0)
+
+    def test_the_count_and_the_account_agree(self):
+        report = self._report()
+        filed = [r for r in report["raced"] if r["baseline"] == "filed"]
+        assert len(filed) == report["baselines"]
+
+    def test_the_unraced_one_carries_a_reason_and_not_just_a_gap(self):
+        raced = {r["indicator"]: r["baseline"] for r in self._report()["raced"]}
+        assert raced["fed"] == "filed"
+        assert raced["unfed"] not in (None, "filed", ""), (
+            "a forecast with no yardstick must say why; silence here is the "
+            "shortfall repeated in a second place")

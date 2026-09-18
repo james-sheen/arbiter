@@ -10,9 +10,29 @@ undone:
      environment and the job fails at start rather than uploading unreviewed.
 
   2. A PyPI trusted publisher on `arbiter-engine` naming this repository, the
-     workflow file `release.yml`, and the `pypi` environment. No API token is
-     stored anywhere; the index mints a short-lived one per run. Remove the
-     publisher and the job fails to authenticate.
+     workflow file `release.yml`, and the `pypi` environment. When the job runs,
+     no API token is involved: the index mints a short-lived one for that run.
+     Remove the publisher and the job fails to authenticate.
+
+WHAT THIS FILE DESCRIBES IS THE PATH THAT EXISTS, NOT THE PATH EVERY RELEASE
+TOOK. Through 0.1.16 it read as though it were both, and it was not: PyPI's own
+file metadata shows 0.1.14, 0.1.15 and 0.1.16 uploaded WITHOUT Trusted
+Publishing, by `twine` from a maintainer's machine. The publish job is gated on
+a reviewed environment and the reviewer had not clicked, so the distributions
+were built and uploaded by hand instead, and the guard this file describes did
+not act on any of the three.
+
+That matters to exactly one kind of reader -- somebody asking whether a
+published artifact was built from the tag by CI -- and it is the reader this
+file was written for. For those three releases the answer is no; what stands
+behind them is `verify-tag-artifact.yml`, which compares the sdist on the index
+against the tree the tag names AFTER the fact. An after-the-fact comparison is
+a real check and a weaker one than a build path, and the difference should be
+read here rather than inferred from a paragraph that describes the stronger
+thing.
+
+Corrected 2026-09-18, from outside: a review read PyPI's `Uploaded via` field
+and this file, and found they disagreed.
 
 Both are settings, not code, so neither shows up in a diff. That is why this
 file says what they are: a reader who finds the publish job enabled can check

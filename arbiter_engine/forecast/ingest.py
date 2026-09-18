@@ -25,7 +25,7 @@ producer's own record named. Two readers, two audiences, one rule each.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Optional, Tuple
 
 from ..clock import as_naive_utc, now_utc
 from .contract import Forecast, ForecastRejected, parse_forecast
@@ -44,19 +44,36 @@ def _indicator_for(session: Any, entity: Any, property_name: str) -> Any:
 
 
 def ingest_forecasts(session: Any, records: Iterable[Any], *,
-                     at: Optional[datetime] = None) -> Dict[str, Any]:
+                     at: Optional[datetime] = None,
+                     source: Optional[str] = None) -> Dict[str, Any]:
     """Parse, check against the model, file into the ledger, report the rest.
 
-    Returns ``{received, filed, rejected: [...]}``. ``filed`` and the length of
-    ``rejected`` sum to ``received`` -- every record is accounted for, which is
-    the denominator discipline the top-level envelope applies to checks and
-    which an input surface has exactly as much need of.
+    Returns ``{received, filed, rejected: [...], baselines, raced}``. ``filed``
+    and the length of ``rejected`` sum to ``received`` -- every record is
+    accounted for, which is the denominator discipline the top-level envelope
+    applies to checks and which an input surface has exactly as much need of.
+
+    ``source`` SAYS WHO FILED THESE, and defaults to ``None`` meaning *a
+    producer sent them*. A caller running its own reference forecaster beside
+    the desk's had no way to say so, and the consequence was not cosmetic: the
+    shadow axioms ran over the reference's own predictions and reported a
+    `forecast_breach` -- and, when the reference's median sat below a declared
+    floor, a `forecast_below_critical_threshold` at severity CRITICAL, against
+    an account whose real balance was above it. Measured on a clean book: the
+    same audit exited 0 with `findings 0`, and 1 with `findings 6`, purely
+    because a reference was switched on. A yardstick that can fail the run it
+    is measuring is not a yardstick.
+
+    Anything non-``None`` marks the record as NOT a producer's submission: it
+    is excluded from `received`/`arrived`, from the producer figures, and from
+    the shadow axiom pass, exactly as the engine's own projections are.
     """
     present = as_naive_utc(at) if at is not None else now_utc()
     rejected: List[Dict[str, Any]] = []
     filed = 0
     received = 0
     baselines = 0
+    raced: List[Dict[str, Any]] = []
 
     for raw in records:
         received += 1
@@ -65,14 +82,22 @@ def ingest_forecasts(session: Any, records: Iterable[Any], *,
             rejected.append(rejection.to_dict())
             continue
 
-        outcome = _file(session, forecast)
+        outcome = _file(session, forecast, source=source)
         if outcome is None:
             filed += 1
-            baselines += _file_baseline(session, forecast)
+            why = _file_baseline(session, forecast)
+            if why is None:
+                baselines += 1
+            raced.append({"entity_id": forecast.entity_id,
+                          "indicator": forecast.property_name,
+                          "model_id": forecast.model_id,
+                          "baseline": "filed" if why is None else why})
         else:
             rejected.append(outcome.to_dict())
 
     return {"received": received, "filed": filed, "rejected": rejected,
+            # WHICH ONES, not just how many. See `_file_baseline`.
+            "raced": raced,
             # HOW MANY GOT A YARDSTICK. Reported rather than assumed equal to
             # `filed`: a reference needs a series to fit on, and a producer
             # forecasting a pair this session has little history for gets no
@@ -81,8 +106,13 @@ def ingest_forecasts(session: Any, records: Iterable[Any], *,
             "baselines": baselines}
 
 
-def _file(session: Any, forecast: Forecast) -> Optional[ForecastRejected]:
-    """File one parsed forecast, or say why it cannot be."""
+def _file(session: Any, forecast: Forecast, *,
+          source: Optional[str] = None) -> Optional[ForecastRejected]:
+    """File one parsed forecast, or say why it cannot be.
+
+    ``source`` is carried through to the ledger: ``None`` means a producer
+    sent it, anything else names who filed it instead.
+    """
     identity = {"entity_id": forecast.entity_id,
                 "property_name": forecast.property_name,
                 "model_id": forecast.model_id}
@@ -128,6 +158,7 @@ def _file(session: Any, forecast: Forecast) -> Optional[ForecastRejected]:
             # Free here and unrecoverable later: this function resolved the
             # entity two statements ago to check the forecast against the model.
             entity_type=entity.type,
+            source=source,
         )
     except ValueError as exc:
         # The ledger's own rules, reached from a producer's JSON rather than
@@ -138,8 +169,25 @@ def _file(session: Any, forecast: Forecast) -> Optional[ForecastRejected]:
     return None
 
 
-def _file_baseline(session: Any, forecast: Forecast) -> int:
-    """Fit the reference on the same series and horizon, and file it. 1 or 0.
+def _reading_history(session: Any):
+    """`session.reading_history()` when the session offers it, else the store.
+
+    Guarded rather than assumed: this module is imported by callers that build
+    their own session-shaped objects in tests, and a hard attribute access here
+    would turn a missing convenience into an ingest failure.
+    """
+    reader = getattr(session, "reading_history", None)
+    return reader() if callable(reader) else session.history
+
+
+def _file_baseline(session: Any, forecast: Forecast) -> Optional[str]:
+    """Fit the reference on the same series and horizon, and file it.
+
+    Returns ``None`` when one was filed, else the REASON it was not.
+    A bare count told a desk with six forecasts and four baselines
+    nothing about which two were unraced, or whether the cause was a
+    missing `lookback:`, a series too short, or a fit that failed --
+    three different things to do about it.
 
     WHY THIS IS HERE AND NOT ONLY IN `project`. "Does it beat a random walk" is
     the question a forecast is judged by, and the engine kept the yardstick
@@ -162,16 +210,16 @@ def _file_baseline(session: Any, forecast: Forecast) -> int:
     from ..subenvelope import Decline
 
     if forecast.model_id == BASELINE_MODEL_ID:
-        return 0                      # it IS the reference; do not race itself
+        return "is_the_reference"                      # it IS the reference; do not race itself
     entity = getattr(session, "entities", {}).get(forecast.entity_id)
     if entity is None or getattr(session, "model", None) is None:
-        return 0
+        return "no_entity_or_model"
     spec = _indicator_for(session, entity, forecast.property_name)
     if spec is None:
-        return 0
+        return "no_such_indicator"
     lookback = getattr(spec, "lookback", None) or getattr(spec, "time_window", None)
     if lookback is None:
-        return 0
+        return "no_lookback_or_window"
 
     # ONE REFERENCE PER SUBJECT AND INSTANT. Two producers forecasting one pair
     # at one moment are measured against one yardstick; filing a second
@@ -184,17 +232,23 @@ def _file_baseline(session: Any, forecast: Forecast) -> int:
                 and str(record.indicator) == forecast.property_name
                 and record.predicted_at == forecast.issued_at
                 and float(record.horizon_s) == float(forecast.horizon_s)):
-            return 0
+            return "already_filed"
 
     try:
         with as_of(forecast.issued_at):
-            series = session.history.get_values(
+            # THE VIEW, so the reference is fitted on the same series the
+            # producer's forecast will be judged against: open time under a
+            # declared calendar, and a joined series for a derived indicator.
+            # Reading the raw store here meant a derived indicator could be
+            # graded (0.1.16) and still never get a yardstick to be graded
+            # AGAINST -- the comparison silently had one entrant.
+            series = _reading_history(session).get_values(
                 forecast.entity_id, forecast.property_name, lookback)
         scope = {"entity_id": forecast.entity_id,
                  "property": forecast.property_name}
         fitted = PROJECTORS[RandomWalk.name].fit(series, {}, scope)
         if isinstance(fitted, Decline):
-            return 0
+            return "too_little_history"
         session.ledger.record_distribution(
             entity_id=forecast.entity_id,
             property_name=forecast.property_name,
@@ -205,5 +259,5 @@ def _file_baseline(session: Any, forecast: Forecast) -> int:
             entity_type=entity.type,
             source=SOURCE_ENGINE)
     except (ValueError, KeyError, ArithmeticError, TypeError):
-        return 0
-    return 1
+        return "fit_failed"
+    return None          # filed

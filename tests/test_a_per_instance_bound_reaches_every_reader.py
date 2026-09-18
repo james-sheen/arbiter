@@ -142,3 +142,50 @@ class TestTheBoundIsRESOLVEDOntoTheShadowAndNotTheSourceProperty:
             shadows, _declines = shadow_entities(session)
         assert len(shadows) == 1
         assert "margin_requirement" not in shadows[0].properties
+
+
+class TestAPartiallyResolvedBandIsNotABand:
+    """The gap the parametrised cases above could not see.
+
+    Each of those declares ONE bound and varies its form, so `thresholds` is
+    either full or empty and every reader agrees. Mix them -- a literal
+    `critical` that resolves beside a `{from_property:}` floor that does not --
+    and the readers split: BOUNDEDNESS and the shadow check decline whenever
+    ANY bound fails to resolve, while `project` declined only when NONE did.
+
+    So a desk declaring a ceiling and a per-instance floor, on an account whose
+    requirement had not arrived, got breach probabilities against the ceiling
+    and silence about the floor. The floor is the one that matters on a margin
+    book, and the silence is indistinguishable from the floor being fine.
+    """
+
+    def _mixed(self):
+        session = _session(literal=False)
+        specs = session.model.indicators["Account"]
+        balance = next(s for s in specs if s.name == "margin_balance")
+        balance.critical_threshold = 2000.0        # resolves
+        session.entities["acct_01"].properties.pop("margin_requirement")
+        return session                              # the floor does not
+
+    def test_project_declines_like_the_axioms_do(self):
+        declines = _projection(self._mixed())["not_checked"]
+        offending = [d for d in declines
+                     if d["reason"] == "no_threshold"
+                     and d.get("property") == "margin_balance"]
+        assert offending, (
+            "`project` computed breach probabilities against the bound that "
+            "resolved and said nothing about the one that did not; "
+            "BOUNDEDNESS and the shadow check both decline this cell")
+
+    def test_the_decline_names_the_property_it_went_looking_for(self):
+        declines = _projection(self._mixed())["not_checked"]
+        offending = [d for d in declines
+                     if d["reason"] == "no_threshold"
+                     and d.get("property") == "margin_balance"]
+        assert "margin_requirement" in (offending[0].get("detail") or ""), (
+            "the decline must carry the resolver's own sentence, not the one "
+            "for a model that declared nothing")
+
+    def test_the_shadow_agrees(self):
+        declines = _shadow(self._mixed())["not_checked"]
+        assert any(d["reason"] == "no_threshold" for d in declines)

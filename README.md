@@ -353,9 +353,11 @@ serve a different caller: an agent invoking tools, not a library user composing 
 a peer of `Entity`, and flattening them into one namespace would say it was. The module is the promise;
 its membership is documented here and does not change inside a minor version.
 
-The same five are exposed over MCP by `arbiter_engine.mcp.server`, which is a thin transport over
-exactly these functions and needs the optional `mcp` extra. That module is a deep path — importable,
-and not part of the eleven.
+Those verbs, and the three session-setup calls beside them, are exposed over MCP by
+`arbiter_engine.mcp.server` — twelve tools, a thin transport over exactly these functions, needing
+the optional `mcp` extra. That module is a deep path: importable, and not one of the supported names
+above. The sentence here read *the same five … not part of the eleven* through 0.1.16, naming a verb
+count that was never five and a name count two releases stale.
 
 ## What is not here, and why
 
@@ -366,6 +368,17 @@ The engine is open. The knowledge and the operations are not.
   teaching model, deliberately not among them.
 - **The operator half.** Clinic, planning, the Kubernetes executor, the introspection layer. These
   are welded to a running deployment and are not v0.1.
+- **A durable prediction ledger.** `SqliteObservationHistory` persists observations; the ledger that
+  holds forecasts and their grades has no equivalent, and this is a boundary rather than an
+  oversight to route around. `grade_matured` scores a record when its horizon has passed **and the
+  record is still in the live session's ledger**, so *did it beat a random walk* is answerable only
+  by a process that outlives the horizon. A one-shot command that loads a model, ingests a feed and
+  exits will report `calibration` with every rate null, every time — correctly, because nothing in
+  that run matured. Feeding forecasts that have ALREADY matured is not the way around it either: on
+  a model declaring `max_age:` the forecasts leg declines them `stale_forecast`, since the leg is
+  asking whether the producer is current and cannot tell *late* from *here to be scored*. Either
+  keep a session resident across the horizon, or treat calibration as out of reach until the ledger
+  is persistent. Written down because the number's absence otherwise reads as a defect in the feed.
 - **Two lazy imports reach outside the cut, and they behave differently.** One root-cause wiring
   module and an LLM client are imported lazily and are not shipped, so the package still imports
   cleanly. The root-cause wiring **degrades to a no-op** — its callsite is guarded and the feature it
