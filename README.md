@@ -359,6 +359,16 @@ the optional `mcp` extra. That module is a deep path: importable, and not one of
 above. The sentence here read *the same five … not part of the eleven* through 0.1.16, naming a verb
 count that was never five and a name count two releases stale.
 
+**`api` also carries the forecast feeders** — `ingest_forecasts`, `feed_model_figures`,
+`model_figures` and `as_of`. They are feeders rather than verbs, like the three session-setup calls:
+they put something in, and `check` is what reports on it. They live on `api` from 0.1.18 for a
+plain reason — an indicator declaring `forecast: {expected: true}` is waiting for a prediction this
+engine will never make, so a bridge is the only thing that can supply one, and until 0.1.18 there
+was no supported spelling for the call. The first bridge built on this engine reached through
+`arbiter_engine.forecast` and `arbiter_engine.clock` because those were the only paths that
+existed. Both still work and neither is promised. [BRIDGES.md](BRIDGES.md) documents the record
+shape, `source=`, the `raced` vocabulary and the ordering.
+
 ## What is not here, and why
 
 The engine is open. The knowledge and the operations are not.

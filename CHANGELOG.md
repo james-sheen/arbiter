@@ -20,7 +20,125 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
-Nothing yet.
+**A fourth static review, reproduced item by item before anything was changed.**
+Eight findings and eight trivia, all sixteen confirmed. One claim in the report
+was refuted and it was not a finding: the report recorded 0.1.17 as absent from
+PyPI at 05:50Z and 06:05Z, and the files had been live since **05:18:08Z** — the
+project page it fetched was stale for the better part of an hour, which is the
+same surface-disagreement this project has measured four times and the reason a
+single endpoint is never evidence that a release is or is not live.
+
+Two of the sixteen were worse than filed, and both are about a test rather than
+the engine: the `discover` half of the 0.1.17 history fix passed against a
+*total* revert to the raw store, not merely a partial one, and the published
+"typo" turned out to be produced by the scrub rather than written by anyone.
+
+### Fixed
+
+- **A discipline that raised came out of the verb.** `subenvelope.py` carries
+  `internal_error` in all five vocabularies on the argument that *a discipline
+  that raises where it could have declined turns one unanswerable cell into an
+  unanswerable pass*. Nothing produced it: measured on `project`, `discover`,
+  `check`, `entail` and `infer`, an exception inside the discipline propagated
+  straight out. Each verb now has a boundary returning a sub-envelope with
+  `source: unavailable` and one `internal_error` decline carrying `repr(exc)`.
+  The axiom layer already did this (`checker_error`), and so did `traverse`
+  after 0.1.16; this is that rule applied one level up.
+
+- **Six decline reasons had no producer.** `no_tolerance`, `unobservable_state`,
+  `filter_not_converged`, `stale_observation` and `horizon_exceeds_validity`
+  are **withdrawn**, with the note the file already uses twice for the same
+  reason — *a member no input can reach makes the set a worse instrument.* Four
+  of them named a state this filter does not compute; `no_tolerance` named a
+  point prediction, and a `mean` with no `sigma` is refused by the forecast
+  contract before any decline exists. `internal_error` is the sixth and is
+  wired instead of withdrawn. A test now derives the check: every member of
+  every vocabulary must have a producer somewhere in the package.
+
+- **`alignment()` had no reader, and MODELING.md promised what it computes.**
+  The guide says a too-tight `align_tolerance` is distinguishable from an
+  operand feed that stopped, because *the decline says how many points each
+  operand had and how many survived*. Measured: both produced byte-identical
+  `insufficient_samples` declines with `n: 0`. The figures now ride on the
+  declines in `run_projection`, `run_discovery` and — through
+  `sampling_context`, which all four temporal axioms already call — the axiom
+  layer. A 1s tolerance against operands 30s apart now reports
+  `operands {inlet_c: 40, outlet_c: 40}, aligned 0`; an operand never fed
+  reports `outlet_c: 0`.
+
+- **`checked.engine_projections` counted a caller's rows as the engine's.** The
+  split shipped in 0.1.17 alongside the change that let a caller stamp a
+  `source`, and the two were written against each other: anything sourced that
+  was not the random walk was called an engine projection. Measured: a session
+  in which `project` never ran reported `engine_projections: 1`. All three
+  counts are now source-scoped and **partition** `reference`, with
+  `caller_references` added for the third population rather than folding it in.
+
+- **An empty `source=` made a caller a producer.** `str(source) if source else
+  None` folded `""` to `None`, and `None` is the producer predicate — so a
+  falsy source silently put a caller's rows back into the population the
+  parameter exists to keep them out of, judged by the shadow axioms and able to
+  raise an audit's exit code. Now `is not None`.
+
+- **A replay counted names the store cannot hold.** `readable_properties()`
+  answers *what does the model read*, which correctly includes a derived
+  indicator's own name; the replay loop asks the narrower *what can be
+  restored*, and a derived name is never in the store by construction. It
+  counted `absent` once per entity per step, against a floor nobody could
+  reach.
+
+- **The derived join parsed its expression once per point.** Cheap while one
+  reader took that path; 0.1.17 put five on it.
+
+### Added
+
+- **`api.ingest_forecasts`, `api.feed_model_figures`, `api.model_figures` and
+  `api.as_of`.** `api` is one of the fourteen supported names;
+  `arbiter_engine.forecast` and `arbiter_engine.clock` are not, and the README
+  says a deep path may move without a major version. The first bridge built on
+  this engine reached through both, because the flagship example is about a
+  forecast arriving from outside and there was no supported spelling for
+  sending one. Re-exported, not moved: the deep paths keep working.
+
+- **BRIDGES.md documents the forecast ingest path** — the record shape, the
+  three distribution forms, `source=`, the full `raced` vocabulary, the
+  history-before-ingest ordering, and what a one-shot process cannot reach.
+  None of it was documented on any published surface: `issued_at`, `horizon_s`
+  and `quantiles` appeared in no `.md` outside this file.
+
+### Changed
+
+- **The scrub closes a mixed punctuation seam.** Removing an internal reference
+  from *(the scope ruling holds the platform, per CD-N; the server holds
+  neither)* left `platform,;` in the **shipped 0.1.17 wheel**, where an outside
+  reader filed it as a typo. The existing repair collapses a repeat of one mark
+  and this is two different ones. Narrow on purpose: `,;` only, because `, :`
+  is a numpy slice.
+
+### Corrected
+
+- **`raced` defines seven reasons, not the five the 0.1.17 entry claimed.** All
+  seven are now written down in BRIDGES.md, which is the first time the
+  vocabulary has appeared anywhere but the code. Two of them —
+  `no_entity_or_model` and `no_such_indicator` — are unreachable through
+  `ingest_forecasts`, which resolves both before filing.
+
+- **The shipped example's `margin_requirement` comment, for the third time.**
+  0.1.17 replaced one false mechanical claim with another: that declaring the
+  indicator is what carries the series, lets a replay restore it, and gives
+  `unconsumed_observations` a denominator. Measured with and without the
+  declaration — the store holds the same readings, `readable_properties`
+  contains it either way (0.1.17's own fix put it there as a threshold source),
+  the replay restores the same value, and neither report mentions it. What it
+  actually buys is the line above it: an entry in `model_describe`, which is a
+  statement of intent and not a mechanism.
+
+- **Three stale counts.** The MCP shim's docstring said *all five tools* while
+  registering twelve; `api.py`'s own section heading said *the five tools* over
+  nine verbs. Both now name the thing instead of counting it, and the README's
+  tool count, verb count and spelled-out name split are derived by tests —
+  the count test matched digits only, and the same paragraph states the split
+  in words.
 
 ## [0.1.17] — 2026-09-18
 

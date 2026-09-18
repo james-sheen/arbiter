@@ -96,6 +96,19 @@ def sampling_context(history, entity_id: str, property_name: str,
         out["window_seconds"] = window.total_seconds()
     if history is None:
         return out
+    # BEFORE THE EARLY RETURNS BELOW, and that ordering is the whole point. A
+    # derived series whose operands did not align comes back EMPTY, so every
+    # path under here returns before reaching the end -- which is exactly the
+    # case these figures exist to explain. Added where all four temporal
+    # axioms already read their context, so none of them has to know.
+    # Relative, matching this file: it is otherwise relative-only, and an
+    # absolute statement here would put a twelfth file on the build's import-
+    # rewrite surface for no reason. Imported inside the function because
+    # `derived.indicator` imports this module.
+    from .derived.indicator import alignment_evidence
+    alignment = alignment_evidence(history, entity_id, property_name, window)
+    if alignment:
+        out["alignment"] = alignment
     try:
         from datetime import timedelta
         everything = history.get_values(
@@ -1230,6 +1243,7 @@ class CheckOutcome(List["Problem"]):
         total_observations: Optional[int] = None,
         sampling_interval_seconds: Optional[float] = None,
         arms_checked: tuple = (),
+        alignment: Optional[Dict[str, Any]] = None,
     ) -> "CheckOutcome":
         """Record a declined evaluation and return self, for use in a
         checker's early-return line: ``return CheckOutcome().declined(...)``.
@@ -1249,6 +1263,7 @@ class CheckOutcome(List["Problem"]):
             total_observations=total_observations,
             sampling_interval_seconds=sampling_interval_seconds,
             arms_checked=tuple(arms_checked),
+            alignment=alignment,
         ))
         return self
 

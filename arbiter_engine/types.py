@@ -531,6 +531,14 @@ class NotEvaluated:
     #: the reason says part of the axiom was evaluated, and this says which.
     arms_checked: tuple = ()
 
+    #: For a DERIVED indicator: how many points each operand had, how many
+    #: survived the join, and the tolerance that decided it. ``None`` for a
+    #: fed property, which has no join. This is the figure MODELING.md says
+    #: separates a tolerance declared too tightly from an operand feed that
+    #: stopped -- both starve the series, and without this both declined
+    #: `insufficient_samples` with the same counts.
+    alignment: Optional[Dict[str, Any]] = None
+
     @property
     def floor_unreachable_at_this_rate(self) -> bool:
         """True when no amount of further collection can meet the floor.

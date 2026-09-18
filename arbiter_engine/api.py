@@ -32,6 +32,9 @@ from arbiter_engine.axiom_thresholds import (
 from arbiter_engine.envelope import (
     CheckedSummary, Envelope, build_envelope, unavailable_envelope,
 )
+from arbiter_engine.subenvelope import (
+    SOURCE_UNAVAILABLE, Decline, SubEnvelope,
+)
 from arbiter_engine.history.calendar import (
     CalendarHistory, SessionCalendar)
 from arbiter_engine.history.observation import InMemoryObservationHistory
@@ -44,7 +47,10 @@ from arbiter_engine.ontology.axioms.roles import (
 from arbiter_engine.ontology.domain_loader import load_domain
 from arbiter_engine.ontology.reasoner import UnifiedAxiomReasoner
 from arbiter_engine.residual.predict_vs_mirror import PredictionLedger
-from arbiter_engine.forecast import run_forecasts, run_shadow_check
+from arbiter_engine.forecast import (
+    feed_model_figures, ingest_forecasts, model_figures,
+    run_forecasts, run_shadow_check,
+)
 from arbiter_engine.projection import run_projection
 from arbiter_engine.causal.discovery import (
     DEFAULT_LAGS, run_discovery,
@@ -658,8 +664,39 @@ class EngineSession:
 
 
 # =====================================================================
-# The five tools
+# The verbs
 # =====================================================================
+#
+# NINE, not five. The heading said five from the release that had five, and
+# survived four that did not -- the same drift the README's "five tools over
+# MCP" carried until 0.1.17 and the MCP shim's own docstring carried past it.
+# A number written in a comment has no reader that can contradict it, so this
+# one is now a name and not a count.
+
+#: THE FORECAST FEEDERS, RE-EXPORTED ONTO THE SUPPORTED SURFACE.
+#:
+#: `arbiter_engine.api` is one of the fourteen names `__all__` carries;
+#: `arbiter_engine.forecast` and `arbiter_engine.clock` are not, and the README
+#: says plainly that a deep path may move without a major version. The first
+#: consumer built on this engine's flagship example -- `margin_book.yaml`, whose
+#: whole subject is an expectation somebody outside files -- reached through
+#: `arbiter_engine.forecast` to do it, because there was no other way in. That
+#: is a bridge whose `<0.2` ceiling is not a promise the engine made.
+#:
+#: Re-exported rather than moved: `forecast/` keeps the implementation and the
+#: deep path keeps working, so nothing that imports it today breaks. What
+#: changes is that a bridge can now spell it `api.ingest_forecasts` and be
+#: inside the compatibility promise. BRIDGES.md documents the record shape,
+#: `source=`, the `raced` vocabulary and the ordering these require.
+#:
+#: The names are bound by the imports at the top of this module -- there is no
+#: assignment here on purpose, because `x = x` at module scope reads as a
+#: deliberate rebinding and is only noise. `as_of` rides along for the same
+#: reason: filing a forecast means stating WHEN, and a bridge that reached for
+#: `arbiter_engine.clock` to say it was outside the promise too.
+_FEEDERS_ON_THE_SUPPORTED_SURFACE = (
+    "ingest_forecasts", "feed_model_figures", "model_figures", "as_of",
+)
 
 
 def model_describe(session: EngineSession) -> Envelope:
@@ -954,8 +991,22 @@ def check(session: EngineSession) -> Envelope:
     # reason `subenvelope.py` gives: a vocabulary that accepts another
     # discipline's reasons has stopped being evidence about either. Run once,
     # mounted twice, so the two cannot disagree about one cycle.
-    shadow = run_shadow_check(session)
-    payload["forecasts"] = run_forecasts(session, shadow=shadow).to_dict()
+    #
+    # GUARDED SEPARATELY, because they fail separately. `run_forecasts` takes
+    # the shadow run as an argument, so a shadow that raised must still leave a
+    # shadow-shaped object for the forecasts leg to mount -- handing it the
+    # exception, or None, would turn one discipline's failure into the other's.
+    try:
+        shadow = run_shadow_check(session)
+    except Exception as exc:  # noqa: BLE001 - see `_raised`
+        shadow = _raised("shadow", exc,
+                         {"entities": len(session.entities), "evaluated": 0})
+    try:
+        forecasts = run_forecasts(session, shadow=shadow)
+    except Exception as exc:  # noqa: BLE001 - see `_raised`
+        forecasts = _raised("forecasts", exc,
+                            {"expected": 0, "received": 0})
+    payload["forecasts"] = forecasts.to_dict()
     payload["shadow"] = shadow.to_dict()
     return _WithPayload(envelope, payload)
 
@@ -1222,6 +1273,44 @@ def gaps(session: EngineSession,
     return _WithPayload(envelope, payload)
 
 
+def _raised(kind: str, exc: BaseException,
+            denominator: Dict[str, Any]) -> SubEnvelope:
+    """The sub-envelope a discipline that raised should have returned itself.
+
+    `subenvelope.py` keeps `internal_error` in all five vocabularies on one
+    argument: *a discipline that raises where it could have declined turns one
+    unanswerable cell into an unanswerable pass*. Nothing produced it. A raise
+    inside `run_projection`, `run_discovery`, `run_entailment`, `run_inference`,
+    `run_forecasts` or `run_shadow_check` came straight out of the verb --
+    measured on all three of `project`, `discover` and `check` -- so the member
+    was unreachable and the failure it names was the one case unhandled.
+
+    THE SAME RULE THE AXIOM LAYER ALREADY FOLLOWS. `ontology/reasoner.py` turns
+    a raising checker into a `checker_error` decline, and `interfaces.py` guards
+    its own history read with *a decline must not become a crash*. One layer up,
+    `traverse` was given the same treatment in 0.1.16 after an unrecognised
+    `direction` escaped as `KeyError` -- an uncaught exception out of a library
+    whose product is saying what it could not do. This is that fix for the
+    disciplines.
+
+    `source` is `unavailable` and not `live`: the cell was not answered, and a
+    reader who trusts `live` would count a discipline that failed as one that
+    found nothing. `repr` and not `str`, because a bare `KeyError` stringifies
+    to the key alone and reads as data rather than as a failure.
+    """
+    return SubEnvelope(
+        kind=kind,
+        checked=denominator,
+        not_checked=[Decline(
+            "internal_error", {},
+            detail=(f"the {kind} discipline raised and did not complete; "
+                    f"this cell is unanswered, not empty"),
+            evidence={"exception": repr(exc)})],
+        source=SOURCE_UNAVAILABLE,
+        reason=f"{kind} raised {type(exc).__name__}",
+    )
+
+
 def project(session: EngineSession, horizon_s: float = 3600.0) -> Envelope:
     """Forecast every declared numeric indicator, and say what could not be.
 
@@ -1253,7 +1342,11 @@ def project(session: EngineSession, horizon_s: float = 3600.0) -> Envelope:
     if not session.entities:
         return unavailable_envelope("no entities supplied")
 
-    sub = run_projection(session, horizon_s)
+    try:
+        sub = run_projection(session, horizon_s)
+    except Exception as exc:  # noqa: BLE001 - see `_raised`
+        sub = _raised("projection", exc,
+                      {"entities": len(session.entities), "projected": 0})
     envelope = Envelope(
         checked=CheckedSummary(invariants=0, entities=len(session.entities)),
         findings=list(sub.findings),
@@ -1285,10 +1378,15 @@ def discover(session: EngineSession, alpha: Optional[float] = None,
     if not session.entities:
         return unavailable_envelope("no entities supplied")
 
-    sub, proposals = run_discovery(
-        session, alpha=alpha,
-        lags=tuple(lags) if lags else DEFAULT_LAGS,
-        budget_pairs=budget_pairs)
+    try:
+        sub, proposals = run_discovery(
+            session, alpha=alpha,
+            lags=tuple(lags) if lags else DEFAULT_LAGS,
+            budget_pairs=budget_pairs)
+    except Exception as exc:  # noqa: BLE001 - see `_raised`
+        sub, proposals = _raised(
+            "discovery", exc,
+            {"entities": len(session.entities), "pairs_tested": 0}), []
     session.proposed_io_relationships = list(proposals)
     envelope = Envelope(
         checked=CheckedSummary(invariants=0, entities=len(session.entities)),
@@ -1329,7 +1427,12 @@ def entail(session: EngineSession, adopt: bool = False) -> Envelope:
     if session.model is None:
         return unavailable_envelope("no domain model loaded")
 
-    sub, derived = entail_rules(session.model, session.graph, session.entities)
+    try:
+        sub, derived = entail_rules(
+            session.model, session.graph, session.entities)
+    except Exception as exc:  # noqa: BLE001 - see `_raised`
+        sub, derived = _raised("entailment", exc,
+                               {"rules": 0, "facts_derived": 0}), []
     session.derived_facts = list(derived)
     adopted = 0
     if adopt:
@@ -1385,8 +1488,11 @@ def infer(session: EngineSession, target: str,
     if not session.entities:
         return unavailable_envelope("no entities supplied")
 
-    sub = run_inference(session, Query(target=target, do=dict(do or {})),
-                        report_above=report_above)
+    try:
+        sub = run_inference(session, Query(target=target, do=dict(do or {})),
+                            report_above=report_above)
+    except Exception as exc:  # noqa: BLE001 - see `_raised`
+        sub = _raised("inference", exc, {"targets": 1, "answered": 0})
     envelope = Envelope(
         checked=CheckedSummary(invariants=0, entities=len(session.entities)),
         findings=list(sub.findings),

@@ -99,8 +99,19 @@ VOCABULARIES: Dict[str, frozenset] = {
         "stale_forecast",       # older than the declared `max_age`
         "model_unknown",        # a model_id the declaration does not list
         "ungradeable",          # matured with no mirror observation to score on
-        "no_tolerance",         # a point prediction with no declared tolerance
         "internal_error",
+        # WITHDRAWN 0.1.18, on this file's own rule. `no_tolerance` named a
+        # point prediction with no declared tolerance, and no such record can
+        # reach this vocabulary: `contract.py` takes three shapes, all of which
+        # become quantiles, and a `mean` without a finite `sigma` is REJECTED
+        # there as `malformed_forecast` -- "a mean on its own states no
+        # interval". A rejection at the contract is reported in `rejected`,
+        # which is the ingest report's vocabulary and not this one, so the
+        # decline had no path to exist.
+        #
+        # The same argument the entries below already make, applied to itself:
+        # a member no input can reach makes the set a worse instrument. It
+        # returns if a point-forecast shape ever lands.
     }),
     "entailment": frozenset({
         "rule_unreachable",            # a body predicate is not declared
@@ -127,17 +138,31 @@ VOCABULARIES: Dict[str, frozenset] = {
     "projection": frozenset({
         "model_missing",               # no dynamics declared; a default would decide it
         "insufficient_samples",
-        "unobservable_state",
         "unidentifiable_parameter",    # q and r not separable from this series
-        "filter_not_converged",
         "model_inconsistent",          # innovations outside the declared band
         "covariance_unbounded",
-        "stale_observation",
-        "horizon_exceeds_validity",
         "no_threshold",                # nothing to compute a breach probability against
         "no_report_probability",       # a breach probability, and no declared line for it
         "no_lookback",                 # no declared span of history to fit on
         "internal_error",
+        # WITHDRAWN 0.1.18, four at once, for the reason this file already
+        # gives twice: a member no input can reach makes the set a worse
+        # instrument. All four named a state THIS filter does not compute.
+        #
+        # `unobservable_state` and `filter_not_converged` belong to a filter
+        # that reports its own observability and convergence. The local-level
+        # model ships closed-form: it has one state, which is observed by
+        # construction, and no iteration to fail to converge. The member that
+        # DOES fire where they would have is `unidentifiable_parameter`.
+        #
+        # `stale_observation` and `horizon_exceeds_validity` each need a number
+        # nobody declared -- how old is too old, and how far out this model
+        # stays valid. Inventing either is the thing this project refuses: a
+        # floor is a specification, not a guess. A series whose readings all
+        # fall outside the declared `lookback` already declines
+        # `insufficient_samples` with `n: 0`, truthfully. They return with a
+        # `validity:` or a staleness line in the declaration, which would be
+        # the specification these two are currently missing.
     }),
     "inference": frozenset({
         "not_identifiable",            # an open backdoor through a declared latent

@@ -348,6 +348,92 @@ this is the proofreader.
 
 ---
 
+## 3a. Sending a forecast in
+
+`forecast: {expected: true}` says somebody owes this indicator a prediction. The
+engine does not forecast — a forecasting model is domain knowledge, which is the
+one thing it is built not to carry — so **every forecast it judges arrives from
+outside, and a bridge is what carries it.** The shipped `margin_book.yaml`
+example is about nothing else.
+
+This was documented nowhere until 0.1.18, and the consequence was visible in the
+first bridge built on it: with no supported spelling for the call, it reached
+into `arbiter_engine.forecast`, a path this engine's README says may move
+without a major version. **Use `api`.**
+
+```python
+from arbiter_engine.api import EngineSession, as_of, check, ingest_forecasts
+
+with as_of(now):                     # one instant for the whole pass
+    session.add_observations(...)    # HISTORY FIRST -- see below
+    report = ingest_forecasts(session, records, at=now, source=None)
+    envelope = check(session)
+```
+
+**A record.** `model_id`, `issued_at`, `horizon_s`, `entity_id`, `property`, and
+the distribution stated exactly one way — `quantiles` (a mapping of level to
+value, `q05`/`q50`/`q95` required), or `samples`, or `mean` with `sigma`. Two
+shapes in one record is refused rather than merged: two shapes are two claims,
+and choosing between them would score a producer against something they may not
+have meant. A `mean` without a `sigma` is refused for the same reason — a mean
+on its own states no interval.
+
+**Nothing raises and every record is accounted for.** A batch of four hundred
+with three bad records files three hundred and ninety-seven; `filed` plus
+`rejected` equals `received`. Refusing the batch would make one producer's bug
+cost another producer's data.
+
+**`source=` names who is not a producer.** Leave it `None` for a forecast that
+came from a producer — that is the population `check`'s forecasts leg is asking
+about. Set it to anything when *you* generated the row: a bridge running its own
+reference forecaster beside the desk's is supplying the yardstick, not answering
+the question. A sourced record is filed and raced, and is kept out of `received`,
+out of the shadow axiom pass, and out of the producer figures. Before the
+parameter existed a bridge's own model was judged as a submission and could raise
+the exit code of the audit it was being measured inside.
+
+**History before ingest, and the ordering is load-bearing.** Filing a forecast
+fits a random walk beside it on the history the session is holding *at that
+moment*, and that baseline is what the forecast is later raced against. Ingest
+first and the yardstick is fitted on whatever was there — often nothing — so the
+comparison silently runs with one entrant. Nothing declines, because a race with
+one runner still has a winner.
+
+**`raced`**, one row per filed forecast, says whether a yardstick was fitted and
+why not when it was not. The reasons, which are the vocabulary to branch on:
+
+| reason | what it means |
+|---|---|
+| `filed` | a baseline was fitted; this forecast has something to beat |
+| `is_the_reference` | the row's own `model_id` **is** the random walk, so there is nothing to race it against |
+| `no_entity_or_model` | the entity, or the model, is not in the session |
+| `no_such_indicator` | the property is not a declared indicator on that entity |
+| `no_lookback_or_window` | the indicator declares no span to fit on |
+| `already_filed` | a baseline for this pair and horizon exists |
+| `too_little_history` | the span held fewer points than a fit needs |
+| `fit_failed` | the series is there and the fit did not converge |
+
+Note which one `is_the_reference` is about. It keys on the **`model_id`**, not on
+`source=`: a row you stamp with a source is still raced, and still gets a
+yardstick. The two mechanisms are independent and it is easy to read the name as
+the other one.
+
+`too_little_history` and `fit_failed` are both *the baseline could not be built*,
+and they are separated because the repairs differ — feed more history, against
+look at the series you fed.
+
+**What you cannot do from a one-shot process.** The prediction ledger is in
+memory. `grade_matured` scores a record only if it is still in the live session
+when its horizon passes, so a process that starts, ingests and exits reports
+`calibration` with every rate null — correctly. Feeding an already-matured
+forecast declines `stale_forecast` rather than back-scoring it, because the leg
+cannot tell *late* from *here to be scored*. Either keep a session resident
+across the horizon, or treat calibration as out of reach and say so in your
+artifact rather than printing an empty block that reads as *nothing beat the
+baseline*.
+
+---
+
 ## 4. The exit contract
 
 Adopt this verbatim. It is what makes results from different bridges comparable.

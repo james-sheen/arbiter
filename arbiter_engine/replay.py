@@ -52,10 +52,26 @@ def sync_current_from_history(session: EngineSession, at: datetime,
     # silently, because the bound still resolves. Derived operands are the same
     # argument: the join reads them, so a replay must move them.
     readable = session.readable_properties()
+    # MINUS THE DERIVED NAMES. `readable_properties` answers *what does the
+    # model read*, and a derived indicator's own name belongs there -- the
+    # axioms read it. This loop asks a narrower question, *what can be restored
+    # from the store*, and a derived name is never in the store by
+    # construction: the join computes it from operands that are. Counting it
+    # once per entity per step made `absent` a number with a floor nobody could
+    # reach, and a reader chasing it would look for a feed that must not exist.
+    # The operands are still in `readable` and are still restored, which is
+    # what actually moves a derived series.
+    derived = {
+        etype: {spec.property_name or spec.name
+                for spec in specs if getattr(spec, "derived", None)}
+        for etype, specs in session.model.indicators.items()
+    }
     for entity in session.entities.values():
         observations = session.history.get_observations(
             entity.id, at - lookback, at)
-        for name in sorted(readable.get(entity.type, set())):
+        restorable = (readable.get(entity.type, set())
+                      - derived.get(entity.type, set()))
+        for name in sorted(restorable):
             latest = None
             for observation in observations:
                 if observation.property_name != name:

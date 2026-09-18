@@ -155,3 +155,116 @@ class TestTheCountIsStatedMoreThanOnce:
         assert len(stated) <= 1, (
             f"the README states the supported-name count as {sorted(stated)} "
             f"in different places")
+
+
+# --- the numbers the same paragraph states in WORDS --------------------------
+
+#: Written out because the README writes them out. Only as far as the counts
+#: this package can actually reach; a bigger map would be a vocabulary nobody
+#: uses.
+_WORDS = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
+    "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11,
+    "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15,
+    "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19,
+    "twenty": 20,
+}
+_ORDINALS = {
+    "ninth": 9, "tenth": 10, "eleventh": 11, "twelfth": 12,
+    "thirteenth": 13, "fourteenth": 14, "fifteenth": 15, "sixteenth": 16,
+}
+
+
+def _mcp_server():
+    """The MCP shim, in whichever tree this runs in.
+
+    The two trees differ in SHAPE and not only in prefix -- `arbiter_mcp` sits
+    beside the engine package in the repository and is folded in as
+    `<root>.mcp` by the build -- so this tries both rather than deriving one
+    from the anchor.
+    """
+    for path in ("arbiter_engine.mcp.server",
+                 "arbiter_engine.mcp.server"):
+        try:
+            return importlib.import_module(path)
+        except ImportError:
+            continue
+    return None
+
+
+class TestTheProseFormsAreCheckedToo:
+    """The three patterns above match DIGITS. The same paragraph states the
+    split in words -- *thirteen of those are types and the kernel; the
+    fourteenth is a module* -- and a spelled number is exactly as able to drift
+    as a written one, with nothing watching it. It was already the last
+    uncovered copy of this count when the count test was written.
+    """
+
+    def test_the_spelled_split_adds_up_to_the_exported_count(self):
+        text = _readme().read_text(encoding="utf-8")
+        exported = len(_declared_names())
+        match = re.search(
+            r"\*\*(\w+) of those are types and the kernel; "
+            r"the (\w+) is a module", text, re.IGNORECASE)
+        assert match, (
+            "the README no longer states the name split in the form this test "
+            "recognises; if the sentence was rewritten, update the pattern or "
+            "drop this test rather than leaving it matching nothing")
+        types_and_kernel = _WORDS[match.group(1).lower()]
+        total = _ORDINALS[match.group(2).lower()]
+        assert total == exported, (
+            f"the README calls the last name the {match.group(2)!r} of "
+            f"{exported} exported names")
+        assert types_and_kernel + 1 == exported, (
+            f"the README says {match.group(1)!r} of the names are types and "
+            f"the kernel and one more is a module, which totals "
+            f"{types_and_kernel + 1}, against {exported} exported")
+
+
+class TestTheToolAndVerbCountsAreDerivedToo:
+    """`TOOL_SPECS` is the one place that knows how many tools there are, and
+    the README's figure was a second copy of it -- the copy that said *five*
+    through every release that had more, up to twelve. The shim's own docstring
+    said five as well. Three statements of one number, one of which could be
+    checked and was not.
+    """
+
+    def test_the_readme_tool_count_matches_the_registry(self):
+        server = _mcp_server()
+        if server is None:                               # pragma: no cover
+            pytest.skip("the MCP shim is not importable in this tree")
+        text = _readme().read_text(encoding="utf-8")
+        # Anchored on the shim's own name. A bare `(\w+) tools?`
+        # matched the words "invoking tools" thirty lines earlier and
+        # skipped itself with `tool count written as 'the'` -- a test
+        # that reported NOT APPLICABLE about a number it was built to
+        # check, which reads green.
+        match = re.search(r"mcp\.server`?\s*[^\n]*?(\w+) tools\b",
+                          text, re.IGNORECASE)
+        assert match, "the README states no tool count beside the shim"
+        stated = _WORDS.get(match.group(1).lower())
+        if stated is None:                               # pragma: no cover
+            pytest.skip(f"tool count written as {match.group(1)!r}")
+        assert stated == len(server.TOOL_SPECS), (
+            f"the README says {match.group(1)!r} tools; TOOL_SPECS registers "
+            f"{len(server.TOOL_SPECS)}")
+
+    def test_the_readme_verb_count_matches_the_api_surface(self):
+        """A VERB is a tool that is a function on `api`. The other three are
+        feeders and are session methods, which is the distinction the sentence
+        itself draws -- so it is derived here rather than listed."""
+        server = _mcp_server()
+        if server is None:                               # pragma: no cover
+            pytest.skip("the MCP shim is not importable in this tree")
+        verbs = [spec["name"] for spec in server.TOOL_SPECS
+                 if callable(getattr(_anchor, spec["name"], None))]
+        text = _readme().read_text(encoding="utf-8")
+        match = re.search(r"(\w+) verbs\b", text, re.IGNORECASE)
+        assert match, "the README states no verb count"
+        stated = _WORDS.get(match.group(1).lower())
+        if stated is None:                               # pragma: no cover
+            pytest.skip(f"verb count written as {match.group(1)!r}")
+        assert stated == len(verbs), (
+            f"the README says {match.group(1)!r} verbs; `api` carries "
+            f"{len(verbs)} of the {len(server.TOOL_SPECS)} registered tools: "
+            f"{sorted(verbs)}")

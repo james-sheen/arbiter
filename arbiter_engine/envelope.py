@@ -223,6 +223,12 @@ def _not_evaluated_to_dict(record: NotEvaluated) -> Dict[str, Any]:
     # vocabulary exists to make unnecessary.
     if record.arms_checked:
         out["arms_checked"] = list(record.arms_checked)
+    # A DERIVED indicator's join, when there was one. `observations` counts
+    # what survived; on its own it cannot say whether the operands were
+    # missing or merely too far apart to pair, and those are different repairs
+    # -- fix the feed, or widen `align_tolerance`.
+    if record.alignment:
+        out["alignment"] = dict(record.alignment)
     if record.floor_unreachable_at_this_rate:
         out["floor_unreachable_at_this_rate"] = True
         out["remedy"] = (

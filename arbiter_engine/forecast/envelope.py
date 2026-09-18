@@ -183,10 +183,39 @@ def run_forecasts(session: Any, *,
         # second is a yardstick. The name is kept and the two counts added
         # beside it rather than renamed: a rename is not something a patch
         # release may do to a key a reader is already looking up.
-        "baselines": sum(1 for r in reference
-                         if str(r.model_id) == BASELINE_MODEL_ID),
-        "engine_projections": sum(1 for r in reference
-                                  if str(r.model_id) != BASELINE_MODEL_ID),
+        #
+        # THREE POPULATIONS, NOT TWO -- corrected in 0.1.18. The split above
+        # shipped in the same release that widened the producer predicate to
+        # `source is None`, and the two changes were written against each
+        # other: `engine_projections` was everything sourced that was not the
+        # random walk, which had been a sound reading while the engine was the
+        # only thing that could stamp a source. Once a caller could stamp one,
+        # a bridge's own EWMA rows arrived with `source="ewma_v1"` and were
+        # counted as the engine's projections. Measured: a session in which
+        # `project` never ran reported `engine_projections: 1`.
+        #
+        # So the engine's two are matched on the SOURCE IT STAMPS, and a third
+        # count is added for everyone else rather than folding them in --
+        # which would have kept the old number right by making the new one
+        # meaningless.
+        #
+        # ALL THREE ARE SOURCE-SCOPED so they PARTITION `reference` and sum to
+        # it. `baselines` matched on the model id alone, which was the same
+        # bet: that only the engine ever files under `baseline_rw`. A caller
+        # may now stamp a source, and a caller's row named that way would have
+        # been counted as a yardstick the engine filed and as a caller's row
+        # both. A test asserts the sum.
+        "baselines": sum(
+            1 for r in reference
+            if getattr(r, "source", None) == SOURCE_ENGINE
+            and str(r.model_id) == BASELINE_MODEL_ID),
+        "engine_projections": sum(
+            1 for r in reference
+            if getattr(r, "source", None) == SOURCE_ENGINE
+            and str(r.model_id) != BASELINE_MODEL_ID),
+        "caller_references": sum(
+            1 for r in reference
+            if getattr(r, "source", None) != SOURCE_ENGINE),
         # NEVER SUMMED WITH THE AXIOM DENOMINATOR, like every other discipline.
         "invariants": 0,
     }

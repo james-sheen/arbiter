@@ -27,6 +27,7 @@ from __future__ import annotations
 import statistics
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from ..derived.indicator import alignment_evidence
 from ..subenvelope import Decline, SubEnvelope
 from ..types import Axiom, IndicatorType, IORelationship, Severity
 from ..twin.gap import GAP_CONFIDENCE_THRESHOLDS as _GAP_WEIGHT
@@ -150,9 +151,19 @@ def run_discovery(session, alpha: Optional[float] = None,
             history.get_values(entity_a.id, spec_a.property_name, span),
             history.get_values(entity_b.id, spec_b.property_name, span))
         if len(xa) < MINIMUM_PAIRED_SAMPLES:
+            # PER SIDE, because a pair has two series and either can be the
+            # derived one that failed to join. One merged figure would say a
+            # join went empty without saying whose.
+            evidence: Dict[str, Any] = {"paired": int(len(xa)),
+                                        "required": MINIMUM_PAIRED_SAMPLES}
+            for side, entity, spec in (("a", entity_a, spec_a),
+                                       ("b", entity_b, spec_b)):
+                figures = alignment_evidence(
+                    history, entity.id, spec.property_name, span)
+                if figures:
+                    evidence[f"alignment_{side}"] = figures
             declines.append(Decline("insufficient_samples", scope,
-                                    evidence={"paired": int(len(xa)),
-                                              "required": MINIMUM_PAIRED_SAMPLES}))
+                                    evidence=evidence))
             continue
 
         ok_a, ev_a = stationary(list(xa))

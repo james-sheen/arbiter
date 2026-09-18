@@ -1,15 +1,22 @@
 """The MCP transport shim.
 
-Deliberately thin. All five tools live in :mod:`arbiter_engine.api`
-as plain functions over the engine (moved there, because they are
+Deliberately thin. Every tool lives in :mod:`arbiter_engine.api`
+as a plain function over the engine (moved there, because they are
 engine API rather than transport); this module only registers them with the SDK and
 serialises the envelope. Everything worth testing is testable without
 importing ``mcp`` at all, which is why the tool tests need no protocol
 round-trip.
 
+The count is deliberately NOT written here. This line said "all five tools"
+through every release that registered more than five, ending at twelve -- the
+same drift the README carried until 0.1.17 and `api.py`'s own section heading
+carried past it. :data:`TOOL_SPECS` is the one place that knows, a test derives
+the README's figure from it, and prose that restates a number it cannot check
+is how three copies of one fact came to disagree.
+
 The SDK import is **lazy**, inside :func:`build_server`. Importing this module
 must not require ``mcp`` to be installed — the engine is the dependency, the
-transport is not (the scope ruling holds the platform,; the server
+transport is not (the scope ruling holds the platform; the server
 holds neither).
 
 Run with:

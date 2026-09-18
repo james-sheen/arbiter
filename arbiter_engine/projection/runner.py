@@ -22,6 +22,7 @@ from datetime import timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..axiom_thresholds import effective_thresholds
+from ..derived.indicator import alignment_evidence
 from ..interfaces import IndicatorSpec
 from ..subenvelope import Decline, SubEnvelope
 from ..types import Axiom, IndicatorType, Severity
@@ -153,10 +154,17 @@ def run_projection(session, horizon_s: float = 3600.0) -> SubEnvelope:
             series = history.get_values(
                 entity.id, spec.property_name, lookback)
             if len(series) < MINIMUM_SAMPLES:
+                # THE OPERAND COUNTS WHEN THERE ARE ANY. On a derived
+                # indicator `n: 0` alone cannot distinguish a tolerance
+                # declared too tightly from an operand feed that stopped --
+                # the distinction MODELING.md says this decline draws.
                 declines.append(Decline(
                     "insufficient_samples", scope,
                     evidence={"n": len(series), "required": MINIMUM_SAMPLES,
-                              "lookback_s": lookback.total_seconds()}))
+                              "lookback_s": lookback.total_seconds(),
+                              **alignment_evidence(history, entity.id,
+                                                   spec.property_name,
+                                                   lookback)}))
                 continue
 
             fitted = projector.fit(series, dynamics, scope)

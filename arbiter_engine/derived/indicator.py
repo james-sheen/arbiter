@@ -95,8 +95,17 @@ class DerivedHistoryView(ObservationHistory):
     """A history that also answers for indicators nobody fed.
 
     Wraps any store. A request for a declared derived indicator is served by
-    as-of joining its operand series; everything else is passed straight
-    through, so a model with no derived indicators is a pure delegation.
+    joining its operand series; everything else is passed straight through, so
+    a model with no derived indicators is a pure delegation.
+
+    THE JOIN IS NEAREST-WITHIN-TOLERANCE, NOT AS-OF. This docstring said
+    "as-of", which names a strictly backward-looking join, and `_nearest`
+    measures `abs(other_stamp - stamp)`: the operand bound at *t* may have been
+    read up to `align_tolerance` AFTER *t*. At the one-second default the
+    difference is nothing. Under a large declared tolerance it is a backtest
+    reading slightly ahead of itself, which is worth naming rather than
+    leaving a reader to infer from a word. MODELING.md says "which readings
+    count as one moment", which is the symmetric statement and was right.
     """
 
     def __init__(self, inner: ObservationHistory, model: Any) -> None:
@@ -112,7 +121,7 @@ class DerivedHistoryView(ObservationHistory):
 
     def _join(self, entity_id: str, spec, window: timedelta
               ) -> Tuple[List[Tuple[datetime, float]], Dict[str, int]]:
-        """As-of join the operands. Returns the series and the counts behind it."""
+        """Join the operands. Returns the series and the counts behind it."""
         names = operands_of(spec.derived or "")
         tolerance = spec.align_tolerance or DEFAULT_ALIGN_TOLERANCE
         series = {n: self.inner.get_values(entity_id, n, window) for n in names}
@@ -121,6 +130,17 @@ class DerivedHistoryView(ObservationHistory):
             return [], counts
         anchor_name = min(series, key=lambda n: len(series[n]))
         others = [n for n in names if n != anchor_name]
+        # PARSED ONCE. The expression is the same for every point in the
+        # series, and this ran inside the loop -- once per joined point, per
+        # call. It was cheap enough to ignore while one reader took this path;
+        # 0.1.17 put five on it. A parse that raises is the same answer for
+        # every point, so hoisting it also stops a malformed expression being
+        # re-discovered N times and swallowed N times.
+        try:
+            node = _PARSER.parse(spec.derived)
+        except (ValueError, KeyError, ArithmeticError,
+                OverflowError, TypeError):
+            return [], counts
         out: List[Tuple[datetime, float]] = []
         for stamp, value in series[anchor_name]:
             bindings = {anchor_name: value}
@@ -131,7 +151,6 @@ class DerivedHistoryView(ObservationHistory):
                 bindings[other] = nearest
             else:
                 try:
-                    node = _PARSER.parse(spec.derived)
                     out.append((stamp, float(_PARSER.evaluate(node, bindings))))
                 except (ValueError, KeyError, ArithmeticError,
                         OverflowError, TypeError):
@@ -181,6 +200,37 @@ class DerivedHistoryView(ObservationHistory):
     def add(self, entity_id: str, property_name: str, value: Any,
             timestamp: Optional[datetime] = None) -> None:
         self.inner.add(entity_id, property_name, value, timestamp)
+
+
+def alignment_evidence(history: Any, entity_id: str, property_name: str,
+                       window: timedelta) -> Dict[str, Any]:
+    """Operand counts behind a derived series, as `evidence` kwargs, or ``{}``.
+
+    MODELING.md has promised since the feature landed that a too-tight
+    `align_tolerance` is distinguishable from an operand feed that stopped:
+    *the decline says how many points each operand had and how many survived,
+    which is the only way to tell that apart.* :meth:`DerivedHistoryView.
+    alignment` computes exactly those figures and, until this function, had no
+    caller outside its own unit test -- so both cases declined
+    `insufficient_samples` with `n: 0` and the sentence described nothing.
+    Measured before the fix: a 1s tolerance against operands 30s apart, and an
+    operand never fed at all, produced byte-identical declines.
+
+    RETURNS EMPTY RATHER THAN RAISING, and empty for a property that is not
+    derived. A decline is what a reader gets when something was already
+    missing, and an enrichment that can fail turns that into no decline at
+    all -- the shape `sampling_context` guards against directly above, and the
+    reason `interfaces.py` wraps its own history read in *a decline must not
+    become a crash*.
+    """
+    probe = getattr(history, "alignment", None)
+    if not callable(probe):
+        return {}
+    try:
+        figures = probe(entity_id, property_name, window)
+    except Exception:  # noqa: BLE001 - see the docstring
+        return {}
+    return dict(figures) if figures else {}
 
 
 def _nearest(series: Sequence[Tuple[datetime, float]], stamp: datetime,

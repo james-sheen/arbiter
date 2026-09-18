@@ -25,7 +25,7 @@ producer's own record named. Two readers, two audiences, one rule each.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, Iterable, List, Optional, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from ..clock import as_naive_utc, now_utc
 from .contract import Forecast, ForecastRejected, parse_forecast

@@ -104,9 +104,18 @@ class PredictionRecord:
     # callers have the entity in hand when they file, so the fact is free at
     # the one moment it is known and unrecoverable afterwards.
     entity_type: Optional[str] = None
-    # WHO ISSUED IT -- the engine's own projector, or somebody outside. Supplied
-    # by the caller on the same argument as `entity_type` above: both callers
-    # know it when they file and nothing can recover it afterwards.
+    # WHO ISSUED IT. Supplied by the caller on the same argument as
+    # `entity_type` above: they know it when they file and nothing can recover
+    # it afterwards.
+    #
+    # NOT TWO PARTIES ANY MORE. This said "the engine's own projector, or
+    # somebody outside", which was true while `SOURCE_ENGINE` was the only
+    # non-`None` value anyone set. 0.1.17 gave `ingest_forecasts` a `source=`
+    # and the predicate everything reads became `source is None`, so the field
+    # is now free-form and the only distinction it draws is *submitted by a
+    # producer* against *filed by somebody who is not one*. A caller running a
+    # reference forecaster beside the desk's stamps its own value, and
+    # `checked.caller_references` counts those apart from the engine's.
     #
     # It is here because the alternative was matching on the id. `project`
     # files under `<model>:<source>` and its reference under `baseline_rw`, and
@@ -403,7 +412,13 @@ class PredictionLedger:
             quantiles={str(k): float(v) for k, v in quantiles.items()},
             model_id=str(model_id),
             entity_type=str(entity_type) if entity_type else None,
-            source=str(source) if source else None,
+            # `is not None`, NOT truthiness. `if source` folded `""` to `None`,
+            # and `None` is the producer predicate -- so a caller who supplied
+            # an empty source was silently reclassified as a producer, judged
+            # by the shadow axioms and able to raise the exit code of the audit
+            # it was being measured inside. That is precisely the failure
+            # `source=` was added to stop, reachable through a falsy value.
+            source=str(source) if source is not None else None,
         )
         self._note_eviction()
         self._records.append(record)
