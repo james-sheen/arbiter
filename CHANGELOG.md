@@ -26,6 +26,15 @@ conclusions from the source and the response formula; every one of them was
 then constructed and measured against the tree, and the measurements are the
 numbers quoted below. One further claim in the same note is refuted here.
 
+A SECOND reading, of the commit that fixed those, then found four more. It
+ran nothing either. Two of the four are real and are fixed below; two are
+refuted, for the same reason the first note's spare claim was -- each is true
+of the concept it names and false of the code that implements it. The first
+note said an exponential never reaches 1.0, which is true of the reals and
+false of float64. This one says a `trend` seed is a ramp, which is true of the
+word and false of `TrendCurve`, and that `TrendProjection` is the projection
+path that guessed, which names a different class from the one that did.
+
 ### Fixed
 
 - **A rollout now integrates the transient instead of freezing it.** Declared
@@ -298,6 +307,221 @@ found by asking what the filed numbers MEAN rather than whether they appear.
   `values_driven`, so `predictions_filed` + `values_without_tolerance` +
   `values_driven` is still every imagined value.
 
+### Fixed — the second reading
+
+- **A second movement of one property no longer restarts its response.** A
+  rollout held ONE instant per `(entity, property)` -- the latest movement's --
+  while the state held the cumulative delta, so a property that moved at `t1`
+  and again at `t2` was walked once, as though the whole `d1 + d2` had arrived
+  at `t2`. The engine stamps `linear_superposition` on every simulating walk;
+  this was the one place it did not hold, and it failed loudly: the progress
+  the first movement had made along its own response was discarded and the
+  trajectory fell back to its baseline. Measured on a 120 s / 600 s
+  exponential edge with `+500 rpm` at `t=0` and `+100 rpm` at `t=1800`: the
+  tank reached `59.33` and dropped to exactly `50.00`, worst error `-9.50` at
+  `t=1920`, rejoining the declared curve only as both responses saturated. The
+  steady state was right throughout, which is why a test that checks where a
+  trajectory ENDS could not see it -- and a HOMEOSTASIS or STABILITY axiom
+  reading that trajectory reports a collapse the simulator invented, which
+  `plan` then charges to whichever candidate staged its adjustment. Movements
+  are now keyed by instant, one walk per instant, and their contributions sum.
+
+  THE OFFSET IS WHY THIS IS NOT A ONE-LINE CHANGE, and the existing
+  steady-state test is what caught it: `delta_target` is
+  `(gain * delta + offset) * fraction`, so an edge walked in two movement
+  groups charged its offset TWICE and the settled value went to
+  `g*(d1+d2) + 2c` -- measured `76.0` against a declared `69.0`. The offset
+  belongs to the coupling rather than to each movement of its source, so it is
+  charged in the first group a source moves in suppressed thereafter,
+  including for a constant term further down a chain.
+
+- **A forecast that predicts no change now still predicts with a band.** Two
+  gates stood between a projected seed's spread and the value it drives, and
+  both turned on the median rather than on the spread. A seeded property was
+  registered as a movement only if its value differed from the live reading,
+  and the walk skipped any transition whose source delta was exactly zero,
+  ahead of the variance term -- which does not depend on the median at all.
+
+  `random_walk` fails both, and it is not a corner case: that model's median
+  IS the last observation, so an entity whose property was set from its last
+  reading -- what a collector writes -- seeds a value equal to its baseline,
+  bit for bit. Measured on a 200-sample walk with a source carrying
+  `+/- 62.75 rpm` through a gain of `0.02`: the tank carried no interval at
+  any step instead of `+/- 1.25` points, `transitions_applied` was `0` so the
+  declared coupling never ran at all, and `values_driven` was `0`.
+
+  That last one is the worst of the three and was not what the reading
+  reported. `values_driven` is the guard that stops a rollout filing the SEED
+  as its own prediction, and with it empty the engine filed twelve of them --
+  scoring `project`'s forecast a second time in the calibration, which is the
+  double-count the filer's own comment refuses -- while the tank, the only
+  thing the rollout actually predicted, was counted as having no tolerance.
+  A source that stands still still contributes no VALUE, since the offset is
+  part of a change rather than a standing term; it now contributes its doubt.
+
+- **`_ROLLOUT_NON_AXIOM` is removed.** It subtracted the rollout's own
+  refusals from a denominator derived by counting declines, and that
+  denominator was replaced with `evaluations_attempted` earlier in this
+  section. Nothing has read it since. A dead constant is retired for the same
+  reason a dead decline reason is: the next reader has no way to tell one that
+  is waiting from one that is finished.
+
+### Refuted — the second reading
+
+- **A `trend` seed through a lag is not a product approximation of a ramp.**
+  The reading held that a `trend` model presents a ramp `r*t` to the edge, so
+  applying `f(t)` to the whole delta approximates a convolution the closed
+  form gives exactly. `TrendCurve.fit` returns `level = the fitted line at the
+  last sample` and carries the slope as process noise `q`, so its median is
+  CONSTANT across horizons and the band widens instead -- the documented
+  reason a curve fit is not the default. Measured: the seed read `2311.61` at
+  every one of twelve steps. With a constant median the product form is exact,
+  which the reading itself grants for that case; no change was needed, and the
+  proposed remedy of treating each step's increment as its own movement would
+  have introduced the error it was meant to remove.
+
+- **`TrendProjection` is not the path that guessed, and is not dead.** The
+  class the entry above demoted is `projection/projector.py::TrendCurve`.
+  `temporal/trend_projection.py::TrendProjection` is a different class with
+  its own tests, still reached by `project_values` when no domain model is
+  supplied at all -- a kernel used directly against a hand-built topology,
+  which `_declared_dynamics` documents as deliberate, because silently
+  refusing those callers would be a second wrong answer rather than a fix.
+  Renaming it to say it serves a declared `trend` would make the name false.
+
+  Its companion claim was right, and a sweep for the CLASS found two
+  look-alikes it would have been wrong to act on: of the three private
+  module-level constants in the package with no reference beyond their own
+  definition, one is read by a test written to read it, and one is an
+  intentionally empty row in a table of sibling patterns whose emptiness is
+  the claim being made. Only the third was dead. No general guard is added
+  for this, because a check that is wrong about two of the three things it
+  finds is an allowlist wearing a test's name.
+
+### Added — the coupling blocks are checked like every other block
+
+- **A key `temporal:`, `transition:` or `planning:` does not read is now
+  reported.** The loader has compared every key an author types on an
+  indicator against the set it reads since 0.1.x, and `forecast:` got the same
+  treatment one level down. The three blocks that say how a value PROPAGATES
+  had none of it, and the comment beside the `forecast:` check said in as many
+  words that it was the only nested block with a closed key set — which was
+  true when it was written and stopped being true when `temporal:` and
+  `transition:` arrived.
+
+  The cost was silent in both directions. Measured on one rule declaring
+  `propagation_delay: 120` and `gain_sgima: 0.002`, each a letter from a real
+  key: the edge took the engine's DEFAULT 60 s dead time in place of the
+  declared 120 s, so `response_fraction(180)` read `0.1813` against the
+  declaration's `0.0952` — a response developing at nearly twice the written
+  rate for the whole horizon — and `gain_sigma` stayed `0.0`, which removes
+  every interval the coupling would have carried, stops `clearance_probability`
+  being a probability, and stops a rollout filing anything it can be graded on.
+  `unread_fields` was empty, `refused_blocks` was empty, nothing declined.
+
+  That second one is the whole of the band-propagation defect fixed higher up
+  this section, reachable again by one transposed letter and with no report at
+  all. Rows carry the rule they came from, named the way `model_describe`
+  already names one, rather than a list index. `dynamics:` stays exempt: its
+  keys belong to the model an author named, not to this engine.
+
+- **`action_templates:` too, for the keys that were silent.** The block is
+  mixed rather than uniformly quiet: a mistyped `entity_property` is already
+  caught when a rollout runs — the action is refused and counted — but a
+  mistyped `settle_s` is caught nowhere. Measured, `settle_s: 300` against a
+  60 s step declines `settle_exceeds_step`, which says the actuator is slower
+  than the step and the ramp is not modelled; `settl_s: 300` declines nothing
+  and returns a trajectory that reads as though the actuator were
+  instantaneous. A template's `description` and a parameter's `type` are
+  accepted and not acted on — both ship in this package's own worked example,
+  so the accepted set is what the loader knows about rather than what changes
+  behaviour, exactly as the indicator set has always been.
+
+  **Only templates this engine accepted are checked**, and that gate is the
+  substance of the change rather than a detail. `action_templates:` is the one
+  block with a COMPETING schema: eleven of the nineteen models in this
+  project's own tree declare the orchestrator's richer shape — `params`,
+  `risk`, `blast_radius`, `duration` — and `load_templates` already refuses
+  each of those whole, by name, with *template is missing applies_to,
+  parameters_schema*. That one decline says the real thing. An ungated check
+  reported six or seven unknown keys per template on top of it, every one of
+  them valid in the schema the author was actually writing, which is the
+  bury-the-signal shape this engine refuses elsewhere for an exhausted budget.
+  The gate reads the required-key list from the module that enforces it.
+
+  Silent on all 19 models this repository ships — measured before and after
+  the gate, at 11 and then 0.
+
+### Fixed — an action is not additive unless it says so
+
+- **Two `set` actions on one property at one instant put it where neither
+  asked.** An action is converted to a DELTA so it composes with the
+  transitions arriving at the same property in the same step, through the one
+  superposition rule the walk already applies. That argument is sound for an
+  action meeting a transition and does not cover two ACTIONS meeting each
+  other, because only one of the three declared effects is additive.
+
+  Measured on a pump at `1000`, both actions at `t=0`: `set 1500` then
+  `set 2000` put it at **2500**, and three settings reached `3300`. The rule
+  is `A + B - base`, and it is order-INDEPENDENT — each `set` measures its
+  delta from the same pre-step reading and the deltas are then added — which
+  is what makes it a systematic artifact rather than a race. `scale 2` then
+  `scale 3` gave `4000` where composing the two gives `6000`. Nothing was
+  refused and nothing declined in any of them.
+
+  **`plan` reaches it.** With `max_depth: 2` the planner offers every declared
+  candidate as a second action, all at `at_s = 0`, so on this package's own
+  worked example three of its eight candidates set `pump1.speed_rpm` twice at
+  one instant and were ranked on a set-point the pump could never be given —
+  objectives of `80.67` and `108.33` beside a true `80.0`.
+
+  **The two cases are not the same and are not treated the same.** Two `scale`
+  factors compose by multiplication, which is commutative: there is one answer
+  and no ordering is needed to find it, so the engine computes it and stamps
+  `scalings_compose_by_multiplication`. Two different `set` values at one
+  instant have no answer — `at_s` is the only ordering this engine has, the
+  two share it, and list position is an accident of how a caller built the
+  sequence — so they are refused as `contradictory_actions` with both values
+  in the refusal, and the property is left where it was. Choosing the later
+  one would be the engine deciding which instruction the author meant. The
+  same setting twice is redundant rather than contradictory and is applied
+  once; two settings at DIFFERENT instants are a sequence, not a conflict,
+  and both still apply.
+
+  **A mixture of kinds is refused too**, and that case was the first version
+  of this fix leaking. Holding back only the non-additive effects meant an
+  `add` was summed into the bucket on its way past and still composed by
+  addition with whatever was resolved afterwards: `add 100` beside `set 1500`
+  on a pump at 1000 came out at **1600**, neither value and unrefused, and
+  `add 100` beside `scale 2` came out at 2100 where the two orderings give
+  2100 and 2200. The rule is about the SET of effects meeting at one instant,
+  so the set is complete before anything is decided. Two effects of one kind
+  still compose as above; two kinds at one instant are refused.
+
+- **`contradictory_actions`** joins the simulation decline vocabulary, and
+  `deltas_for` now reports which EFFECT produced each property's delta so the
+  rollout — the only layer that can see two instances at once — can resolve a
+  collision instead of adding through it.
+
+- **A `plan` candidate names the refusal that emptied it.** A candidate whose
+  actions were refused ran as though it had none and said nothing about why:
+  three depth-2 candidates came back tied with `do_nothing` carrying an empty
+  `declines`. The refusals were reported at plan level, so the fact was never
+  lost — it was unattributed, which is the harder version of missing for a
+  reader comparing rows.
+
+### Removed
+
+- **`clamp_to_bounds` on a `transition:` block.** Parsed onto `Transition`,
+  carried in the published schema as a commented line, and read by nothing —
+  an author could declare it and believe it. It also cannot be honoured: the
+  only bounds this engine holds are `warning:` and `critical:`, which are
+  DETECTION lines and not physical limits, so clamping an imagined value to
+  them would cap every excursion at exactly the line a simulation exists to
+  cross. A tank projected to 130 would report what one projected to 96
+  reports, and `plan` ranks candidates on that difference. Declaring it is now
+  reported as an unknown key rather than silently stored.
+
 ### Compatibility
 
 All of the above are patch-legal under COMPATIBILITY.md: counts that were
@@ -309,9 +533,37 @@ indicator with no `dynamics:` instead of curve-fitting it. That is a silent
 wrong answer becoming a named refusal, which COMPATIBILITY.md allows a patch
 to do — and the refusal is the one the `project` verb has always made on the
 same question. No verb, envelope key or `problem_type` was
-removed or renamed. A model declaring no `gain_sigma:` and a caller not asking
-to file get byte-identical answers to 0.2.4's, which is pinned by test rather
-than asserted here.
+removed or renamed.
+
+**The second reading's two fixes also change answers rather than extend
+them**, and both are the same permission: a wrong number becoming the right
+one. A rollout that moves one property twice at different instants returns a
+different trajectory, and it is the declared one. A rollout seeded from a
+forecast whose median equals the live reading now runs its declared couplings,
+carries the forecast's band to their targets, and counts the seed as driven
+rather than filing it as its own prediction — so `transitions_applied`,
+`values_driven`, `predictions_filed` and `values_without_tolerance` can all
+move for an unchanged model. The calibration figure read off that ledger moves
+with them, and moves toward being about the engine's forecasts rather than
+about `project`'s.
+
+An earlier draft of this paragraph said a model declaring no `gain_sigma:` and
+a caller not asking to file got byte-identical answers to 0.2.4's. That was
+true when it was written and both of the fixes above falsify it, since neither
+needs a declared spread to bite. It is corrected rather than deleted: this
+file's own subject is claims that stop being true while nobody re-reads them.
+
+**Retiring `clamp_to_bounds` is patch-legal, and the reason is that it never
+did anything.** No behaviour changes, because nothing read it; what changes is
+that declaring it now appears in `unread_fields` instead of being stored and
+forgotten, which is *a check firing where the engine was silent*. The YAML key
+is the surface that mattered, and it was documented only as a commented line.
+The dataclass attribute went with it: `Transition` is not one of the fourteen
+curated exports and is reachable only on a deep path, so a consumer reading
+`transition.clamp_to_bounds` was reading an engine internal that was already
+telling them nothing. Removing an INDICATOR field still waits for a major
+release; this is not one, and the distinction is the wire shape rather than
+the word *field*.
 
 ---
 

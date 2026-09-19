@@ -1266,7 +1266,22 @@ class TopologyTraverser:
             if not isinstance(base, (int, float)) or isinstance(base, bool):
                 base = now
             delta_source = float(now) - float(base)
-            if delta_source == 0.0:
+            # A SOURCE THAT STANDS STILL CAN STILL BE UNCERTAIN,
+            # and this returned before the variance term below ever ran.
+            # `(gain * fraction)**2 * source_variance` does not depend on the
+            # median at all, so a forecast whose median happens to equal the
+            # reading lost its whole band on the way downstream.
+            #
+            # That is not a corner case. A `random_walk` forecast's median IS
+            # the last observation -- the model's entire content is *what you
+            # saw last is the best guess for what comes next* -- so any entity
+            # whose property was set from its last reading, which is what a
+            # collector writes, produces a delta of exactly zero at every
+            # step. Measured: a source carrying +/- 62.75 rpm reached the tank
+            # as no interval at all instead of +/- 1.25 points.
+            source_variance = imagined_variance.get(source_id, {}).get(
+                transition.from_property, 0.0)
+            if delta_source == 0.0 and not source_variance:
                 continue
 
             # the `already_final` refusal that sat here is gone.
@@ -1288,8 +1303,37 @@ class TopologyTraverser:
             #
             # At `fraction == 1.0` this is arithmetically identical to what it
             # replaced, so a steady-state answer is unchanged.
-            delta_target = (transition.gain * delta_source
-                            + transition.offset) * fraction
+            # THE OFFSET IS CHARGED ONCE PER COUPLING, not once
+            # per movement of its source. A rollout walks one group per
+            # distinct movement instant so that two movements of one property
+            # superpose; the gain term is linear in the delta and superposes
+            # correctly, but a constant term added in every group would be
+            # charged as many times as the source moved and the steady state
+            # would drift to `g*(d1+d2) + 2c`. It belongs to the edge, so it
+            # develops from the FIRST instant the source moved and the caller
+            # names the sources whose offsets it has already taken.
+            charged = getattr(self, "offsets_charged", None)
+            charge_key = (source_id, transition.from_property)
+            spent = charged is not None and charge_key in charged
+            offset = 0.0 if spent else transition.offset
+            if delta_source == 0.0:
+                # A STANDING SOURCE MOVES NOTHING. The offset is part of a
+                # CHANGE, not a standing term, so a zero delta propagates a
+                # zero value -- and, since, still propagates its
+                # doubt, which is the whole reason this line is reachable.
+                #
+                # IT ALSO SPENDS NOTHING. Marking the offset charged here
+                # would retire a constant term that was never applied, so a
+                # later movement of the same source would silently lose it --
+                # the mirror of the double-charge this mechanism exists to
+                # prevent, and the more dangerous direction because the
+                # steady state would come out LOW rather than high.
+                delta_target = 0.0
+            else:
+                delta_target = (transition.gain * delta_source
+                                + offset) * fraction
+                if offset and charged is not None:
+                    charged.add(charge_key)
             imagined.setdefault(target_id, {}).setdefault(
                 transition.to_property, 0.0)
             imagined[target_id][transition.to_property] += delta_target
@@ -1306,8 +1350,6 @@ class TopologyTraverser:
             # method, exact for one hop and an approximation beyond it. The
             # engine already tells a reader its response is first order; this
             # is the same statement about the spread.
-            source_variance = imagined_variance.get(source_id, {}).get(
-                transition.from_property, 0.0)
             contribution_variance = (
                 (transition.gain_sigma * abs(delta_source) * fraction) ** 2
                 + (transition.gain * fraction) ** 2 * source_variance)

@@ -395,9 +395,19 @@ def search(session: Any, topology: Any, *,
         candidate = PlanCandidate(
             actions=list(actions),
             findings=sorted({f.problem_type for f in findings}),
+            # AND THE REFUSED ACTIONS. A candidate whose actions
+            # were refused ran as though it had none, and said nothing about
+            # why: with `max_depth: 2` the planner offers a second setting of
+            # a property already set at the same instant, which the rollout
+            # now refuses, and three such candidates came back tied with
+            # `do_nothing` carrying an empty `declines`. The refusals were
+            # reported at plan level, so the fact was never lost -- it was
+            # unattributed, which is the harder version of missing for a
+            # reader comparing rows.
             declines=sorted({d.reason for d in envelope.declines}
                             | {d.reason for step in envelope.steps
-                               for d in step.declines}),
+                               for d in step.declines}
+                            | {r.reason for r in envelope.refused_actions}),
             checked={
                 "steps_requested": envelope.steps_requested,
                 "steps_completed": envelope.steps_completed,

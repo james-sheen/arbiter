@@ -1685,15 +1685,12 @@ def rollout(session: EngineSession,
     return _WithPayload(envelope, payload)
 
 
-#: Reasons that are NOT an axiom declining -- they are the rollout refusing to
-#: run, so they must not be counted into `checked.invariants`, which means
-#: axiom evaluations attempted.
-_ROLLOUT_NON_AXIOM = frozenset({
-    "malformed_request", "settle_exceeds_step", "unknown_action",
-    "unknown_parameter", "wrong_entity_type", "missing_entity",
-    "malformed_action", "missing_dynamics", "missing_declaration",
-    "budget_exhausted", "cycle_unsupported", "internal_error",
-})
+# `_ROLLOUT_NON_AXIOM` is gone. It existed to subtract the rollout's
+# own refusals from a denominator derived by COUNTING DECLINES, and
+# replaced that denominator with `DetectionResult.evaluations_attempted` --
+# the number of axiom evaluations the rollout actually ran. Nothing has read
+# the set since. The package retires a dead vocabulary member rather than
+# leaving it to be found and trusted, and a dead constant is the same object.
 
 
 def plan(session: EngineSession,

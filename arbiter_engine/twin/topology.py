@@ -328,7 +328,15 @@ class Transition:
     #: band nobody supplied is not a band of zero width.
     sigma_estimated: bool = False
     offset: float = 0.0
-    clamp_to_bounds: bool = False
+    # `clamp_to_bounds` is gone. It was parsed onto this dataclass,
+    # documented as a commented line in the published schema, and read by
+    # nothing, so an author could declare it and believe it. It also cannot be
+    # honoured: the only bounds this engine holds are `warning:` and
+    # `critical:`, which are DETECTION lines rather than physical limits, and
+    # clamping an imagined value to them would cap every excursion at exactly
+    # the line a simulation exists to cross -- a tank projected to 130 would
+    # report what one projected to 96 reports, and `plan` ranks candidates on
+    # that difference. Declaring it is now reported as an unknown key.
     #: Sample support behind a fitted gain. Zero for a declared one, and that
     #: asymmetry is the point: a declaration is not evidence with n=0, it is a
     #: different KIND of claim.

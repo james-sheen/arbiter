@@ -31,7 +31,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import math
 from datetime import timedelta
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 from .actions import (ActionInstance, ActionRefused, ActionTemplate,
                       deltas_for, load_templates, resolve)
@@ -286,9 +286,21 @@ def run(session: Any, topology: Any, *,
         }
         for entity_id, entity in entities.items()
     }
-    #: (entity, property) -> the instant an action (or a projected seed) last
-    #: moved it. The response is re-derived from this instant at every step.
-    moved_at: Dict[Tuple[str, str], float] = {}
+    #: (entity, property) -> {instant: the delta attributable to THAT
+    #: instant}. The response is re-derived from each instant at every step
+    #: and the contributions superpose.
+    #:
+    #:. This held ONE instant per property -- the latest movement's --
+    #: while `state` held the cumulative delta, so a property that moved twice
+    #: was walked once as though the whole displacement had arrived at the
+    #: second instant. The progress the first movement had made along its own
+    #: response was discarded and the trajectory dropped back to its baseline:
+    #: measured on a 120/600 exponential edge, +500 rpm at t=0 then +100 rpm
+    #: at t=1800 put the tank at 59.33 and then at exactly 50.00, a 9.50-point
+    #: collapse the simulator invented and a HOMEOSTASIS axiom then reported.
+    #: The steady state was right throughout, which is why a test that checks
+    #: where a trajectory ENDS could not see it.
+    movements: Dict[Tuple[str, str], Dict[float, float]] = {}
     #:. (entity, property) -> a reader over the fitted forecast. A
     #: rollout wants the CURVE, not one horizon's answer: every step is a
     #: different instant, and holding one across all of them says the source
@@ -301,10 +313,26 @@ def run(session: Any, topology: Any, *,
         curves = dict(getattr(
             getattr(topology, "_last_projector", None),
             "projection_curves", {}) or {})
-        for entity_id, values in state.items():
-            for name, value in values.items():
-                if value != baseline.get(entity_id, {}).get(name, value):
-                    moved_at[(entity_id, name)] = 0.0
+        # EVERY SEEDED PROPERTY IS A MOVEMENT, including one whose
+        # forecast says it will not move. This compared the seed against the
+        # reading and registered only the ones that differed, which loses the
+        # `random_walk` case entirely: that model's median IS the last
+        # observation, so an entity whose property was set from its last
+        # reading seeds a value equal to its baseline, bit for bit. The band
+        # then never left the source, the declared coupling never ran, and --
+        # worst of the three -- the seed fell out of `values_driven`, which is
+        # the guard that stops `_file_step` filing `project`'s own forecast a
+        # second time under this rollout's name.
+        for entity_id, prop in seeded:
+            seed = state.get(entity_id, {}).get(prop)
+            if seed is None:
+                continue
+            # Defaulting the baseline to the SEED, not to zero: a property
+            # with no baseline has not moved, and calling the whole seeded
+            # value a movement would propagate an entity's absolute reading
+            # as though it were a change.
+            movements.setdefault((entity_id, prop), {})[0.0] = float(
+                seed) - baseline.get(entity_id, {}).get(prop, float(seed))
 
     steps = int(horizon_s // step_s)
     result.steps_requested = steps
@@ -377,6 +405,17 @@ def run(session: Any, topology: Any, *,
         #: response one step less elapsed time than actually passed, and the
         #: whole trajectory would lag by exactly one step.
         action_times: Dict[Tuple[str, str], float] = {}
+        #:. (entity, property) -> [(effect, value, label)] for EVERY
+        #: effect this step carries, additive ones included.
+        #:
+        #: Recording only the non-additive ones was the first version and it
+        #: left a hole one review found before any test did: an `add` was
+        #: summed into the bucket on its way past, so `add 100` beside
+        #: `set 1500` on a pump at 1000 came out at 1600 -- neither value,
+        #: unrefused, and reachable whenever two templates touch one property.
+        #: The rule is about the SET of effects meeting at one instant, so the
+        #: set has to be complete before anything is decided.
+        intents: Dict[Tuple[str, str], List[Tuple[str, float, str]]] = {}
         for instance, template in schedule:
             # Half-open on the left EXCEPT for the first step, which is closed
             # at zero. `at_s=0` -- *do this now* -- is the most natural thing a
@@ -392,7 +431,7 @@ def run(session: Any, topology: Any, *,
             if not in_window:
                 continue
 
-            deltas, assumptions, refusals = deltas_for(
+            deltas, assumptions, refusals, effects = deltas_for(
                 instance, template, state.get(instance.entity_id, {}))
             result.refused_actions.extend(refusals)
             for assumption in assumptions:
@@ -402,6 +441,7 @@ def run(session: Any, topology: Any, *,
                 continue
             step.actions_applied.append(
                 f"{instance.template}@{instance.entity_id}")
+
             if template.settle_s > step_s:
                 # The actuator is slower than the step. Reported rather than
                 # ramped: ramping would be the engine choosing a trajectory
@@ -412,11 +452,76 @@ def run(session: Any, topology: Any, *,
                     f"settle_s={template.settle_s} is longer than "
                     f"step_s={step_s}; the effect is applied as a step at "
                     f"t={at_s}s and the ramp is not modelled"))
+            label = f"{instance.template}@{instance.entity_id}"
             bucket = action_deltas.setdefault(instance.entity_id, {})
             for prop, delta in deltas.items():
-                bucket[prop] = bucket.get(prop, 0.0) + delta
+                kind, value = effects.get(prop, ("add", delta))
+                # Held back, all of them, and resolved once every instance in
+                # this step has been read: this loop sees one at a time and
+                # the rule needs the whole set.
+                intents.setdefault(
+                    (instance.entity_id, prop), []).append(
+                        (kind, value, label))
                 action_times[(instance.entity_id, prop)] = max(
                     0.0, float(instance.at_s))
+
+        # RESOLVE THE NON-ADDITIVE EFFECTS, one property at a time.
+        #
+        # `at_s` is the only ordering this engine has. Two effects sharing it
+        # are simultaneous, and list position is an accident of how a caller
+        # built the sequence, so it cannot break the tie without the engine
+        # choosing which instruction the author meant.
+        #
+        # Scalings do not need a tie broken: multiplication is commutative, so
+        # `scale 2` and `scale 3` have one answer whatever order they are read
+        # in, and the engine computes it. Two DIFFERENT settings have no
+        # answer, so they are refused by name with both values in the refusal
+        # and the property is left where it was.
+        for (entity_id, prop), items in sorted(intents.items()):
+            base = state.get(entity_id, {}).get(prop)
+            if not isinstance(base, (int, float)) or isinstance(base, bool):
+                continue
+            base = float(base)
+            kinds = {kind for kind, _, _ in items}
+            values = {value for _, value, _ in items}
+            bucket = action_deltas.setdefault(entity_id, {})
+            if kinds == {"add"}:
+                # The one effect that superposes, and the only one whose
+                # composition needs no ordering AND no single answer: two
+                # increments are two increments.
+                for _, value, _ in items:
+                    bucket[prop] = bucket.get(prop, 0.0) + value
+                continue
+            if kinds == {"scale"}:
+                factor = 1.0
+                for _, value, _ in items:
+                    factor *= value
+                bucket[prop] = bucket.get(prop, 0.0) + (base * factor - base)
+                if len(items) > 1:
+                    _assume(result, "scalings_compose_by_multiplication")
+                continue
+            if kinds == {"set"} and len(values) == 1:
+                # Redundant rather than contradictory: applied once, which is
+                # what asking for it twice asks for.
+                bucket[prop] = bucket.get(prop, 0.0) + (
+                    items[0][1] - base)
+                continue
+            labels = sorted({label for _, _, label in items})
+            asked = ", ".join(f"{kind} {value:g}" for kind, value, _ in items)
+            mixed = len(kinds) > 1
+            result.refused_actions.append(ActionRefused(
+                "contradictory_actions", ", ".join(labels),
+                f"{entity_id}.{prop} is given {len(items)} effects at the "
+                f"same instant ({asked}), "
+                + ("which do not all compose the same way"
+                   if mixed else "which do not agree") +
+                f"; `at_s` is the only ordering this engine has and they "
+                f"share it, so nothing was applied to it. Schedule them at "
+                f"different times, or declare the one effect meant."))
+            action_times.pop((entity_id, prop), None)
+            for instance_label in labels:
+                if instance_label in step.actions_applied:
+                    step.actions_applied.remove(instance_label)
 
         for entity_id, deltas in action_deltas.items():
             for prop, delta in deltas.items():
@@ -443,6 +548,12 @@ def run(session: Any, topology: Any, *,
                 continue
             value, sigma = at
             state.setdefault(entity_id, {})[prop] = float(value)
+            # The seed is one movement, at t=0, whose DELTA is re-read from
+            # the curve at every step. Registered here as well as at the
+            # overlay so a curve that starts flat and moves later is still a
+            # movement when it does.
+            movements.setdefault((entity_id, prop), {})[0.0] = float(
+                value) - baseline.get(entity_id, {}).get(prop, float(value))
             if sigma > 0.0:
                 seed_variance.setdefault(entity_id, {})[prop] = float(sigma) ** 2
 
@@ -475,9 +586,27 @@ def run(session: Any, topology: Any, *,
         #    times. Cost is one walk per distinct movement time per step,
         #    charged against `max_transitions`, which already declines.
         for entity_id, deltas in action_deltas.items():
-            for prop in deltas:
-                moved_at[(entity_id, prop)] = action_times.get(
-                    (entity_id, prop), at_s)
+            for prop, delta in deltas.items():
+                when = action_times.get((entity_id, prop), at_s)
+                by_instant = movements.setdefault((entity_id, prop), {})
+                by_instant[when] = by_instant.get(when, 0.0) + delta
+
+        # THE DECOMPOSITION MUST SUM TO WHERE THE PROPERTY ACTUALLY IS.
+        # `state` is the one account of that, and a movement list disagreeing
+        # with it would propagate a displacement the source itself does not
+        # show. They agree in every ordinary case; where they do not -- a
+        # property both seeded and acted on, where the seed overwrites the
+        # action, as it did before this change too -- the latest movement
+        # absorbs the difference, so the steady state is exactly what it was
+        # and only the TIME COURSE is decomposed.
+        for (eid, prop), by_instant in movements.items():
+            standing = state.get(eid, {}).get(prop)
+            if standing is None or not by_instant:
+                continue
+            drift = (float(standing) - baseline.get(eid, {}).get(prop, 0.0)
+                     - sum(by_instant.values()))
+            if drift:
+                by_instant[max(by_instant)] += drift
 
         contributions: Dict[str, Dict[str, float]] = {}
         #: Variances, summed across movement groups. Groups are separate
@@ -485,24 +614,36 @@ def run(session: Any, topology: Any, *,
         #: add the same way the walk adds them WITHIN a group: in variance.
         variances: Dict[str, Dict[str, float]] = {}
         fractions: set = set()
-        groups: Dict[float, List[Tuple[str, str]]] = {}
-        for key, when in moved_at.items():
-            groups.setdefault(when, []).append(key)
+        #: Sources whose declared `offset:` this step has already taken. The
+        #: offset belongs to the coupling, not to each movement of its
+        #: source, so it develops from the first instant the source moved and
+        #: later groups charge the gain term alone. Handed to each walk and
+        #: added to BY the walk, so a constant term further down a chain is
+        #: counted once as well.
+        offsets_charged: Set[Tuple[str, str]] = set()
+        groups: Dict[float, Dict[Tuple[str, str], float]] = {}
+        for key, by_instant in movements.items():
+            for when, delta in by_instant.items():
+                groups.setdefault(when, {})[key] = delta
         for when in sorted(groups):
             elapsed = at_s - when
             if elapsed < 0:
                 continue
+            moved = groups[when]
             props_by_entity: Dict[str, set] = {}
-            for eid, prop in groups[when]:
+            for eid, prop in moved:
                 props_by_entity.setdefault(eid, set()).add(prop)
-            # Only THIS group's properties carry their moved value; every
-            # other property sits at its baseline, so it measures a zero
-            # delta and contributes nothing to this walk. That is what keeps
-            # two movements at different times from being charged the same
-            # elapsed time.
+            # Only THIS group's properties carry a moved value, and the value
+            # they carry is the baseline plus the delta of THIS MOVEMENT --
+            # not the cumulative state, which would charge an earlier
+            # movement's displacement this group's elapsed time. Every other
+            # property sits at its baseline, so it measures a zero delta and
+            # contributes nothing to this walk.
             overrides = {
                 eid: {
-                    name: (value if name in props_by_entity[eid]
+                    name: (baseline.get(eid, {}).get(name, value)
+                           + moved[(eid, name)]
+                           if name in props_by_entity[eid]
                            else baseline.get(eid, {}).get(name, value))
                     for name, value in state.get(eid, {}).items()
                 }
@@ -526,6 +667,9 @@ def run(session: Any, topology: Any, *,
             # carries a declared `gain_sigma:`.
             traverser.seed_variance = {
                 eid: dict(props) for eid, props in seed_variance.items()}
+            # The SAME set across the step's groups: the walk reads it to
+            # know which offsets are spent and adds the ones it spends.
+            traverser.offsets_charged = offsets_charged
             walk = traverser.traverse(request)
             result.transitions_attempted += walk.transitions_attempted
             result.transitions_applied += len(walk.transitions_applied)
@@ -560,15 +704,16 @@ def run(session: Any, topology: Any, *,
                     result.has_declared_spread = True
         for eid, props in variances.items():
             for prop, variance in props.items():
-                if variance > 0.0 and (eid, prop) not in moved_at:
+                if variance > 0.0 and (eid, prop) not in movements:
                     step.sigma.setdefault(eid, {})[prop] = math.sqrt(variance)
                     result.has_declared_spread = True
 
         for eid, props in contributions.items():
             for prop, delta in props.items():
-                if (eid, prop) in moved_at:
-                    # An action drives this property directly; a transition
-                    # into it must not overwrite the value the operator set.
+                if (eid, prop) in movements:
+                    # An action or a projected seed drives this property
+                    # directly; a transition into it must not overwrite the
+                    # value the operator set or the forecast supplied.
                     continue
                 state.setdefault(eid, {})[prop] = (
                     baseline.get(eid, {}).get(prop, 0.0) + delta)
@@ -596,7 +741,7 @@ def run(session: Any, topology: Any, *,
         #    it, the filer saw an empty mapping and filed nothing while
         #    reporting nothing missing, because there was nothing to miss.
         if filing:
-            _file_step(session, result, step, at_s, moved_at)
+            _file_step(session, result, step, at_s, movements)
 
     if filing and result.values_without_tolerance:
         # ONE decline carrying the count, which is the rule every other
@@ -704,9 +849,16 @@ def _evaluate(session: Any, state: Dict[str, Dict[str, float]],
         getattr(outcome, "evaluations_attempted", 0) or 0)
 
 
+def _assume(result: 'RolloutResult', assumption: str) -> None:
+    """Record a stamp once. Every other site in this module open-codes the
+    membership test; this is the same rule with one copy of it."""
+    if assumption not in result.assumptions:
+        result.assumptions.append(assumption)
+
+
 def _file_step(session: Any, result: 'RolloutResult',
                step: 'RolloutStep', at_s: float,
-               driven: Dict[Tuple[str, str], float]) -> None:
+               driven: Dict[Tuple[str, str], Dict[float, float]]) -> None:
     """File one imagined instant as a falsifiable value prediction.
 
     TOLERANCE IS NOT INVENTED HERE. `PredictionLedger.record_value_prediction`
@@ -763,15 +915,24 @@ def _now(session: Any):
     return now_utc()
 
 
-def _seed_from_projection(topology: Any,
-                          state: Dict[str, Dict[str, float]]) -> bool:
-    """Overlay whatever `project_values` fitted. True if anything was fitted."""
-    seeded = False
+def _seed_from_projection(
+        topology: Any,
+        state: Dict[str, Dict[str, float]]) -> Set[Tuple[str, str]]:
+    """Overlay whatever `project_values` fitted; return WHICH keys it seeded.
+
+    This returned a bool and the caller then re-derived the set by
+    comparing the overlaid state against the baseline, which is a second
+    reading of one fact -- the shape `_declared_dynamics` documents as how two
+    paths come to disagree. The comparison also answered a different question:
+    *did this value change* rather than *is this value a forecast*, and a
+    forecast of no change is still a forecast.
+    """
+    seeded: Set[Tuple[str, str]] = set()
     for entity_id, node in getattr(topology, "nodes", {}).items():
         for prop, projected in (
                 getattr(node, "projected_values", {}) or {}).items():
             value = getattr(projected, "value", None)
             if isinstance(value, (int, float)):
                 state.setdefault(entity_id, {})[prop] = float(value)
-                seeded = True
+                seeded.add((entity_id, prop))
     return seeded

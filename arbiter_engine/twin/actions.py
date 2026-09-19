@@ -169,18 +169,36 @@ def resolve(instance: ActionInstance,
 def deltas_for(instance: ActionInstance, template: ActionTemplate,
                current: Dict[str, Any]) -> Tuple[Dict[str, float],
                                                  List[str],
-                                                 List[ActionRefused]]:
+                                                 List[ActionRefused],
+                                                 Dict[str, Tuple[str, float]]]:
     """What this action does to the entity's properties, as deltas.
 
     Deltas rather than absolute values so an action composes with the
-    transitions arriving at the same property in the same step, through the
+    TRANSITIONS arriving at the same property in the same step, through the
     one superposition rule Stage 1 already applies. Two mechanisms writing one
     property by two different arithmetics is how a simulator starts disagreeing
     with itself.
+
+    AND A FOURTH RETURN, because that argument covers an action
+    composing with a transition and does not cover two ACTIONS composing with
+    each other. Only `add` is additive. Two `set` deltas measured from the same
+    pre-step reading and then summed give `A + B - base`: measured, `set 1500`
+    and `set 2000` on a pump at 1000 put it at 2500, a value neither action
+    asked for. Two `scale` deltas summed give `(a + b - 1)` times the reading
+    where composing them gives `a *b`.
+
+    So the caller is told WHICH EFFECT produced each property's delta, and
+    resolves any collision itself -- it is the only layer that can see two
+    instances at once. Nothing is decided here; this function still describes
+    one action.
     """
     deltas: Dict[str, float] = {}
     assumptions: List[str] = []
     refused: List[ActionRefused] = []
+    #: property -> (effect, the value the author wrote). The raw value rather
+    #: than the delta, because composing scalings needs the factor and
+    #: resolving settings needs to compare what was asked for.
+    effects: Dict[str, Tuple[str, float]] = {}
     for parameter, raw_value in (instance.parameters or {}).items():
         prop, declared = template.property_for(parameter)
         if not declared:
@@ -214,4 +232,5 @@ def deltas_for(instance: ActionInstance, template: ActionTemplate,
         else:  # scale
             deltas[prop] = deltas.get(prop, 0.0) + (
                 float(present) * value - float(present))
-    return deltas, assumptions, refused
+        effects[prop] = (template.effect, value)
+    return deltas, assumptions, refused, effects

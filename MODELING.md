@@ -714,12 +714,40 @@ relationship_rules:
       source: datasheet          # datasheet | contract | measured | estimated
       # gain_sigma: 0.0003       # the DECLARED spread on that gain, same units
       # offset: 0.0
-      # clamp_to_bounds: false
 ```
 
 With this declared, `traverse` in a value mode reports what the downstream
 value BECOMES rather than only who is reachable, and `rollout` steps that
 forward under actions.
+
+**A key this engine does not read is reported, not ignored.** Every key inside
+`temporal:`, `transition:` and `planning:` is compared against the set the
+loader actually reads, and anything else comes back under
+`model_describe`'s `unread_fields` with a did-you-mean where there is a near
+match. This matters more here than elsewhere because the failures are silent in
+both directions: a mistyped `propagation_delay_s` leaves the edge on the
+engine's default dead time, and a mistyped `gain_sigma` leaves the coupling
+with no spread at all -- which stops `clearance_probability` being a
+probability and stops a rollout filing anything it can later be graded on.
+The same applies to an `action_templates:` entry this engine accepted, where a
+mistyped `settle_s` otherwise leaves the actuator reading as instantaneous and
+suppresses the `settle_exceeds_step` decline that exists to say so. A template
+missing `applies_to` or `parameters_schema` is refused whole instead, and is
+not picked over key by key.
+
+`dynamics:` is deliberately exempt: the keys inside it belong to the model an
+author named, not to this engine.
+
+**`offset:` is a constant term on the coupling, and it is charged once.** The
+contribution is `(gain x change + offset) x response fraction`, so the offset
+crosses the same declared dead time the gain does -- a constant that walks
+straight through a delay makes the delay meaningless. It belongs to the
+COUPLING and not to each movement of its source: when a rollout moves one
+property twice, which is what a staged ramp or a `candidates:` sweep deeper
+than one step looks like, the two movements develop on their own clocks and
+superpose, and the offset develops from the first of them. So the settled
+value is `gain x total change + offset` once, however many adjustments it took
+to arrive.
 
 **`gain_sigma:` is how sure you are of the gain, and it is optional.** A
 datasheet that reads *0.003 per rpm, plus or minus 10 %* has told you one;
@@ -825,6 +853,19 @@ what would happen. It never acts.
 **`effect:` is declared because the same number means three different things.**
 `set` moves the property to the value, `add` moves it by the value, `scale`
 multiplies it. Nothing about the number says which, so the model does.
+
+**Two actions on one property at one instant compose by their effect, not by
+addition.** Only `add` is additive: two of them sum, as they always have.
+Two `scale` factors multiply, which needs no ordering because multiplication
+is commutative. Two DIFFERENT `set` values have no answer -- `at_s` is the
+only ordering this engine has and they share it -- so the pair is refused as
+`contradictory_actions`, naming both values, and the property is left where it
+was. The same setting twice is redundant rather than contradictory and is
+applied once. Two effects of DIFFERENT kinds at one instant are refused for
+the same reason: `add 100` and `scale 2` give 2100 or 2200 depending on which
+is read first, and that ordering does not exist. Schedule them at different
+times and they become a sequence instead, where the later one supersedes the
+earlier and both develop on their own clocks.
 
 ## Choosing between actions: `planning`
 

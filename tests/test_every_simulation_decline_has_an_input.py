@@ -321,6 +321,16 @@ class TestEachOwnedReasonHasAnInput:
             _base(tmp_path), actions=[_act(**action)],
             horizon_s=180.0, step_s=60.0))
 
+    def test_contradictory_actions(self, tmp_path):
+        """Two DIFFERENT settings of one property at one instant.
+        `at_s` is the only ordering this engine has and they share it, so
+        neither is applied and the pair is named."""
+        assert "contradictory_actions" in _reasons(api.rollout(
+            _base(tmp_path),
+            actions=[_act(parameters={"v": 9.0}),
+                     _act(parameters={"v": 4.0})],
+            horizon_s=180.0, step_s=60.0))
+
     def test_gain_not_adopted(self, tmp_path):
         """`gain: estimate` declares the pair and withholds the number."""
         text = BASE.replace(
@@ -507,6 +517,8 @@ class TestTheVocabularyHasNoUnexplainedMember:
             # the closed loop's two refusals to FILE.
             "counterfactual_not_a_prediction",
             "no_declared_tolerance",
+            # two non-additive effects on one property, one instant.
+            "contradictory_actions",
         }
         # AND THE PROJECTION SET. `seed_mode="projected"` runs the
         # declared projector, so a simulation carries whatever that projector

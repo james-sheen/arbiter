@@ -197,6 +197,16 @@ VOCABULARIES: Dict[str, frozenset] = {
         # `gain_sigma:` IS that statement, so a value carrying one can be
         # filed and a value without one is declined here by name.
         "no_declared_tolerance",
+        # two NON-ADDITIVE effects on one property at one instant.
+        # Only `add` superposes. Two `set` deltas measured from the same
+        # pre-step reading and summed give `A + B - base`, which is a value
+        # neither action asked for: measured, 1500 and 2000 on a pump at 1000
+        # put it at 2500. `at_s` is the only ordering here and they share it,
+        # so there is nothing to break the tie with except list position,
+        # which is an accident of how the caller built the sequence.
+        # Scalings are NOT refused -- multiplication is commutative, so they
+        # compose without an ordering.
+        "contradictory_actions",
     }) | {reason.value for reason in NotEvaluatedReason}
       # AND THE PROJECTION VOCABULARY, folded in rather than
       # re-listed. `seed_mode="projected"` runs the declared projector, so a

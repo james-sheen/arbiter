@@ -392,10 +392,15 @@ class DomainModel:
                             f"only by {names}; add it to this indicator's "
                             f"`axioms:` list, or remove the field"),
                     })
-                # ONE LEVEL DOWN, same rule. `forecast:` is the only
-                # nested block with a closed key set the engine reads by name;
-                # `dynamics:` carries a model's own parameters, which are the
-                # model's to define, so it is deliberately not checked here.
+                # ONE LEVEL DOWN, same rule. This said `forecast:` was the
+                # ONLY nested block with a closed key set the engine reads by
+                # name, and three more had been true of that -- `temporal:`,
+                # `transition:` and `planning:`, all added after this sentence
+                # was written and none of them compared against anything.
+                # They are checked in `_unread_coupling_keys` below.
+                # `dynamics:` is still not checked: it carries a model's own
+                # parameters, which are the model's to define, not the
+                # loader's to enumerate.
                 forecast_block = spec.forecast_config or {}
                 if isinstance(forecast_block, dict):
                     for key in sorted(set(forecast_block) - _KNOWN_FORECAST_KEYS):
@@ -466,6 +471,95 @@ class DomainModel:
                             "did_you_mean": near,
                             "remedy": remedy,
                         })
+        out.extend(self._unread_coupling_keys())
+        return out
+
+    def _unread_coupling_keys(self) -> List[Dict[str, Any]]:
+        """The same rule, applied to the blocks that say how a value moves.
+
+        `temporal:` and `transition:` on a relationship rule, and the
+        domain's `planning:` block, are read key by key and were compared
+        against nothing. They are also the newest part of the schema, which is
+        the shape the sibling check above already names as the one most worth
+        misspelling -- and the cost is silent in both directions: a mistyped
+        `propagation_delay_s` substitutes the engine's default dead time, and
+        a mistyped `gain_sigma` removes every interval the coupling would have
+        carried, which stops `clearance_probability` being a probability and
+        stops a rollout filing anything it could later be graded on.
+
+        A rule is identified the way `model_describe`'s transition coverage
+        identifies one, rather than by position: a reader who has to count
+        list entries to find the typo has been given the wrong end of it.
+        """
+        out: List[Dict[str, Any]] = []
+
+        def report(where: str, block: Any, known: frozenset, rule: str) -> None:
+            if not isinstance(block, dict):
+                return
+            for key in sorted(set(block) - known):
+                near = _did_you_mean(key, sorted(known), cutoff=0.8)
+                remedy = (f"`{where}.{key}` is not a key this engine reads, "
+                          f"so nothing will ever consume it")
+                if near:
+                    remedy += f" — did you mean `{near}`?"
+                row = {
+                    "field": f"{where}.{key}",
+                    "reason": "unknown_key",
+                    "read_by": [],
+                    "did_you_mean": near,
+                    "remedy": remedy,
+                }
+                if rule:
+                    row["rule"] = rule
+                out.append(row)
+
+        # READ WITH `getattr`, NOT AS ATTRIBUTES. A `DomainModel` can reach
+        # here carrying ONLY `indicators`: `test_unknown_value_cd1760` builds
+        # one with `__new__` and sets that single field, which is a fair
+        # fixture for a method whose indicator half is what it is exercising.
+        # Assuming the other three fields exist raised `AttributeError` on
+        # thirty of its cases -- none of them in the engine lane, all of them
+        # in the net.
+        for rule in (getattr(self, "relationship_rules", None) or ()):
+            if not isinstance(rule, dict):
+                continue
+            label = (f"{rule.get('source_type', '?')}"
+                     f"-{rule.get('type', '?')}->"
+                     f"{rule.get('target_type', '?')}")
+            for where, known in _COUPLING_BLOCKS:
+                report(where, rule.get(where), known, label)
+        # ONLY TEMPLATES THIS ENGINE ACCEPTED. `action_templates:` is the one
+        # block with a COMPETING schema: eleven of the nineteen models this
+        # repository ships declare the orchestrator's richer shape -- `params`,
+        # `risk`, `blast_radius`, `duration` -- and `load_templates` already
+        # refuses each of those whole, by name, with `malformed_action:
+        # template is missing applies_to, parameters_schema`. That single
+        # decline says the real thing. Reporting its six or seven keys
+        # individually would bury it under rows calling each one unknown, when
+        # every one of them is valid in the schema the author was writing --
+        # the shape `_apply_transitions` already refuses for an exhausted
+        # budget, where a decline per item hides the one fact that matters.
+        #
+        # So the required keys are the gate, read from the module that
+        # enforces them rather than restated here.
+        from ..twin.actions import REQUIRED_TEMPLATE_KEYS
+        for template in (getattr(self, "action_templates", None) or ()):
+            if not isinstance(template, dict):
+                continue
+            if any(not template.get(key) for key in REQUIRED_TEMPLATE_KEYS):
+                continue          # refused whole, and told so already
+            label = str(template.get("name") or "?")
+            report("action_templates", template,
+                   _KNOWN_ACTION_TEMPLATE_KEYS, label)
+            schema = template.get("parameters_schema")
+            if isinstance(schema, dict):
+                for parameter, spec in sorted(schema.items()):
+                    # The parameter NAMES are the author's; only the spec
+                    # beside each one has a closed set.
+                    report(f"action_templates.parameters_schema.{parameter}",
+                           spec, _KNOWN_ACTION_PARAM_KEYS, label)
+        report("planning", getattr(self, "planning", None),
+               _KNOWN_PLANNING_KEYS, "")
         return out
 
     def unreachable_declarations(self) -> List[Dict[str, Any]]:
@@ -684,6 +778,63 @@ _NON_AXIOM_KEYS = frozenset({"plausible_range"})
 _KNOWN_FORECAST_KEYS = frozenset({
     "expected", "models", "expected_from", "max_age",
 })
+
+#: the COUPLING blocks, one level down from a relationship rule.
+#:
+#: `forecast:` was the only nested block whose keys were checked, and the
+#: comment beside that check said so in as many words. These three are read by name exactly as it is, they were
+#: added later than it, and nothing compared them against anything: measured on
+#: one rule, `propagation_delay: 120` silently took the engine's 60 s default
+#: and `gain_sgima: 0.002` silently left the coupling with no spread at all.
+#:
+#: DERIVED, NOT TRANSCRIBED. `test_a_coupling_block_is_checked_too` re-reads
+#: `twin/builder.py` and fails when a key the parser reads is missing here --
+#: a guard that is narrower than the schema it covers reports a clean model
+#: for a typo, which is the defect rather than a smaller version of it.
+_KNOWN_TEMPORAL_KEYS = frozenset({
+    "propagation_delay_s", "time_constant_s", "response_model",
+    "coupling_strength",
+})
+
+#: `clamp_to_bounds` IS NOT HERE, and its absence is the decision. It was
+#: parsed onto `Transition` and consumed by nothing, and it cannot be honoured:
+#: the only bounds this engine holds are `warning:` and `critical:`, which are
+#: DETECTION lines, not physical limits. Clamping an imagined value to them
+#: would cap every excursion at exactly the line a simulation exists to cross,
+#: so a tank projected to 130 would report what one projected to 96 reports --
+#: and `plan` ranks candidates on that difference.
+_KNOWN_TRANSITION_KEYS = frozenset({
+    "from", "to", "gain", "source", "gain_sigma", "offset",
+})
+
+_KNOWN_PLANNING_KEYS = frozenset({
+    "objective", "min_severity", "max_rollouts", "max_depth",
+})
+
+#: `action_templates:` is mixed, which is why it is here rather than trusted.
+#: A mistyped `entity_property` is caught at rollout time -- the action is
+#: refused and counted -- but a mistyped `settle_s` is silent, and it silences
+#: the engine too: `settle_s: 300` against a 60 s step declines
+#: `settle_exceeds_step`, saying the actuator is slower than the step and the
+#: ramp is not modelled, and `settl_s: 300` produces no decline and a
+#: trajectory that reads as though the actuator were instantaneous.
+#:
+#: `description` and a parameter's `type` are ACCEPTED AND NOT ACTED ON. They
+#: document the model for a human and the engine reads neither; both ship in
+#: its own worked example, so the set is what the loader knows about rather
+#: than what changes behaviour, exactly as the indicator set above is.
+_KNOWN_ACTION_TEMPLATE_KEYS = frozenset({
+    "name", "applies_to", "description", "parameters_schema", "effect",
+    "settle_s", "source",
+})
+
+_KNOWN_ACTION_PARAM_KEYS = frozenset({
+    "type", "entity_property", "candidates",
+})
+
+#: Which nested block each is checked against, and the label a row carries.
+_COUPLING_BLOCKS = (("temporal", _KNOWN_TEMPORAL_KEYS),
+                    ("transition", _KNOWN_TRANSITION_KEYS))
 
 _KNOWN_INDICATOR_KEYS = frozenset({
     "name", "type", "axioms", "window", "warning", "critical", "role",

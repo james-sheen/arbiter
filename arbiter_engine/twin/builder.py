@@ -542,7 +542,6 @@ class TopologyBuilder:
                 gain_sigma=gain_sigma,
                 sigma_estimated=sigma_estimated,
                 offset=offset,
-                clamp_to_bounds=bool(block.get('clamp_to_bounds', False)),
             ))
         return transitions, gaps
 
