@@ -97,6 +97,9 @@ TOOL_SPECS: List[Dict[str, Any]] = [
                 },
                 "max_hops": {"type": "integer"},
                 "overrides": {"type": "object"},
+                # how far ahead the declared response is read.
+                # Without it every what-if answered at one hour.
+                "horizon_s": {"type": "number"},
             },
             "required": ["start_nodes"],
         },
@@ -457,7 +460,7 @@ _HANDLERS = {
     "traverse": lambda s, a: traverse(
         s, a["start_nodes"], a.get("direction", "forward"),
         a.get("value_mode", "current"), a.get("max_hops", 4),
-        a.get("overrides")),
+        a.get("overrides"), a.get("horizon_s", 3600.0)),
     "gaps": lambda s, a: gaps(s, a.get("start_node")),
     "attest": lambda s, a: attest(s, a["problem_type"], a.get("entity_id")),
     "project": lambda s, a: project(s, a.get("horizon_s", 3600.0)),
@@ -527,11 +530,12 @@ def build_server(session: EngineSession | None = None):
         value_mode: str = "current",
         max_hops: int = 4,
         overrides: Dict[str, Any] | None = None,
+        horizon_s: float = 3600.0,
     ) -> str:
         return _emit("traverse", {
             "start_nodes": start_nodes, "direction": direction,
             "value_mode": value_mode, "max_hops": max_hops,
-            "overrides": overrides,
+            "overrides": overrides, "horizon_s": horizon_s,
         })
 
     async def rollout_tool(

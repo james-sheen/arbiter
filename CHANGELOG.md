@@ -20,7 +20,298 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
-Nothing yet.
+Six defects an outside reading of 0.2.4 found, each REPRODUCED before it was
+fixed. The note was explicit that it had run nothing and derived its
+conclusions from the source and the response formula; every one of them was
+then constructed and measured against the tree, and the measurements are the
+numbers quoted below. One further claim in the same note is refuted here.
+
+### Fixed
+
+- **A rollout now integrates the transient instead of freezing it.** Declared
+  transitions were applied once, in the step their source moved, with one
+  step's worth of elapsed time, and never re-applied. On the engine's own edge
+  defaults -- `propagation_delay_s: 60`, `time_constant_s: 60`, exponential --
+  against the default `step_s: 60`, `response_fraction(60)` is exactly `0.0`:
+  measured, a tank sat at `50.0` for all sixty steps of an hour-long rollout
+  while the declared response said `109.8`, `transitions_applied` reported `1`,
+  and nothing declined. MODELING.md's own `transition:` example produced the
+  same flat line. The response is now re-derived at every step from the instant
+  its source moved, which reuses `TwinEdge.response_fraction` rather than
+  copying the time course into the rollout, and the trajectory matches the
+  declared curve to within 1e-6 at every step.
+- **`plan` could not tell its candidates apart, and recommended inaction.**
+  A consequence of the above, and the one that reaches a caller as advice.
+  Measured on a tank at 92 % against a declared `warning: 85`, with throttling
+  the pump among the declared candidates: all four candidates scored `10.0`,
+  the tie-break returned `do_nothing`, and `best` said so. The same model now
+  scores `1.0` for throttling against `10.0` for doing nothing.
+- **`rollout` and `plan` fabricated `checked.invariants`.** Both built the
+  denominator from their own output -- `api.rollout` from findings plus
+  axiom-shaped declines, `planner` from findings alone -- discarding
+  `DetectionResult.evaluations_attempted`, which `interfaces.py` carries for
+  this and whose comment says exactly why the sum is not a substitute. A clean
+  rollout reported `checked.invariants: 0`, indistinguishable from *no axiom
+  ran*; the denominator also moved with its own numerator. Measured: five steps
+  over two declared indicators reported `0`, and now report `10`.
+- **Values are resolved in dependency order, so nothing reads a partial one.**
+  Two defects here, and the second was only visible once the first was fixed.
+
+  The visited check asked whether a node had been SEEN, which is true both for
+  a back-edge and for the second arrival of an acyclic diamond. Measured on
+  `a->d` beside `a->b->c->d`: `cycle_unsupported` was filed at `c->d`, the
+  longer path's contribution was dropped, and `d` carried `2.0` where the
+  declared gains give `3.0`.
+
+  Making `d` right exposed the rest. Transitions were applied when the BFS
+  happened to pop their source, and a BFS pops by HOP COUNT -- so on the same
+  graph with `d->e`, `d` ended correct and `e` sat at `2.0`, short by the
+  whole second path. The value pass is now ordered by DEPENDENCY rather than
+  by hop: a node is resolved only once every edge into it has contributed, so
+  `e` carries the whole of `d`. Nested diamonds compose exactly (measured:
+  `3.0` then `5.0`), a 200-node chain resolves in 0.03 s, and axiom evaluation
+  on a simulating walk is deferred until every contribution has landed, so
+  findings are drawn from the value the envelope reports.
+
+  **A cycle is now exactly what the ordering cannot resolve**, which is a
+  smaller and truer set than *the walk saw this node already*. Two shapes
+  produce it and they get different sentences: an edge into an already
+  resolved node CLOSES a loop, and an edge whose source never resolved sits
+  INSIDE one. The second wording exists because advice pointing at *the edge
+  that closes the loop* can name an edge that is not reported -- in
+  `a->b->c->b` neither member ever resolves, so both of its edges take that
+  branch and none takes the other. Measured.
+
+  `reconvergence_unsupported`, added earlier in this same unreleased section
+  to NAME the downstream damage, is retired: the damage is gone, so the reason
+  had nothing left to report, and a member nobody can construct an input for
+  is the dead-vocabulary shape exists to catch. It never shipped.
+- **The transition learner fits the quantity the model declares.** It read
+  `propagation_delay_s` and neither `response_model` nor `time_constant_s`,
+  then regressed first differences against each other -- which estimates a
+  steady-state gain only when the response is instantaneous. Measured on a
+  series generated through the edge's own declared response at `tau = 600 s`
+  sampled every 60 s with a declared gain of `0.02`: the learner fitted
+  `0.00234`, filed a `disagreement`, and attached a remedy that would have
+  replaced a correct datasheet number with one eight times too small. An
+  `exponential` edge is now fitted through its declared response, recovering
+  `0.020000`; `linear` and `logarithmic` are not first-order lags and are
+  declined `response_model_unsupported` rather than fitted under a model the
+  edge does not declare. Every fitted entry names the response model it was
+  fitted through.
+- **The published what-if takes a horizon.** `api.traverse` built its request
+  without `horizon_s`, so every hypothetical walk through `api` or MCP was
+  evaluated at the request default of one hour and a caller could not ask what
+  a value becomes in ten minutes. `simulate_what_if` accepted the parameter and
+  dropped it on the floor. Both now pass it, the MCP tool offers it, and the
+  horizon used is stamped into `payload.simulation`.
+- **A declared dead time now applies to the offset too.** The contribution was
+  `gain * delta * fraction + offset`, so a constant term crossed an edge whose
+  delay had not elapsed: measured, a 120-second delay with `offset: 7.0`
+  reported the target 7 units from its reading at a 60-second horizon while the
+  fraction was `0.0`. The whole contribution is charged the fraction, which is
+  arithmetically identical at `fraction == 1.0`, so no steady-state answer
+  moves.
+- **A history that cannot be enumerated is reported.** `_clone_history`
+  returned an empty clone when the session's history had no `series_keys`, so
+  a rollout stepped forward with no imagined past and every windowed axiom
+  declined for lack of SAMPLES -- a different statement, with a different
+  remedy, from lack of horizon. It now files `precondition_unmet` saying so.
+
+### Added
+
+- `examples/pump_tank_dynamics.yaml` — **the first shipped example that
+  declares dynamics.** None of the five existing examples declared a
+  `transition:`, an `action_templates:` block or a `planning:` objective, so
+  the whole surface 0.2.3 added could not be run against anything this package
+  ships and existed only as prose in MODELING.md. It declares a delay and a
+  lag on purpose: every rollout and plan fixture in the suite declared an
+  instantaneous response, which is the one regime in which the defect above is
+  invisible.
+- `response_model_unsupported` from the transition learner.
+- `simulation.per_step[*].response_fractions` and `.invariants`;
+  `simulation.horizon_s` on `traverse`.
+- `causal.leadlag.align_with_times`, so a caller needing the SPACING of the
+  pairs does not re-intersect the series itself.
+
+### Refuted
+
+- The same reading held that `steady_state_reached` is unreachable under the
+  default response model, since `1 - exp(-t/tau)` never reaches `1.0`. True of
+  the real numbers and false of the arithmetic: at `t/tau` beyond about 37 the
+  exponential underflows below the double-precision epsilon and the expression
+  evaluates to exactly `1.0`. Measured — `response_fraction` returns `1` at
+  `t = 100 tau`. The stamp is reachable and no change was made.
+
+### Added — value-level uncertainty, and a loop that closes
+
+The 0.2.4 reading ended with a gap list whose first three entries were the
+defects above and whose next two were capabilities blocked behind them. With
+those unblocked, both are here.
+
+- **`gain_sigma:` on a `transition:` block — a DECLARED spread on the gain.**
+  Every value the coupling drives now carries a standard deviation and a 95 %
+  interval beside it, propagated through a chain by the delta method and
+  stamped `first_order_uncertainty` so nobody reads the band as exact. An edge
+  without one behaves exactly as before, and a value nobody declared a spread
+  for carries NO interval rather than one of zero width: a value whose spread
+  was never measured and a value known to be exact are different claims.
+  Nothing is inferred -- not from a correlation, and not from `confidence:`,
+  which weights whether the coupling exists at all and is in different units.
+- **`clearance_probability` is a probability.** It sampled a function that
+  returned the same constant every time, so the estimate was 0.0 or 1.0 and
+  the interval collapsed to a point -- honestly stamped
+  `deterministic_transitions`, and a boolean wearing a decimal point. With a
+  declared spread the margin to the line is a random variable: measured, a
+  candidate that used to score a flat `0.0` now scores `0.01` with an interval
+  of `[0.0, 0.0295]`, against a margin of `-5` and a spread of `2`. The
+  tightest margin over the horizon is the one sampled, because the same
+  declared gain drives every step of a trajectory rather than a fresh draw per
+  step; that is the engine's assumption and it is stamped
+  `worst_step_binds_the_horizon`.
+- **`rollout(file_predictions=True)` — the loop closes.** The durable ledger
+  shipped in 0.2.3 and `grade_matured` already scored `kind == "value"`;
+  nothing ever filed one, so the engine could project a value, judge it, and
+  never learn whether it had been right. A rollout now files each imagined
+  instant as a falsifiable value prediction, `check` matures and scores them,
+  and the rollout payload carries the ledger's calibration. End to end and
+  measured: five filed, the world contradicted four, **Brier 0.7225**.
+
+  **Two refusals guard what gets filed, and both are about honesty.** A
+  rollout carrying actions is a COUNTERFACTUAL -- this engine never
+  dispatches, so it cannot know the actions were taken, and grading *what
+  would have happened if* against a world where nobody did it would fill the
+  ledger with falsified records that say nothing about the model, while
+  corrupting the one figure meant to say whether its projections can be
+  trusted. And a point prediction with no resolution is not falsifiable: the
+  tolerance is the author's declared `gain_sigma:` band, never one this engine
+  invented, on the same rule applies to a floor. Both refusals are
+  counted and named (`counterfactual_not_a_prediction`,
+  `no_declared_tolerance`), and `predictions_filed` plus
+  `values_without_tolerance` partition every imagined value.
+- `examples/pump_tank_dynamics.yaml` declares a spread, so all three have a
+  specimen that ships.
+- **`gain_sigma: estimate` — a fitted spread, proposed the way a fitted gain
+  is.** The learner already computed a standard error on every gain it fitted:
+  a measured statement of how well the readings pin the slope down, sitting
+  one field away from the `gain_sigma:` that declares the same quantity, and
+  reported nowhere. It now appears under
+  `proposed_transitions.fitted[*].gain_sigma`, and it moves with the data --
+  measured, twenty times the scatter proposed a spread twenty times wider
+  (0.0075 against 0.149). A PROPOSAL: a transition asking for one carries no
+  interval until a number is written into the model, exactly as
+  `gain: estimate` projects nothing until its magnitude is adopted. Not the
+  residual scatter, which is a different uncertainty — about the next reading
+  rather than about the coupling — and folding the two together would propose
+  a band that means neither.
+- **A declared coupling is told how its own projections fared.** The loop ran
+  one way: rollouts filed, `check` graded, and nothing read the verdicts back
+  to the gain that produced them. `transitions.declared[*].projections` now
+  carries `graded`, `confirmed`, `falsified` and `confirm_rate` per coupling,
+  with the denominator beside the rate, and a `remedy` below half confirmed.
+  An author could previously see a coupling and a fitted disagreement beside
+  it, and could not see that every forecast the coupling had produced was
+  contradicted by the world — which is the stronger evidence of the two,
+  because it is about the model's OUTPUT rather than about a slope.
+
+  **Still a report, still not an edit.** The engine does not rewrite a
+  declaration, does not adopt a fitted spread, and does not quietly widen an
+  interval because the last five forecasts missed. Pinned by a test that
+  contradicts every projection and then asserts the declared gain and spread
+  are exactly what the author wrote.
+
+### Fixed — one question, one projection
+
+- **The engine had a verb that refused to guess and a path that guessed
+  silently, for the same question.** `projection/runner.py` reads `dynamics:`
+  off an indicator and declines `model_missing` when there is none: *no
+  `dynamics` declared, so there is no model to fit; the engine will not choose
+  one on the author's behalf*. That is the rule `projector.py` states in its
+  own opening, where a curve fit is deliberately NOT the default because *an
+  extrapolated straight line reports a confident number for a series that is
+  not going anywhere*.
+
+  `TopologyTraverser.project_values` did the opposite: it fitted a trend curve
+  to any series with three readings, whatever the model said. Measured on a
+  120-sample random walk with nothing declared — `project` declined, and the
+  traverser returned **2683.89 against a last reading of 2522.40**, a
+  confident extrapolation of +161 on a series going nowhere.
+
+  What made it urgent rather than untidy is that `rollout(seed_mode=
+  "projected")` runs that path, and a rollout now FILES its values as
+  predictions. The engine had begun scoring itself on numbers nobody declared
+  a model for, through a method its own other path argues against.
+
+  Both paths now read the one declaration and run the one projector. Measured
+  after: a declared `random_walk` and a declared `trend` each return the same
+  number on both paths, and they return DIFFERENT numbers from each other —
+  so the declaration is what chose the model, which is the thing worth
+  checking. An undeclared indicator is refused by both, by name.
+
+  **A declared model whose FIT refused is not the same fact as an undeclared
+  model**, and the remedies point in opposite directions: declare the
+  parameters, versus declare a model at all. The projector's own reason is
+  carried through — `local_level` on a plain random walk declines
+  `unidentifiable_parameter`, *q and r do not separate from this series*. The
+  first version of this swallowed that refusal and reported `model_missing`
+  about a different indicator that happened to be undeclared; the second
+  returns it.
+
+  The `projection` decline vocabulary is folded into `simulation` rather than
+  re-listed, the way the axioms' enum already is: a simulation that runs a
+  projector can carry whatever that projector declined with, and a second copy
+  of a closed set is how two vocabularies drift apart.
+
+  `examples/pump_tank_dynamics.yaml` declares `dynamics: {model: local_level}`,
+  so the shipped specimen covers this surface too.
+
+### Fixed — a forecast keeps its doubt
+
+Two defects in the loop this same unreleased section had just closed, both
+found by asking what the filed numbers MEAN rather than whether they appear.
+
+- **A projector returns a distribution, and only its median was kept.** So a
+  rollout seeded from a forecast inherited the number and none of the doubt,
+  and the predictions it filed were bounded by the declared `gain_sigma:`
+  alone. Measured on a random walk at a 60-minute horizon: the source
+  forecast's own 90 % band was **+/- 357.55 rpm**, which through a gain of
+  0.02 is **+/- 7.15** points on the target — and the filed tolerance was
+  **+/- 0.45**. Sixteen times too narrow, which falsifies projections that
+  were never wrong and makes the engine's own calibration figure report that
+  its forecasts are worthless. `ProjectedValue` now carries the band, and it
+  rides into the walk so a transition passes it downstream through the gain
+  exactly as it passes a declared spread. A target is now uncertain because
+  its source is, whether or not anyone declared a spread on the coupling.
+- **The seed was one forecast taken at the full horizon and then held.**
+  Measured on a 60-minute rollout in 5-minute steps: step one reported the
+  target at the value it reaches after an hour. That is the frozen transient
+  again in a different place — a single-point answer stretched across a
+  trajectory. The seed is now read off the fitted curve at EACH STEP'S OWN
+  INSTANT; the fit happens once and only the forecast is repeated, which is
+  the part that depends on the horizon. Measured after: the band widens as
+  `sqrt(t)` for a random walk, and the filed tolerances widen with it, so a
+  prediction at an hour is no longer graded against a five-minute window.
+- **A third count, because two no longer partitioned.** A projected seed is
+  the `project` verb's forecast and that verb files it; an action-set value is
+  what the caller said they would do. Filing either would score one forecast
+  twice, or score the engine on a decision. They are excluded and COUNTED, as
+  `values_driven`, so `predictions_filed` + `values_without_tolerance` +
+  `values_driven` is still every imagined value.
+
+### Compatibility
+
+All of the above are patch-legal under COMPATIBILITY.md: counts that were
+wrong become right, a decline fires where the engine was silent, and
+`horizon_s`, `gain_sigma:` and `file_predictions` are additive with their
+previous behaviour as the default. **One behaviour does change rather than
+extend**: `value_mode="projected"` and `seed_mode="projected"` now refuse an
+indicator with no `dynamics:` instead of curve-fitting it. That is a silent
+wrong answer becoming a named refusal, which COMPATIBILITY.md allows a patch
+to do — and the refusal is the one the `project` verb has always made on the
+same question. No verb, envelope key or `problem_type` was
+removed or renamed. A model declaring no `gain_sigma:` and a caller not asking
+to file get byte-identical answers to 0.2.4's, which is pinned by test rather
+than asserted here.
 
 ---
 

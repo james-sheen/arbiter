@@ -1,0 +1,133 @@
+# A worked example that DECLARES DYNAMICS.
+#
+# The five shipped examples declared thresholds, balances and
+# forecasts, and not one declared a `transition:`, an `action_templates:`
+# block or a `planning:` block. So the three verbs 0.2.3 added -- `rollout`,
+# `plan` and the fitted gains under `model_describe` -- could not be run
+# against anything this package ships, and the schema for them existed only in
+# MODELING.md prose. A reader wanting to try them had to write the model first.
+#
+# It is also the shape that found the defects. A rollout froze its transient at
+# one step's worth of elapsed time, and every fixture in the suite declared an
+# instantaneous response, which is the one regime where that is correct. This
+# file declares a real time course on purpose.
+#
+# WHAT IT MODELS. A pump feeds a tank. Speeding the pump raises the level, but
+# not at once: the change takes two minutes to reach the tank and then settles
+# with a ten-minute time constant. That delay-plus-lag is the ordinary shape of
+# a physical coupling, and it is what `temporal:` exists to state.
+#
+# arbiter rollout -- what the level does over the next hour if we throttle
+# arbiter plan -- which declared setting keeps it inside its band
+# arbiter describe -- what the observations say the gain actually is
+
+domain:
+  id: pump_tank_dynamics
+  name: Pump and tank, with a declared time course
+  description: >
+    The smallest model that exercises every part of the simulation surface:
+    a declared gain, a declared response, an action that can be taken, and an
+    objective to rank actions against.
+
+  entity_types: [Pump, Tank]
+  relationship_types: [feeds]
+
+  indicators:
+    Pump:
+      # A pump has a BAND, not a ceiling: it must neither run away nor stall.
+      # Both lines come from the nameplate, which is what makes declaring a
+      # floor legitimate here -- a floor is a specification, not a guess.
+      - name: speed_rpm
+        type: NUMERIC
+        axioms: [BOUNDEDNESS]
+        # HOW THIS SERIES MOVES ON ITS OWN, which is a different question from
+        # how the pump drives the tank. `transition:` below says what the tank
+        # does when the pump changes; this says what the PUMP does when nobody
+        # touches it, and it is what `project` fits and what
+        # `rollout(seed_mode: projected)` seeds from.
+        #
+        # `local_level` is the least a forecast can assume and still be one:
+        # the speed wanders, and what you read is the wander plus measurement
+        # noise. Declare `trend` only if the speed is genuinely going
+        # somewhere -- an extrapolated straight line through a series that is
+        # not going anywhere reports a confident number for nothing.
+        #
+        # Leave this out and both paths REFUSE, by name. The engine does not
+        # pick a model for you.
+        dynamics: {model: local_level}
+        lower_critical: 100      # nameplate: below this the pump stalls
+        lower_warning: 400       # nameplate: continuous-duty minimum
+        warning: 3600            # nameplate: continuous-duty maximum
+        critical: 4000           # nameplate: mechanical limit
+
+    Tank:
+      - name: level_pct
+        type: NUMERIC
+        role: percentage
+        axioms: [BOUNDEDNESS, HOMEOSTASIS]
+        warning: 85
+        critical: 95
+        window: 30m
+        # The level is SUPPOSED to sit near half full. No datasheet gives a
+        # floor for `how full is acceptable`, so this is HOMEOSTASIS rather
+        # than a lower bound: the model says where it should settle, not a
+        # line below which it is broken.
+        homeostasis:
+          setpoint: 50
+          tolerance: 10
+
+  relationship_rules:
+    - type: feeds
+      source_type: Pump
+      target_type: Tank
+
+      # HOW FAST the change travels, and how it settles once it arrives.
+      # `propagation_delay_s` is dead time -- nothing moves at all until it has
+      # passed. `time_constant_s` is how quickly the remainder is taken up
+      # afterwards. `exponential` is the ordinary first-order response.
+      temporal:
+        propagation_delay_s: 120
+        time_constant_s: 600
+        response_model: exponential
+
+      # HOW MUCH. A STEADY-STATE gain: the level the tank ends at, per rpm,
+      # once the response above has finished. `source:` is required and has no
+      # default, because a number nobody can attribute is a guess with a
+      # decimal point.
+      transition:
+        from: speed_rpm
+        to: level_pct
+        gain: 0.02             # +100 rpm settles the level 2 percentage points
+        source: datasheet
+        # HOW SURE. The nameplate quotes the gain to plus or minus 10 %, so
+        # that is what is declared -- nothing here is fitted or assumed.
+        # With it, every projected level carries a 95 % interval, a plan's
+        # clearance figure is an actual probability rather than a 0 or a 1,
+        # and a rollout's projections can be filed and graded against what
+        # the tank actually did. Delete this line and all three quietly stop:
+        # the engine will not invent a spread to keep them working.
+        gain_sigma: 0.002
+
+  # WHAT MAY BE DONE. An effect model only: it says what a setting does to a
+  # property, and nothing about approval, dispatch or who is allowed to ask.
+  # This engine never actuates.
+  action_templates:
+    - name: throttle_pump
+      applies_to: Pump
+      description: Set the pump to a specific speed.
+      parameters_schema:
+        speed_rpm:
+          type: number
+          entity_property: speed_rpm
+          # WHICH SETTINGS ARE WORTH TRYING is a domain question, so the
+          # planner is told rather than left to sweep a range nobody wrote.
+          candidates: [800, 1500, 2200, 3000]
+      effect: set
+      settle_s: 30
+      source: runbook
+
+  # WHAT A PLAN IS FOR. Without an objective the candidates are still
+  # evaluated and simply not ranked -- the engine will not decide what
+  # `better` means on the model's behalf.
+  planning:
+    objective: expected_findings

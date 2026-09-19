@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import math
 import statistics
-from typing import Any, Dict, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -124,14 +124,30 @@ def stationary(values: Sequence[float]) -> Tuple[bool, Dict[str, Any]]:
     return (low <= ratio <= high and abs(t_stat) <= TREND_T_LIMIT), evidence
 
 
-def align(a: Sequence[Tuple[Any, float]],
-          b: Sequence[Tuple[Any, float]]) -> Tuple[np.ndarray, np.ndarray]:
-    """Two `(timestamp, value)` series onto a common index, by timestamp."""
+def align_with_times(a: Sequence[Tuple[Any, float]],
+                     b: Sequence[Tuple[Any, float]]
+                     ) -> Tuple[List[Any], np.ndarray, np.ndarray]:
+    """`align`, keeping the timestamps it paired on.
+
+    a caller that needs the SPACING of the pairs, not just their
+    order, had no way to get it: `align` returned two value arrays and the
+    instants were gone. Recovering them by re-intersecting the two series at
+    the call site would be a second copy of this function's one rule, so the
+    intersection lives here once and `align` drops what it does not need.
+    """
     by_time = {t: v for t, v in a}
     shared = [(t, by_time[t], v) for t, v in b if t in by_time]
     shared.sort(key=lambda row: row[0])
-    return (np.array([row[1] for row in shared], dtype=float),
+    return ([row[0] for row in shared],
+            np.array([row[1] for row in shared], dtype=float),
             np.array([row[2] for row in shared], dtype=float))
+
+
+def align(a: Sequence[Tuple[Any, float]],
+          b: Sequence[Tuple[Any, float]]) -> Tuple[np.ndarray, np.ndarray]:
+    """Two `(timestamp, value)` series onto a common index, by timestamp."""
+    _, values_a, values_b = align_with_times(a, b)
+    return values_a, values_b
 
 
 def lead_lag(x: np.ndarray, y: np.ndarray,

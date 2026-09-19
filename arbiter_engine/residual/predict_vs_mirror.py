@@ -27,8 +27,11 @@ Gate-off semantics follow the PlanOutcomeRecorder precedent (``DT_PREDICT_VS_MIR
 record/grade paths are no-ops with zero memory accumulation; the
 ``PredictionLedger`` class itself is a pure library. Ring cap via
 ``DT_PREDICTION_LEDGER_RING_CAP`` (default 1000). Value-level predictions
-(``ProjectedValue`` vs observed property) are the named v1 follow-up —
-same ledger, ``kind="value"``.
+(``ProjectedValue`` vs observed property) SHIPPED and are no longer a
+follow-up: ``record_value_prediction`` and ``record_projected_values`` file
+them and ``grade_matured`` scores ``kind == "value"`` against the mirror
+reading. What is still open is the LOOP -- no rollout files its per-step
+values here, and the transition learner reads nothing back.
 """
 
 from __future__ import annotations

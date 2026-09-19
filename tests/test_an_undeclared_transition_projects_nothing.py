@@ -187,9 +187,19 @@ class TestModelDescribeReportsDynamicsCoverage:
         session = api.EngineSession()
         session.load_model(_write(tmp_path, NO_DYNAMICS, "no_dynamics"))
         coverage = api.model_describe(session).to_dict()["model"]["transitions"]
-        assert coverage["declared"] == [{
-            "rule": "Pump-feeds->Tank", "from": "speed_rpm",
-            "to": "level_pct", "gain": 0.01, "source": "datasheet"}]
+        assert len(coverage["declared"]) == 1
+        entry = coverage["declared"][0]
+        # SUBSET, not equality. This asserted the whole dict, which made it
+        # fail the first time the entry grew a key -- and COMPATIBILITY.md
+        # says in as many words that a PATCH may add one. A test that breaks
+        # on every legal addition is pinning a contract the project does not
+        # have, and the fix is to assert what this test is named for: that the
+        # entry NAMES its properties and their provenance.
+        for key, value in {
+                "rule": "Pump-feeds->Tank", "from": "speed_rpm",
+                "to": "level_pct", "gain": 0.01,
+                "source": "datasheet"}.items():
+            assert entry[key] == value, key
 
     def test_the_coverage_counts_add_up(self, tmp_path):
         session = api.EngineSession()

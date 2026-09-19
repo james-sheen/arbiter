@@ -82,7 +82,7 @@ Three things about it are promises and not accidents:
   enforces on itself, not a courtesy.
 - **Change a `problem_type` that did not exist in the previous release.**
 - **Prefix a finding drawn from a value the engine IMAGINED rather than read.**
-  Added at 0.1.19 with `imagined_`. A what-if that pushed a reading past a
+  Added at 0.2.3 with `imagined_`. A what-if that pushed a reading past a
   declared line used to return the same `problem_type` as a reading that was
   actually past it, so a consumer routing on the type could not tell an
   incident from a simulation. Findings about real readings are untouched, and

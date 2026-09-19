@@ -119,6 +119,15 @@ class ProjectedValue:
     value: float
     confidence: float
     horizon_s: float
+    #: THE FORECAST'S OWN SPREAD, which used to be thrown away. A
+    #: projector returns a distribution; this carried only its median, so a
+    #: rollout seeded from a forecast inherited the number and none of the
+    #: doubt. Measured on a random walk at a 60-minute horizon: the forecast's
+    #: own 90% band was +/- 357.55 rpm, and the predictions the rollout filed
+    #: off it carried a tolerance of +/- 0.45 pct -- sixteen times too narrow,
+    #: which falsifies a projection that was never wrong and makes the
+    #: engine's own calibration figure say its forecasts are worthless.
+    sigma: float = 0.0
     model: str = ""
     #: where the NUMBER came from, carried so a value produced by a
     #: declared transition can be told from one fitted off a series. Empty
@@ -297,6 +306,27 @@ class Transition:
     #: zero-gain transition that reported a value would be the engine
     #: answering with a number nobody supplied.
     estimated: bool = False
+    #: the DECLARED standard deviation of `gain`, in the same units.
+    #: A datasheet that says *0.02 per rpm, plus or minus 0.002* has stated
+    #: one; nothing infers it. `0.0` means NOT DECLARED, which is why the
+    #: default is a number rather than `None`: a zero spread and an
+    #: undeclared spread produce the same arithmetic, and the difference that
+    #: matters to a reader is carried by `has_uncertainty` below and reported
+    #: as a stamp, not smuggled into the value.
+    #:
+    #: WHY NOT REUSE `confidence`. That field is a weight on how much to
+    #: believe the coupling exists at all, on a 0-1 scale with no units. A
+    #: spread on the gain is a different quantity in different units, and
+    #: mapping one onto the other would be the engine inventing a variance
+    #: from a number nobody declared as one.
+    gain_sigma: float = 0.0
+    #: True when the block said `gain_sigma: estimate`. The author
+    #: is saying a spread exists and that they have not measured it, which is
+    #: a different claim from declaring none: the first asks the learner for a
+    #: proposal, the second says the question was never raised. Until a fitted
+    #: spread is adopted the transition carries no interval either way -- a
+    #: band nobody supplied is not a band of zero width.
+    sigma_estimated: bool = False
     offset: float = 0.0
     clamp_to_bounds: bool = False
     #: Sample support behind a fitted gain. Zero for a declared one, and that
@@ -305,10 +335,41 @@ class Transition:
     observation_count: int = 0
     confidence: float = 1.0
 
+    #:. The `source:` values MODELING.md documents for a transition.
+    #: Named here so the property below and the guide cannot drift apart
+    #: silently, which they had: the check accepted `runbook`, which is an
+    #: ACTION TEMPLATE's provenance and has never been a documented
+    #: transition source, and rejected `measured` and `estimated`, which are
+    #: two of the four the guide lists.
+    DECLARED_SOURCES = ("datasheet", "contract", "measured", "estimated")
+
+    @property
+    def has_uncertainty(self) -> bool:
+        """True when the author declared a spread on this gain.
+
+        Distinct from `gain_sigma > 0` only in intent, and the intent is what
+        a reader needs: an edge with no declared spread is not an edge whose
+        spread is zero, it is one nobody measured. The engine reports the
+        difference rather than treating the second as the first.
+        """
+        return self.gain_sigma > 0.0
+
     @property
     def is_declared(self) -> bool:
-        """True when a human wrote this number down rather than fitting it."""
-        return self.source in ("datasheet", "contract", "runbook")
+        """True when a human supplied this number, however they arrived at it.
+
+        The distinction is PROVENANCE, not method. All four documented values
+        are a person standing behind a gain -- off a datasheet, out of a
+        contract, measured on the plant, or estimated by an engineer. What is
+        NOT declared is a gain some producer FITTED, which carries the
+        identity of whatever produced it (`learned`, or a model id) precisely
+        so it can be told apart from the four above.
+
+        Whether a fitted gain has been ADOPTED is a different question and has
+        its own field: `estimated` is True when the block said
+        `gain: estimate`, and such a transition projects nothing at all.
+        """
+        return self.source in self.DECLARED_SOURCES
 
 
 # ---------------------------------------------------------------------------
@@ -475,6 +536,14 @@ class TraversalResult:
     imagined_values: Dict[str, Dict[str, float]] = field(default_factory=dict)
     #: entity_id -> {property -> provenance of the number}
     imagined_sources: Dict[str, Dict[str, str]] = field(default_factory=dict)
+    #: entity_id -> {property -> standard deviation of the imagined
+    #: value}. PRESENT ONLY where a declared `gain_sigma:` reached it, so an
+    #: absent entry says nobody declared a spread rather than that the spread
+    #: is zero. That distinction is the whole point: a value with no interval
+    #: and a value known to be exact are different claims, and an engine that
+    #: printed 0.0 for both would be making the weaker one look like the
+    #: stronger.
+    imagined_sigma: Dict[str, Dict[str, float]] = field(default_factory=dict)
     #: Engine-made assumptions the imagined values rest on.
     assumptions: List[str] = field(default_factory=list)
     transitions_attempted: int = 0

@@ -98,6 +98,40 @@ _SHADOW_VOCABULARY = frozenset({
     "internal_error",
 }) | {reason.value for reason in NotEvaluatedReason}
 
+#:. Hoisted out of `VOCABULARIES` so the simulation set can
+#: fold it in. `seed_mode="projected"` runs the declared projector, so a
+#: simulation carries whatever that projector declined with -- and a
+#: second copy of a closed set is how two vocabularies drift apart.
+_PROJECTION_VOCABULARY = frozenset({
+    "model_missing",               # no dynamics declared; a default would decide it
+        "insufficient_samples",
+        "unidentifiable_parameter",    # q and r not separable from this series
+        "model_inconsistent",          # innovations outside the declared band
+        "covariance_unbounded",
+        "no_threshold",                # nothing to compute a breach probability against
+        "no_report_probability",       # a breach probability, and no declared line for it
+        "no_lookback",                 # no declared span of history to fit on
+        "internal_error",
+        # WITHDRAWN 0.1.18, four at once, for the reason this file already
+        # gives twice: a member no input can reach makes the set a worse
+        # instrument. All four named a state THIS filter does not compute.
+        #
+        # `unobservable_state` and `filter_not_converged` belong to a filter
+        # that reports its own observability and convergence. The local-level
+        # model ships closed-form: it has one state, which is observed by
+        # construction, and no iteration to fail to converge. The member that
+        # DOES fire where they would have is `unidentifiable_parameter`.
+        #
+        # `stale_observation` and `horizon_exceeds_validity` each need a number
+        # nobody declared -- how old is too old, and how far out this model
+        # stays valid. Inventing either is the thing this project refuses: a
+        # floor is a specification, not a guess. A series whose readings all
+        # fall outside the declared `lookback` already declines
+        # `insufficient_samples` with `n: 0`, truthfully. They return with a
+        # `validity:` or a staleness line in the declaration, which would be
+        # the specification these two are currently missing.
+    })
+
 VOCABULARIES: Dict[str, frozenset] = {
     "shadow": _SHADOW_VOCABULARY,
     "simulation": frozenset({
@@ -106,6 +140,16 @@ VOCABULARIES: Dict[str, frozenset] = {
         "missing_declaration",   # a `transition:` block missing a required key
         "missing_property",      # the driving property is absent or not a number
         "cycle_unsupported",     # a feedback path needs iteration, not one pass
+        # `reconvergence_unsupported` WAS HERE AND IS GONE, which
+        # is the intended end of a decline rather than a rollback.
+        # added it to name a real limitation: a node reached by two acyclic
+        # paths of unequal length ended correct while anything downstream of
+        # it stayed short, and saying so was better than the `cycle` this used
+        # to claim. Ordering the value pass by dependency removed the
+        # limitation, so the reason had nothing left to report -- and a member
+        # nobody can construct an input for is the dead-vocabulary shape
+        # exists to catch. It never shipped; it was added and retired
+        # inside one unreleased section.
         "budget_exhausted",      # max_transitions reached; the count is carried
         "internal_error",
         # the rollout's own. A rollout can refuse for reasons a
@@ -132,7 +176,37 @@ VOCABULARIES: Dict[str, frozenset] = {
         "no_candidates",
         # the pair is declared, the magnitude is not yet.
         "gain_not_adopted",
-    }) | {reason.value for reason in NotEvaluatedReason},
+        # no `dynamics:` on an indicator a caller asked to project.
+        # The same refusal `run_projection` makes, now reachable from the
+        # simulation side too: the engine does not choose a model for you, and
+        # it used to on this one path while declining on the other.
+        "model_missing",
+        # the closed loop's two refusals to FILE a prediction.
+        #
+        # A rollout under actions is a COUNTERFACTUAL, not a forecast. This
+        # engine never dispatches -- a rollout carrying actions reports
+        # `tier: 3` and stops -- so it cannot know the actions were taken, and
+        # grading *what would have happened if* against what did would score
+        # the model on outcomes nobody attempted. The ledger would fill with
+        # falsified records that say nothing about the model.
+        "counterfactual_not_a_prediction",
+        # A point prediction is not falsifiable without a resolution, and the
+        # ledger requires one for exactly that reason. The engine will not
+        # invent it: how close counts as right is a domain fact, the same
+        # class as the floor refuses to guess. A declared
+        # `gain_sigma:` IS that statement, so a value carrying one can be
+        # filed and a value without one is declined here by name.
+        "no_declared_tolerance",
+    }) | {reason.value for reason in NotEvaluatedReason}
+      # AND THE PROJECTION VOCABULARY, folded in rather than
+      # re-listed. `seed_mode="projected"` runs the declared projector, so a
+      # simulation can now carry whatever that projector declined with --
+      # `unidentifiable_parameter` when two variance terms do not separate
+      # from a series, `no_lookback` when nothing says how far back to fit.
+      # Re-listing them here would be a second copy of one closed set, which
+      # is how two vocabularies drift; the rollout already folds in the
+      # axioms' enum for exactly this reason.
+      | _PROJECTION_VOCABULARY,
     "forecasts": frozenset({
         "forecast_missing",     # declared expected, and nothing arrived
         "stale_forecast",       # older than the declared `max_age`
@@ -174,35 +248,7 @@ VOCABULARIES: Dict[str, frozenset] = {
         # that cannot happen, and the enum stops being evidence about the
         # engine. Both come back with the machinery that emits them.
     }),
-    "projection": frozenset({
-        "model_missing",               # no dynamics declared; a default would decide it
-        "insufficient_samples",
-        "unidentifiable_parameter",    # q and r not separable from this series
-        "model_inconsistent",          # innovations outside the declared band
-        "covariance_unbounded",
-        "no_threshold",                # nothing to compute a breach probability against
-        "no_report_probability",       # a breach probability, and no declared line for it
-        "no_lookback",                 # no declared span of history to fit on
-        "internal_error",
-        # WITHDRAWN 0.1.18, four at once, for the reason this file already
-        # gives twice: a member no input can reach makes the set a worse
-        # instrument. All four named a state THIS filter does not compute.
-        #
-        # `unobservable_state` and `filter_not_converged` belong to a filter
-        # that reports its own observability and convergence. The local-level
-        # model ships closed-form: it has one state, which is observed by
-        # construction, and no iteration to fail to converge. The member that
-        # DOES fire where they would have is `unidentifiable_parameter`.
-        #
-        # `stale_observation` and `horizon_exceeds_validity` each need a number
-        # nobody declared -- how old is too old, and how far out this model
-        # stays valid. Inventing either is the thing this project refuses: a
-        # floor is a specification, not a guess. A series whose readings all
-        # fall outside the declared `lookback` already declines
-        # `insufficient_samples` with `n: 0`, truthfully. They return with a
-        # `validity:` or a staleness line in the declaration, which would be
-        # the specification these two are currently missing.
-    }),
+    "projection": _PROJECTION_VOCABULARY,
     "inference": frozenset({
         "not_identifiable",            # an open backdoor through a declared latent
         "cpt_missing",                 # a weight on an active path is a default

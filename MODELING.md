@@ -712,6 +712,7 @@ relationship_rules:
       to: level_pct              # a property of the target type
       gain: 0.003                # units of `to` per unit of `from`, at steady state
       source: datasheet          # datasheet | contract | measured | estimated
+      # gain_sigma: 0.0003       # the DECLARED spread on that gain, same units
       # offset: 0.0
       # clamp_to_bounds: false
 ```
@@ -719,6 +720,43 @@ relationship_rules:
 With this declared, `traverse` in a value mode reports what the downstream
 value BECOMES rather than only who is reachable, and `rollout` steps that
 forward under actions.
+
+**`gain_sigma:` is how sure you are of the gain, and it is optional.** A
+datasheet that reads *0.003 per rpm, plus or minus 10 %* has told you one;
+most couplings are declared without it and behave exactly as before. Declare
+it and every value the coupling drives carries a standard deviation and a
+95 % interval beside it, `clearance_probability` becomes an actual
+probability rather than a 0 or a 1, and a rollout's projections become
+FALSIFIABLE -- the declared band is the window inside which a later reading
+counts as having confirmed them, so the engine can be scored on its own
+forecasts.
+
+Nothing infers it. A spread is not read off a correlation, and it is not
+`confidence:` under another name: that field weights whether the coupling
+exists at all, on a unitless 0-1 scale, and turning it into a variance would
+be the engine inventing a number nobody declared as one. A gain with no
+declared spread reports NO interval, rather than an interval of zero width --
+a value nobody measured the spread of and a value known to be exact are
+different claims, and the second is much the stronger.
+
+**`gain_sigma: estimate` asks for one instead of stating it.** It says a
+spread exists and that you have not measured it, which is a third thing again
+from declaring a number and from declaring nothing at all. `model_describe`
+then reports a fitted spread under `proposed_transitions.fitted[*].gain_sigma`
+-- the standard error of the fitted gain, which is how well your readings pin
+the slope down. It is a PROPOSAL: the transition carries no interval until you
+write a number into the file yourself, exactly as `gain: estimate` projects
+nothing until its magnitude is adopted. The engine does not edit your model.
+
+**A declared coupling is told how its own projections turned out.** Once
+rollouts have filed predictions and `check` has graded them,
+`model_describe`'s `transitions.declared[*].projections` carries `graded`,
+`confirmed`, `falsified` and `confirm_rate` for that coupling, with the
+denominator beside the rate because a rate over five readings is not the
+statement a rate over five hundred is. Below half confirmed it adds a
+`remedy` naming what to consider -- the gain may be wrong, the declared spread
+may be too narrow, or the coupling may not hold in the regime the readings
+came from. Nothing is changed for you.
 
 **All four of `from`, `to`, `gain` and `source` are required, and a block
 missing any of them is refused rather than completed.** This is the same rule

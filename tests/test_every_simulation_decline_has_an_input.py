@@ -26,12 +26,15 @@ what needs proving here is that the ROLLOUT is a path to them at all.
 from __future__ import annotations
 
 import pathlib
+import random
 import tempfile
+from datetime import timedelta
 
 import pytest
 
 from arbiter_engine import api
-from arbiter_engine.subenvelope import VOCABULARIES
+from arbiter_engine.subenvelope import (
+    VOCABULARIES, _PROJECTION_VOCABULARY)
 from arbiter_engine.twin.actions import ActionInstance
 from arbiter_engine.twin.topology import (
     TraversalDirection, TraversalRequest, ValueMode)
@@ -147,6 +150,112 @@ domain:
             overrides={"p": {"v": 9.0}}))
 
 
+class TestAReconvergentPathIsNotALoop:
+    """A DIAMOND OF UNEQUAL LENGTH WAS REPORTED AS A FEEDBACK LOOP.
+
+    The visited check asked `has this node been seen`, which is true both for
+    a back-edge and for the second arrival of an acyclic re-convergence. So
+    `a->d` beside `a->b->c->d` filed `cycle_unsupported` at `c->d` and dropped
+    the longer path's contribution: measured, `d` carried the direct
+    contribution alone and the author was told to look for a cycle a DAG does
+    not contain. The test is now whether the target is an ANCESTOR ON THE
+    PATH, which is what a loop actually means.
+
+    The equal-length diamond went on passing throughout, which is why no test
+    caught this: both edges into the tank leave start nodes, so the tank is
+    popped after both have contributed. Only UNEQUAL lengths reorder the pops.
+    """
+
+    DIAMOND = """
+domain:
+  id: dia
+  name: Re-convergence
+  entity_types: [N]
+  relationship_types: [drives]
+  indicators:
+    N: [{name: v, type: NUMERIC, axioms: [BOUNDEDNESS], critical: 9e9}]
+  relationship_rules:
+    - {type: drives, source_type: N, target_type: N,
+       temporal: {propagation_delay_s: 0, time_constant_s: 1, response_model: step},
+       transition: {from: v, to: v, gain: 1.0, source: datasheet}}
+"""
+
+    def _diamond(self, tmp_path, with_downstream=False, name="dia"):
+        session = api.EngineSession()
+        session.load_model(_model(tmp_path, self.DIAMOND, name))
+        nodes = ["a", "b", "c", "d"] + (["e"] if with_downstream else [])
+        for node in nodes:
+            session.add_entity(node, "N", {"v": 1.0})
+        session.add_relationship("a", "drives", "d")      # hop 1, direct
+        session.add_relationship("a", "drives", "b")      # hop 1
+        session.add_relationship("b", "drives", "c")      # hop 2
+        session.add_relationship("c", "drives", "d")      # hop 3, re-converges
+        if with_downstream:
+            session.add_relationship("d", "drives", "e")
+        return session
+
+    def _walk(self, session):
+        return api.traverse(session, ["a"], value_mode="hypothetical",
+                            overrides={"a": {"v": 2.0}})
+
+    def test_an_acyclic_diamond_is_not_called_a_cycle(self, tmp_path):
+        assert "cycle_unsupported" not in _reasons(
+            self._walk(self._diamond(tmp_path))), (
+            "a graph with no back-edge was reported as containing a loop")
+
+    def test_both_paths_reach_the_target(self, tmp_path):
+        values = self._walk(
+            self._diamond(tmp_path, name="dia2")).to_dict()["simulation"]["values"]
+        assert values["d"]["v"]["value"] == pytest.approx(3.0), (
+            "d is driven by a->d and by a->b->c->d, each carrying a delta of "
+            "1.0 at gain 1.0; 2.0 means one path was dropped")
+
+    def test_nothing_is_declined_when_nothing_is_downstream(self, tmp_path):
+        """d carries both contributions and leads nowhere, so nothing is stale."""
+        assert _reasons(self._walk(
+            self._diamond(tmp_path, name="dia3"))) == set()
+
+    def test_a_node_downstream_of_the_re_convergence_is_not_short(
+            self, tmp_path):
+        """THE RESIDUE IS GONE, so nothing is reported.
+
+        An internal ruling left `d` correct and everything past it short: `d` had already
+        carried its shorter-path value on to `e` before the longer path
+        arrived, and a decline named that rather than hiding it. Ordering the
+        value pass by dependency means `d` is resolved before it contributes
+        to anything, so `e` carries the whole of it.
+
+        This test used to assert the decline. It now asserts the number, which
+        is the better pin: a decline saying *this is short* and a value that
+        is not short are the same fact reported two ways, and only one of them
+        can be checked by arithmetic.
+        """
+        envelope = self._walk(
+            self._diamond(tmp_path, with_downstream=True, name="dia4"))
+        assert _reasons(envelope) == set(), (
+            "an acyclic graph produced a refusal of some kind")
+        values = envelope.to_dict()["simulation"]["values"]
+        assert values["d"]["v"]["value"] == pytest.approx(3.0)
+        assert values["e"]["v"]["value"] == pytest.approx(3.0), (
+            "e is driven by d at gain 1.0, so it carries d's whole delta; "
+            "2.0 means it was written before d finished")
+
+    def test_the_findings_are_drawn_from_the_value_that_is_reported(
+            self, tmp_path):
+        """Evaluation is deferred until every contribution has landed.
+
+        Before a re-convergence target was evaluated at its shorter-
+        path value and reported at another one, so a reader comparing the
+        findings against the values saw two different numbers for one node.
+        """
+        session = self._diamond(tmp_path, name="dia5")
+        payload = self._walk(session).to_dict()
+        reported = payload["simulation"]["values"]["d"]["v"]["value"]
+        assert reported == pytest.approx(3.0)
+        assert payload["checked"]["invariants"] > 0, (
+            "deferring the evaluation must not stop it happening")
+
+
 class TestEachOwnedReasonHasAnInput:
 
     def test_missing_dynamics(self, tmp_path):
@@ -226,8 +335,41 @@ class TestEachOwnedReasonHasAnInput:
             session, ["p"], value_mode="hypothetical",
             overrides={"p": {"v": 9.0}}))
 
+    SHORT_SERIES = """
+domain:
+  id: shortseries
+  name: A declared model with too little to fit on
+  entity_types: [P]
+  relationship_types: [feeds]
+  indicators:
+    P:
+      - {name: v, type: NUMERIC, axioms: [BOUNDEDNESS], critical: 9e9,
+         dynamics: {model: trend}}
+"""
+
     def test_insufficient_samples(self, tmp_path):
+        """THIS USED TO BE REACHED BY DECLARING NOTHING.
+
+        `seed_mode="projected"` fitted a curve to any series with three
+        readings whatever the model said, so an undeclared indicator with no
+        history produced `insufficient_samples`. It now produces
+        `model_missing`, which is the truer answer: the series was not short,
+        nobody had said what to fit. The shortage is constructed here the only
+        way it can honestly arise -- a model IS declared, and there is not
+        enough history to fit it.
+        """
+        session = api.EngineSession()
+        session.load_model(_model(tmp_path, self.SHORT_SERIES, "shortseries"))
+        session.add_entity("p", "P", {"v": 1.0})
+        session.add_observations(
+            "p", "v", [(api.now_utc() - timedelta(seconds=60), 1.0)])
         assert "insufficient_samples" in _reasons(api.rollout(
+            session, horizon_s=120.0, step_s=60.0, seed_mode="projected"))
+
+    def test_model_missing(self, tmp_path):
+        """The refusal that replaced it, on the input that used to give the
+        other one: no `dynamics:` at all."""
+        assert "model_missing" in _reasons(api.rollout(
             _base(tmp_path), horizon_s=120.0, step_s=60.0,
             seed_mode="projected"))
 
@@ -362,9 +504,111 @@ class TestTheVocabularyHasNoUnexplainedMember:
             "no_objective", "no_candidates",
             # the pair is declared, the magnitude is not.
             "gain_not_adopted",
+            # the closed loop's two refusals to FILE.
+            "counterfactual_not_a_prediction",
+            "no_declared_tolerance",
         }
-        unexplained = set(VOCABULARIES["simulation"]) - owned - AXIOM_REASONS
+        # AND THE PROJECTION SET. `seed_mode="projected"` runs the
+        # declared projector, so a simulation carries whatever that projector
+        # declined with, the same way it already carries the reasoner's.
+        # Subtracted from the same source the vocabulary folds in, so the two
+        # cannot disagree about what was folded.
+        unexplained = (set(VOCABULARIES["simulation"]) - owned
+                       - AXIOM_REASONS - set(_PROJECTION_VOCABULARY))
         assert unexplained == set(), (
             f"{unexplained} is in the simulation vocabulary and this file "
             f"neither constructs an input for it nor places it in the axiom "
             f"fold-in")
+
+
+class TestTheFilingRefusalsHaveInputs:
+    """A rollout files a prediction only when it is one.
+
+    Both members here are refusals to FILE, and each names a different reason
+    the imagined trajectory is not something the engine can later be graded
+    on. They are constructed rather than asserted because a decline nobody can
+    produce an input for is a decline that has already stopped being true.
+    """
+
+    MODEL = """
+domain:
+  id: filing
+  name: Filing
+  entity_types: [P, T]
+  relationship_types: [feeds]
+  indicators:
+    P:
+      # declared, because `seed_mode: projected` will not pick one.
+      - {name: v, type: NUMERIC, axioms: [BOUNDEDNESS], critical: 9e9,
+         dynamics: {model: trend}}
+    T: [{name: w, type: NUMERIC, axioms: [BOUNDEDNESS], critical: 9e9}]
+  relationship_rules:
+    - {type: feeds, source_type: P, target_type: T,
+       temporal: {propagation_delay_s: 0, time_constant_s: 1, response_model: step},
+       transition: {from: v, to: w, gain: 2.0%(sigma)s, source: datasheet}}
+  action_templates:
+    - name: push
+      applies_to: P
+      parameters_schema:
+        v: {type: number, entity_property: v}
+      effect: set
+      settle_s: 0
+      source: runbook
+"""
+
+    def _session(self, tmp_path, name, sigma=""):
+        session = api.EngineSession()
+        session.load_model(
+            _model(tmp_path, self.MODEL % {"sigma": sigma}, name))
+        session.add_entity("p1", "P", {"v": 1.0})
+        session.add_entity("t1", "T", {"w": 10.0})
+        session.add_relationship("p1", "feeds", "t1")
+        return session
+
+    def test_counterfactual_not_a_prediction(self, tmp_path):
+        """A rollout under actions describes a world nobody brought about."""
+        envelope = api.rollout(
+            self._session(tmp_path, "cf", sigma=", gain_sigma: 0.1"),
+            actions=[_act(entity_id="p1", template="push",
+                          parameters={"v": 5.0})],
+            horizon_s=180.0, step_s=60.0, file_predictions=True)
+        assert "counterfactual_not_a_prediction" in _reasons(envelope)
+        assert envelope.to_dict()["simulation"][
+            "checked"]["predictions_filed"] == 0
+
+    def test_no_declared_tolerance(self, tmp_path):
+        """Nothing uncertain anywhere, so nothing is filable.
+
+        dropping `gain_sigma:` alone no longer reaches this. A
+        PROJECTED seed carries its forecast's own band and the gain passes it
+        downstream, so a declared `dynamics:` model gives the target a
+        tolerance whether or not the gain's spread was declared. A current
+        seed with no actions has no source of doubt at all, which is the only
+        thing left that cannot be filed.
+        """
+        envelope = api.rollout(self._session(tmp_path, "notol"),
+                               horizon_s=180.0, step_s=60.0,
+                               seed_mode="current", file_predictions=True)
+        assert "no_declared_tolerance" in _reasons(envelope)
+        assert envelope.to_dict()["simulation"][
+            "checked"]["predictions_filed"] == 0
+
+    def test_neither_fires_when_the_rollout_is_a_gradeable_forecast(
+            self, tmp_path):
+        """Guard: a refusal that fires on every input is as dead as one that
+        fires on none. Only the SOURCE carries history here, so the target's
+        value is produced by the declared transition and inherits its spread.
+        """
+        session = self._session(tmp_path, "ok", sigma=", gain_sigma: 0.1")
+        rng = random.Random(4)
+        for k in range(24):
+            session.add_observations(
+                "p1", "v",
+                [(api.now_utc() - timedelta(seconds=60 * (24 - k)),
+                  1.0 + 0.5 * k + rng.gauss(0.0, 0.08))])
+        envelope = api.rollout(session, horizon_s=180.0, step_s=60.0,
+                               seed_mode="projected", file_predictions=True)
+        reasons = _reasons(envelope)
+        assert "counterfactual_not_a_prediction" not in reasons
+        assert envelope.to_dict()["simulation"][
+            "checked"]["predictions_filed"] > 0

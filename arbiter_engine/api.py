@@ -729,7 +729,19 @@ def _proposed_transitions(session: EngineSession) -> Dict[str, Any]:
             {"edge": p.edge, "from": p.from_property, "to": p.to_property,
              "gain": p.gain, "n": p.n, "r_squared": p.r_squared,
              "interval": [p.ci_low, p.ci_high],
-             "declared_gain": p.declared_gain, "source": p.source}
+             "declared_gain": p.declared_gain, "source": p.source,
+             # WHICH response model this number was fitted through.
+             # Two different computations produce the `gain` key and a reader
+             # comparing it against a datasheet cannot otherwise tell them
+             # apart.
+             "response_model": p.response_model,
+             # the spread this fit would propose for `gain_sigma:`,
+             # and whether the model ASKED for one. A number beside a flag,
+             # because an author who wrote `gain_sigma: estimate` is owed the
+             # proposal and an author who wrote nothing is owed the option
+             # without being told they got it wrong.
+             "gain_sigma": p.gain_standard_error,
+             "gain_sigma_requested": p.sigma_requested}
             for p in proposals],
         "not_fitted": [
             {"edge": r.location, "reason": r.reason, "detail": r.detail}
@@ -755,7 +767,70 @@ def _proposed_transitions(session: EngineSession) -> Dict[str, Any]:
     }
 
 
-def _transition_coverage(model) -> Dict[str, Any]:
+def _projection_record(session: EngineSession, target_type: str,
+                       to_property: str) -> Dict[str, Any]:
+    """How the projections THIS coupling drove have actually fared.
+
+    THE LOOP RAN ONE WAY. Rollouts file value predictions and
+    `check` grades them, so the ledger knows whether a declared gain's
+    projections held; nothing read that back to the gain. An author could see
+    a coupling and its fitted disagreement and could not see that every
+    forecast the coupling produced had been contradicted.
+
+    A REPORT, NOT AN EDIT, which is the same line every other learned quantity
+    in this package sits on: the engine never rewrites a declaration, and a
+    confirm rate is evidence an author weighs, not a correction applied behind
+    them. `remedy` says what to do and nothing does it.
+
+    THE DENOMINATOR TRAVELS WITH IT. A confirm rate over two graded records is
+    not the same statement as one over two hundred, and a bare percentage
+    hides which one a reader has. `graded` is reported first for that reason,
+    and a coupling with nothing graded reports the zero rather than omitting
+    itself -- absence here would read as *no problem found*.
+    """
+    ledger = getattr(session, "ledger", None)
+    empty = {"graded": 0, "confirmed": 0, "falsified": 0,
+             "confirm_rate": None, "pending": 0}
+    if ledger is None or not to_property:
+        return empty
+    # Records are per ENTITY; a coupling is declared per TYPE. Resolve the
+    # instances of the target type rather than matching on the property alone,
+    # because two types can declare the same indicator name and a rate that
+    # silently mixed them would answer about neither.
+    of_type = {
+        entity_id for entity_id, entity in (
+            getattr(session, "entities", {}) or {}).items()
+        if str(getattr(entity, "type", "")) == str(target_type)
+    }
+    if not of_type:
+        return empty
+    confirmed = falsified = pending = 0
+    for record in getattr(ledger, "_records", []) or []:
+        if getattr(record, "kind", "") != "value":
+            continue
+        if getattr(record, "entity_id", "") not in of_type:
+            continue
+        if str(getattr(record, "indicator", "") or "") != str(to_property):
+            continue
+        verdict = getattr(record, "verdict", None)
+        if verdict == "confirmed":
+            confirmed += 1
+        elif verdict == "falsified":
+            falsified += 1
+        elif verdict is None:
+            pending += 1
+    graded = confirmed + falsified
+    return {
+        "graded": graded,
+        "confirmed": confirmed,
+        "falsified": falsified,
+        "confirm_rate": (confirmed / graded) if graded else None,
+        "pending": pending,
+    }
+
+
+def _transition_coverage(model, session: Optional[EngineSession] = None
+                         ) -> Dict[str, Any]:
     """Which relationship rules declare value dynamics, and which do not.
 
     A rule with a `temporal:` block says how FAST and how LIKELY a
@@ -789,13 +864,29 @@ def _transition_coverage(model) -> Dict[str, Any]:
             })
             continue
         for transition in transitions:
-            declared.append({
+            entry = {
                 "rule": label,
                 "from": transition.from_property,
                 "to": transition.to_property,
                 "gain": transition.gain,
                 "source": transition.source,
-            })
+                "gain_sigma": transition.gain_sigma,
+            }
+            if session is not None:
+                record = _projection_record(
+                    session, rule.get('target_type', ''),
+                    transition.to_property)
+                entry["projections"] = record
+                if record["graded"] and record["confirm_rate"] is not None \
+                        and record["confirm_rate"] < 0.5:
+                    entry["remedy"] = (
+                        f"{record['confirmed']} of {record['graded']} "
+                        f"projections this coupling drove were confirmed. "
+                        f"Nothing has been changed: the gain may be wrong, "
+                        f"the declared spread may be too narrow, or the "
+                        f"coupling may not hold in the regime these readings "
+                        f"came from.")
+            declared.append(entry)
     return {
         "declared": declared,
         "rules_without_dynamics": without,
@@ -902,7 +993,7 @@ def model_describe(session: EngineSession) -> Envelope:
         # `unread_fields` already do for the axiom side: an author who wants
         # to know what a simulation will be able to project should not have
         # to run one and read the declines.
-        "transitions": _transition_coverage(model),
+        "transitions": _transition_coverage(model, session),
         # gains FITTED from this session's observations, beside the
         # ones the author declared. Proposals: nothing here has changed the
         # model, and a `gain: estimate` transition projects no value until a
@@ -1151,13 +1242,21 @@ def _fold(word: Any, vocabulary: Sequence[str]) -> Optional[str]:
 def traverse(session: EngineSession, start_nodes: Sequence[str],
              direction: str = "forward", value_mode: str = "current",
              max_hops: int = 4,
-             overrides: Optional[Dict[str, Dict[str, Any]]] = None) -> Envelope:
+             overrides: Optional[Dict[str, Dict[str, Any]]] = None,
+             horizon_s: float = 3600.0) -> Envelope:
     """The kernel: subsumes root cause, impact, what-if, conservation and
     connectivity as points in one parameter space.
 
     ``value_mode='projected'`` is refused rather than silently downgraded —
     An internal ruling records that PREDICT is plumbed but unfed, and a tool that accepts
     a mode it cannot honour is worse than one that declines it.
+
+    ``horizon_s`` is HOW FAR AHEAD the declared response is read. The
+    published verb had no way to say, so every hypothetical walk was evaluated
+    at the request default of one hour: a caller could not ask what a value
+    becomes in ten minutes, and `response_fraction` was being read at an hour
+    without the envelope naming the instant. The horizon used is stamped into
+    ``payload.simulation`` so a reader can see it.
     """
     # Imported here rather than at module scope for the cycle, and hoisted
     # above the topology build so both ARGUMENT checks happen before any state
@@ -1235,6 +1334,7 @@ def traverse(session: EngineSession, start_nodes: Sequence[str],
         value_mode=ValueMode[value_mode.upper()],
         max_hops=max_hops,
         overrides=dict(overrides or {}),
+        horizon_s=float(horizon_s),
     )
     traverser = TopologyTraverser(
         topology, observation_history=_history_for(session))
@@ -1242,8 +1342,23 @@ def traverse(session: EngineSession, start_nodes: Sequence[str],
     if value_mode == "projected":
         # the producer must run or PROJECTED silently reads present
         # values — which is what made the mode inert for its whole existence.
-        projected_count = traverser.project_values()
+        projected_count = traverser.project_values(model=session.model)
         if projected_count == 0:
+            # TWO REASONS, and this named only one of them. An
+            # indicator with no `dynamics:` declared is not a series short of
+            # readings, and telling its author to add observations sends them
+            # to collect data that cannot help: the engine will not choose a
+            # model on their behalf however much of it arrives.
+            undeclared = list(getattr(traverser, "undeclared_dynamics", []))
+            if undeclared:
+                return unavailable_envelope(
+                    f"value_mode 'projected' needs a declared `dynamics:` "
+                    f"block on each indicator it projects, and "
+                    f"{len(undeclared)} had none: "
+                    f"{', '.join(sorted(undeclared)[:5])}"
+                    f"{' and others' if len(undeclared) > 5 else ''}. This is "
+                    f"the same refusal `project` makes -- the engine does not "
+                    f"pick a model for you. Declare one, or use 'current'.")
             return unavailable_envelope(
                 "value_mode 'projected' needs observation history to fit a "
                 "trend; none of the supplied entities had enough. Add "
@@ -1365,6 +1480,14 @@ def traverse(session: EngineSession, start_nodes: Sequence[str],
                     entity_id, {}).get(prop, ""),
                 "via": sorted({t.edge for t in result.transitions_applied
                                if t.to_property == prop}),
+                # present only where a declared `gain_sigma:`
+                # reached this value. A missing key says nobody declared a
+                # spread; it does not say the spread is zero.
+                **({"sigma": result.imagined_sigma[entity_id][prop],
+                    "interval_95": [
+                        value - 1.96 * result.imagined_sigma[entity_id][prop],
+                        value + 1.96 * result.imagined_sigma[entity_id][prop]]}
+                   if prop in result.imagined_sigma.get(entity_id, {}) else {}),
             }
             for prop, value in props.items()
         }
@@ -1372,6 +1495,11 @@ def traverse(session: EngineSession, start_nodes: Sequence[str],
     }
     simulation["assumptions"] = list(result.assumptions)
     simulation["not_projected"] = list(result.nodes_not_projected)
+    # The instant these values are read at. Without it a reader
+    # cannot tell a value that has finished moving from one caught partway,
+    # and `response_fraction` was being evaluated at an hour by default with
+    # nothing in the envelope saying so.
+    simulation["horizon_s"] = float(horizon_s)
     payload["simulation"] = simulation
     return _WithPayload(envelope, payload)
 
@@ -1381,6 +1509,7 @@ def rollout(session: EngineSession,
             horizon_s: float = 3600.0,
             step_s: float = 60.0,
             seed_mode: str = "current",
+            file_predictions: bool = False,
             max_transitions: int = 100_000) -> Envelope:
     """Run the model forward under actions, and judge each imagined state.
 
@@ -1390,6 +1519,15 @@ def rollout(session: EngineSession,
     declared transitions move downstream values each step, and the eight
     axioms are run over every imagined state with the imagined history behind
     it.
+
+    THE SECOND CLAUSE OF THAT SENTENCE WAS AN INTENTION, NOT A
+    DESCRIPTION, FOR TWO RELEASES. A transition fired once, in the step its
+    source moved, at one step's worth of elapsed time, and never again. It now
+    means what it says: the declared response is re-derived at every step from
+    the instant the source moved, so a first-order edge develops across the
+    horizon. `simulation.per_step[*].response_fractions` reports how far each
+    declared response had got, because a value that has not started moving yet
+    and one nothing ever asked about are otherwise the same number.
 
     WHICH LEGS THIS VERB CAN HONESTLY FILL, following `project`.
 
@@ -1442,13 +1580,18 @@ def rollout(session: EngineSession,
             from arbiter_engine.twin.traverser import (
                 TopologyTraverser,
             )
-            TopologyTraverser(
-                topology, observation_history=_history_for(session)
-            ).project_values(horizon_s=horizon_s)
+            projector = TopologyTraverser(
+                topology, observation_history=_history_for(session))
+            projector.project_values(horizon_s=horizon_s, model=session.model)
+            # Handed to the rollout so its decline can name which refusal this
+            # was, rather than reporting a sample shortage for a missing
+            # declaration.
+            topology._last_projector = projector
 
         result = _rollout.run(
             session, topology, actions=list(actions or ()),
             horizon_s=horizon_s, step_s=step_s, seed_mode=seed,
+            file_predictions=file_predictions,
             max_transitions=max_transitions)
     except Exception as exc:  # noqa: BLE001 - see `_raised`
         sub = _raised("simulation", exc,
@@ -1489,8 +1632,14 @@ def rollout(session: EngineSession,
     )
     envelope = Envelope(
         checked=CheckedSummary(
-            invariants=len(findings) + len(
-                [d for d in declines if d.reason not in _ROLLOUT_NON_AXIOM]),
+            # What the reasoner ATTEMPTED, summed over the steps --
+            # the same field `check` reports (`envelope.py:305`) and the same
+            # one `traverse` reports through its traversal-side twin. It was
+            # `len(findings) + len(declines)`, which `interfaces.py` names as
+            # the fabricated shape: a clean rollout reported `invariants: 0`,
+            # indistinguishable from `no axiom ran`, and every breach added
+            # one to the numerator AND the denominator.
+            invariants=result.invariants,
             steps=result.steps_completed,
             entities=len(session.entities),
         ),
@@ -1503,12 +1652,29 @@ def rollout(session: EngineSession,
     simulation["tier"] = result.tier
     if result.tier_reason:
         simulation["tier_reason"] = result.tier_reason
+    # the closed loop's own accounting, beside the rollout's.
+    # `filed` and `not_filed` partition every imagined value the walk
+    # produced, so a reader can tell a loop that is closed from one that ran
+    # and filed nothing.
+    simulation["checked"]["predictions_filed"] = result.predictions_filed
+    simulation["checked"]["values_without_tolerance"] = (
+        result.values_without_tolerance)
+    simulation["checked"]["values_driven"] = result.values_driven
+    if file_predictions and getattr(session, "ledger", None) is not None:
+        # The figure the loop exists to produce, read off the ledger rather
+        # than recomputed here. It covers every record the ledger holds, not
+        # only this rollout's -- which is the point of a DURABLE ledger, and
+        # why the denominators travel with it.
+        simulation["calibration"] = session.ledger.calibration()
     simulation["per_step"] = [
         {
             "step": step.index,
             "at_s": step.at_s,
             "actions_applied": list(step.actions_applied),
             "transitions_applied": step.transitions_applied,
+            "response_fractions": list(step.response_fractions),
+            "sigma": {eid: dict(vals) for eid, vals in step.sigma.items()},
+            "invariants": step.invariants,
             "findings": sorted({f.problem_type for f in step.findings}),
             "declines": sorted({d.reason for d in step.declines}),
             "values": {eid: dict(vals) for eid, vals in step.values.items()},

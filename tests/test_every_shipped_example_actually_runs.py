@@ -30,7 +30,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from arbiter_engine.api import (
-    EngineSession, check, model_describe, project)
+    EngineSession, check, model_describe, plan, project, rollout)
 from arbiter_engine.clock import as_of
 from arbiter_engine.forecast import ingest_forecasts
 
@@ -246,3 +246,66 @@ class TestTheExampleFeedsNothingThatGoesUnread:
         with as_of(T0):
             envelope = check(session).to_dict()
         assert envelope["unread_properties"] == []
+
+
+class TestTheDynamicsExampleRunsTheSimulationVerbs:
+    """`pump_tank_dynamics.yaml` is the example that declares a
+    `transition:`, an `action_templates:` block and a `planning:` objective.
+
+    Before it, not one shipped example declared any of the three, so the whole
+    simulation surface 0.2.3 added was undocumented by specimen: a reader who
+    wanted to try `rollout` or `plan` had to write a model first, from prose.
+    An example nothing runs is a claim; this runs it.
+    """
+
+    NAME = "pump_tank_dynamics.yaml"
+
+    def _session(self, level_pct=92.0, speed_rpm=3000.0):
+        session = _loaded(self.NAME)
+        session.add_entity("pump1", "Pump", {"speed_rpm": speed_rpm})
+        session.add_entity("tank1", "Tank", {"level_pct": level_pct})
+        session.add_relationship("pump1", "feeds", "tank1")
+        return session
+
+    def test_it_ships(self):
+        assert self.NAME in EXAMPLES
+
+    def test_the_declared_response_is_walked_not_jumped(self):
+        """The reason this example exists: a delay and a lag, not a step."""
+        from arbiter_engine.twin.actions import ActionInstance
+        per_step = rollout(
+            self._session(),
+            actions=[ActionInstance("throttle_pump", "pump1",
+                                    {"speed_rpm": 800.0}, 0.0)],
+            horizon_s=3600.0, step_s=60.0).to_dict()["simulation"]["per_step"]
+        levels = [s["values"]["tank1"]["level_pct"] for s in per_step]
+        assert levels[0] == pytest.approx(92.0), (
+            "the declared 120s delay means nothing moves in the first minute")
+        assert levels[-1] < 55.0, "the response never developed"
+        # Strictly monotone once it starts: a jump would show as one change
+        # followed by a flat line.
+        moving = [a - b for a, b in zip(levels[2:], levels[1:-1])]
+        assert sum(1 for d in moving if abs(d) > 1e-9) > 10, (
+            "the level moved in only a handful of steps, which is a jump "
+            "rather than the declared first-order response")
+
+    def test_plan_ranks_its_declared_candidates(self):
+        payload = plan(self._session(), horizon_s=1800.0,
+                       step_s=60.0).to_dict()["plan"]
+        assert payload["ranked"] is True
+        assert len(payload["candidates"]) >= 5, "four settings and do_nothing"
+        assert len({c["objective"] for c in payload["candidates"]}) > 1, (
+            "every candidate scored the same, so the declared dynamics did "
+            "not reach the ranking")
+        assert not [d for d in payload["not_checked"]
+                    if d["reason"] in ("no_objective", "no_candidates")]
+
+    def test_model_describe_sees_the_declared_coupling(self):
+        model = model_describe(self._session()).to_dict()["model"]
+        assert model["proposed_transitions"]["checked"]["couplings_seen"] == 1
+        assert model["transitions"]["declared"], (
+            "the example declares a transition and `model_describe` does not "
+            "list it")
+
+    def test_the_example_itself_reports_no_unread_input(self):
+        assert check(self._session()).to_dict()["unread_properties"] == []

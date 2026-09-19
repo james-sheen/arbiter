@@ -42,7 +42,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 import numpy as np
 
 from ..causal.discovery import MINIMUM_PAIRED_SAMPLES
-from ..causal.leadlag import align
+from ..causal.leadlag import align_with_times
 
 __all__ = ["LearnedTransition", "TransitionRefusal", "learn_transitions",
            "MINIMUM_PAIRED_SAMPLES"]
@@ -73,6 +73,24 @@ class LearnedTransition:
     ci_high: float
     declared_gain: Optional[float] = None
     source: str = "learned"
+    #:. The response model this gain was fitted THROUGH. A steady-
+    #: state gain estimated under `step` and one estimated through a
+    #: first-order lag are different computations on the same two series, and
+    #: a reader comparing a proposal against a datasheet needs to know which
+    #: one produced the number.
+    response_model: str = "step"
+    #:. The STANDARD ERROR of the fitted gain -- how well these
+    #: readings pin the slope down. Proposed as a `gain_sigma:` because that
+    #: is the quantity `gain_sigma:` declares: how sure anyone is of the gain.
+    #:
+    #: NOT the residual scatter. The data not lying exactly on the line is a
+    #: different uncertainty, about the next READING rather than about the
+    #: coupling, and folding the two together would propose a band that means
+    #: neither. `r_squared` already reports how tight the fit is.
+    gain_standard_error: float = 0.0
+    #: True when the block said `gain_sigma: estimate`, so a reader can tell a
+    #: spread the author ASKED for from one this engine measured anyway.
+    sigma_requested: bool = False
 
     @property
     def contradicts_declaration(self) -> bool:
@@ -101,6 +119,43 @@ def _series(history: Any, entity_id: str, property_name: str
         return list(history.get_values(entity_id, property_name, _LOOKBACK))
     except Exception:  # noqa: BLE001 - a store that cannot answer is a refusal
         return []
+
+
+def _response_model_name(edge: Any) -> str:
+    """The edge's declared response model, as a lower-case word.
+
+    Reads the enum's `value` when there is one so this does not depend on how
+    `ResponseModel` renders; an unset model is the engine's own default, which
+    `TwinEdge` documents as exponential.
+    """
+    model = getattr(edge, "response_model", None)
+    if model is None:
+        return "exponential"
+    return str(getattr(model, "value", model)).lower()
+
+
+def _alpha_per_pair(times: List[Any], tau: float) -> Optional[np.ndarray]:
+    """`1 - exp(-dt/tau)` for each consecutive pair of aligned instants.
+
+    Per pair rather than one median spacing: `align` intersects on exact
+    timestamps, so a dropped reading leaves a gap of two intervals, and
+    charging it one would attribute the extra settling to a larger gain.
+    """
+    if len(times) < 2 or tau <= 0.0:
+        return None
+    gaps: List[float] = []
+    for earlier, later in zip(times[:-1], times[1:]):
+        delta = later - earlier
+        seconds = float(getattr(delta, "total_seconds", lambda: delta)())
+        if seconds <= 0.0:
+            return None
+        gaps.append(seconds)
+    alpha = 1.0 - np.exp(-np.asarray(gaps, dtype=float) / float(tau))
+    # A spacing far longer than the time constant settles completely; alpha
+    # saturates at 1 and the transform degenerates to a levels regression,
+    # which is the correct answer in that regime.
+    alpha = np.clip(alpha, 1e-9, 1.0)
+    return alpha
 
 
 def _fit(x: np.ndarray, y: np.ndarray
@@ -162,7 +217,7 @@ def learn_transitions(session: Any, topology: Any,
             delay = float(getattr(edge, "propagation_delay_s", 0.0) or 0.0)
             shifted = [(when + timedelta(seconds=delay), value)
                        for when, value in source]
-            a, b = align(shifted, target)
+            times, a, b = align_with_times(shifted, target)
 
             if len(a) == 0 and len(source) >= 2 and len(target) >= 2:
                 # THE DELAY DOES NOT LAND ON THE SAMPLING GRID, and this is
@@ -210,7 +265,72 @@ def learn_transitions(session: Any, topology: Any,
                     f"measured from it at any sample count"))
                 continue
 
-            gain, intercept, r_squared, low, high = _fit(dx, dy)
+            # THE FIT MUST ESTIMATE THE QUANTITY THE MODEL
+            # DECLARES. `Transition.gain` is a STEADY-STATE gain, with the
+            # time course supplied separately by `TwinEdge.response_fraction`.
+            # A slope of first differences is that gain only when the response
+            # is instantaneous. On a first-order edge it returns a FRACTION of
+            # it -- measured on a series generated through the declared
+            # response at tau=600s sampled every 60s, the declared 0.02 was
+            # reported as 0.00234 with a band excluding it, so a correct
+            # datasheet gain was filed as a `disagreement` whose remedy told
+            # the author to corrupt a correct model.
+            model = _response_model_name(edge)
+            tau = float(getattr(edge, "time_constant_s", 0.0) or 0.0)
+            if model == "step":
+                # Instantaneous: the differenced slope IS the steady-state
+                # gain, which is what this always assumed and never checked.
+                x_fit, y_fit = dx, dy
+            elif model == "exponential" and tau > 0.0:
+                # A first-order lag discretises to
+                #   y_t - y_{t-1} = alpha * (G * x_t + c - y_{t-1}),
+                # with alpha = 1 - exp(-dt/tau) -- the same curve
+                # `response_fraction` states for this model. Rearranged,
+                #   dy/alpha + y_{t-1} = G * x_t + c
+                # is linear in G, so the SAME least squares fits the declared
+                # quantity through the declared time course. dt is per pair,
+                # so a gap in the series is charged its real spacing.
+                alpha = _alpha_per_pair(times, tau)
+                if alpha is None:
+                    refusals.append(TransitionRefusal(
+                        "insufficient_samples", label,
+                        "the aligned readings carry no usable spacing, so the "
+                        "declared time constant cannot be applied to them"))
+                    continue
+                x_fit = np.asarray(a[1:], dtype=float)
+                y_fit = dy / alpha + np.asarray(b[:-1], dtype=float)
+            else:
+                # LINEAR and LOGARITHMIC are not linear time-invariant
+                # systems, so there is no transform that makes the declared
+                # steady-state gain a least-squares slope. Refused by name
+                # rather than fitted under a model the edge does not declare:
+                # a number produced under the wrong model is the thing this
+                # finding is about.
+                refusals.append(TransitionRefusal(
+                    "response_model_unsupported", label,
+                    f"this edge declares `response_model: {model}`"
+                    + (f" with `time_constant_s: {tau:g}`" if tau else "")
+                    + ". A steady-state gain can be fitted through `step` and "
+                      "`exponential`; for this model the engine has no "
+                      "transform that estimates the declared quantity, and a "
+                      "slope fitted under the wrong response model is a "
+                      "number that reads exactly like a right one. Declare a "
+                      "supported response model, or supply the gain."))
+                continue
+
+            if float(np.sum((x_fit - float(np.mean(x_fit))) ** 2)) <= 0.0:
+                refusals.append(TransitionRefusal(
+                    "unidentifiable_parameter", label,
+                    f"{edge.source_id}.{transition.from_property} carries no "
+                    f"variation this fit can use under `response_model: "
+                    f"{model}`"))
+                continue
+
+            gain, intercept, r_squared, low, high = _fit(x_fit, y_fit)
+            # The 95% band is `gain +/- 1.96 * se`, so the half-width divided
+            # by 1.96 recovers the standard error without `_fit` growing a
+            # sixth return value that three callers would have to thread.
+            standard_error = max(0.0, (high - low) / (2.0 * 1.96))
             proposals.append(LearnedTransition(
                 edge=label, relation_type=edge.relation_type,
                 from_property=transition.from_property,
@@ -219,5 +339,9 @@ def learn_transitions(session: Any, topology: Any,
                 ci_low=low, ci_high=high,
                 declared_gain=(None if transition.estimated
                                else transition.gain),
+                response_model=model,
+                gain_standard_error=standard_error,
+                sigma_requested=bool(getattr(transition, "sigma_estimated",
+                                             False)),
             ))
     return proposals, refusals

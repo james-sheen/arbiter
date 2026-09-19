@@ -492,6 +492,22 @@ class TopologyBuilder:
             try:
                 gain = 0.0 if estimated else float(block['gain'])
                 offset = float(block.get('offset', 0.0))
+                # a DECLARED spread on the gain. Optional, because
+                # most couplings are declared without one and an engine that
+                # required it would be asking for a number nobody has. Absent
+                # means undeclared, which is reported, not treated as zero.
+                # `gain_sigma: estimate` declares that a spread
+                # EXISTS and withholds the number, exactly as `gain: estimate`
+                # does for the magnitude. The transition projects its gain as
+                # normal and carries NO interval until a fitted spread is
+                # adopted, because a band nobody has supplied is not a band of
+                # zero width.
+                sigma_estimated = (
+                    isinstance(block.get('gain_sigma'), str)
+                    and block['gain_sigma'].strip().lower()
+                    == ESTIMATE_SENTINEL)
+                gain_sigma = (0.0 if sigma_estimated
+                              else float(block.get('gain_sigma', 0.0)))
             except (TypeError, ValueError):
                 gaps.append(TopologyGap(
                     gap_type=GapType.MISSING_DECLARATION,
@@ -502,12 +518,29 @@ class TopologyBuilder:
                     discovered_during="build",
                 ))
                 continue
+            if gain_sigma < 0.0:
+                # REFUSED, not clamped. A negative standard deviation is not a
+                # small one; it is a declaration the author did not mean, and
+                # silently taking its absolute value would hide a typo inside
+                # an interval a reader is meant to act on.
+                gaps.append(TopologyGap(
+                    gap_type=GapType.MISSING_DECLARATION,
+                    location=location,
+                    description=(
+                        f"transition[{index}] declares "
+                        f"gain_sigma {gain_sigma:g}, which is negative; a "
+                        f"standard deviation cannot be"),
+                    discovered_during="build",
+                ))
+                continue
             transitions.append(Transition(
                 from_property=str(block['from']),
                 to_property=str(block['to']),
                 gain=gain,
                 source=str(block['source']),
                 estimated=estimated,
+                gain_sigma=gain_sigma,
+                sigma_estimated=sigma_estimated,
                 offset=offset,
                 clamp_to_bounds=bool(block.get('clamp_to_bounds', False)),
             ))

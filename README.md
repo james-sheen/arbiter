@@ -425,7 +425,7 @@ Honest boundaries, stated because you would otherwise find them yourself:
   projected values from a declared `dynamics:` block, and the `forecasts` leg scores predictions an
   outside model sends. What is deliberately absent is a model that knows which indicators matter
   here -- that is domain knowledge, and it belongs on your side of the line.
-- **Five worked examples ship, not a library of them.** Modelling a real system is your work.
+- **Six worked examples ship, not a library of them.** Modelling a real system is your work.
 - Stage I and Stage II of this project are **archived, not running**. Anything describing them as
   production is out of date.
 
@@ -488,12 +488,17 @@ python3 -m arbiter_engine.scripts.benchmark_check --sizes 10,100,1000 --model-si
 | [`COMPATIBILITY.md`](COMPATIBILITY.md) | what a patch release may change, and what waits |
 | [`schema/envelope.schema.json`](schema/envelope.schema.json) | the response shape, machine-readable |
 
-Five worked models ship in `examples/`: `water_tank.yaml` declares all eight axioms and doubles as
+Six worked models ship in `examples/`: `water_tank.yaml` declares all eight axioms and doubles as
 the schema reference, `kubernetes_node.yaml` is the smallest domain where a band matters,
 `battery_pack.yaml` is one where nearly every bound is a floor somebody published,
 `factory_line.yaml` is a manufacturing cell whose vocabulary shares no nouns with the other three,
-and `margin_book.yaml` is the only one declaring work the engine has not been handed yet -- an
-outside forecaster is expected to supply a prediction, and is then judged by the same eight axioms.
+`margin_book.yaml` is the only one declaring work the engine has not been handed yet -- an
+outside forecaster is expected to supply a prediction, and is then judged by the same eight axioms --
+and `pump_tank_dynamics.yaml` is the only one that declares DYNAMICS: a `transition:` with a
+steady-state gain, a `temporal:` block giving that coupling a delay and a time constant, an
+`action_templates:` block, and a `planning:` objective. It is what `rollout`, `plan` and the fitted
+gains under `model_describe` can be run against; until it shipped, the simulation surface had no
+specimen and a reader had to write one from the prose in `MODELING.md`.
 
 **Built on this engine**: [`bmc-sensor-audit`](https://github.com/james-sheen/bmc-sensor-audit)
 audits firmware sensor coverage, and

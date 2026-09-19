@@ -184,8 +184,9 @@ def _expand_to_entities(candidates: Sequence[ActionInstance],
 
 def score(candidate: PlanCandidate, objective: str, min_severity: str,
           findings: Sequence[Any], monte_carlo_samples: int,
-          seed: int) -> Tuple[Optional[float], Optional[Tuple[float, float]],
-                              List[str]]:
+          seed: int, envelope: Any = None
+          ) -> Tuple[Optional[float], Optional[Tuple[float, float]],
+                     List[str]]:
     """The objective value for one rolled-forward candidate."""
     assumptions: List[str] = []
     if objective == "expected_findings":
@@ -193,12 +194,6 @@ def score(candidate: PlanCandidate, objective: str, min_severity: str,
                     for f in findings), None, assumptions)
 
     # clearance_probability: did the horizon stay clear of `min_severity`?
-    #
-    # The transition model is DETERMINISTIC, so every sample of one candidate
-    # is the same sample and the interval collapses to a point. That is the
-    # honest report and it is stamped: a reader seeing [1.0, 1.0] is entitled
-    # to know the band is narrow because nothing is random here, not because
-    # the sample count was large.
     from .monte_carlo_predictor import (MonteCarloPredictionRequest,
                                         MonteCarloPredictor)
 
@@ -209,19 +204,108 @@ def score(candidate: PlanCandidate, objective: str, min_severity: str,
         and getattr(f, "severity").priority_score <= threshold
         for f in findings) if threshold is not None else False
 
-    def step(_snapshot, _rng):
-        return {"clear": not breached}
+    # A PROBABILITY, WHEN THE MODEL DECLARED ENOUGH TO MAKE ONE.
+    #
+    # This used to sample a function that returned the same constant every
+    # time, so the estimate was 0.0 or 1.0 and the interval collapsed to a
+    # point. That was honestly stamped `deterministic_transitions`, and it was
+    # also the whole of the value-level uncertainty this engine could offer: a
+    # boolean wearing a decimal point.
+    #
+    # With a declared `gain_sigma:` the imagined values carry a spread, so the
+    # margin between a trajectory and the line it must not cross is a random
+    # variable and the clearance figure is a real probability. Sampled rather
+    # than integrated because the axioms that decide `clear` are thresholds
+    # over a whole horizon, and a closed form for that needs the joint
+    # distribution across steps -- which the engine would have to assume.
+    # Sampling the margin needs only what the author declared.
+    margin = _worst_margin(envelope, findings, threshold)
+    if margin is None:
+        assumptions.append("deterministic_transitions")
+        def step(_snapshot, _rng):
+            return {"clear": not breached}
+    else:
+        centre, spread = margin
+        assumptions.append("declared_gain_spread_sampled")
+        # The SAME declared gain drives every step of one rollout, so the
+        # steps of a trajectory move together rather than independently. The
+        # margin sampled here is the tightest one over the horizon, which is
+        # what that correlation makes the binding constraint. Stamped, because
+        # it is the engine's assumption and not the author's.
+        assumptions.append("worst_step_binds_the_horizon")
+        def step(_snapshot, rng):
+            return {"clear": rng.gauss(centre, spread) > 0.0}
 
     distribution = MonteCarloPredictor(seed=seed).predict(
         None, step,
         MonteCarloPredictionRequest(outcome_names=["clear"],
                                     n_samples=monte_carlo_samples, seed=seed))
     outcome = distribution.get("clear")
-    assumptions.append("deterministic_transitions")
     if outcome is None:
         return None, None, assumptions
     return (outcome.estimated_probability,
             outcome.confidence_interval_95, assumptions)
+
+
+def _worst_margin(envelope: Any, findings: Sequence[Any],
+                  threshold: Optional[int]
+                  ) -> Optional[Tuple[float, float]]:
+    """The tightest (distance to the line, spread) over the horizon.
+
+    `None` when the model declared no spread that reached a value, which is
+    the case the caller reports as deterministic. Returning `None` rather than
+    a zero spread is deliberate: a zero-width distribution would make the
+    sampler produce the same boolean and look like a probability.
+
+    The sign convention is that a POSITIVE centre means clear. A trajectory
+    already breaching is centred negative, so its clearance probability is
+    small rather than exactly zero -- the spread says how sure that is.
+    """
+    if envelope is None or not getattr(envelope, "has_declared_spread", False):
+        return None
+    best: Optional[Tuple[float, float]] = None
+    for step in getattr(envelope, "steps", []) or []:
+        for entity_id, spreads in (getattr(step, "sigma", {}) or {}).items():
+            for prop, spread in spreads.items():
+                if spread <= 0.0:
+                    continue
+                bounds = _bounds_for(envelope, entity_id, prop)
+                value = (step.values.get(entity_id, {}) or {}).get(prop)
+                if value is None or not bounds:
+                    continue
+                for limit, upper in bounds:
+                    distance = (limit - value) if upper else (value - limit)
+                    if best is None or distance < best[0]:
+                        best = (float(distance), float(spread))
+    if best is None and findings and threshold is not None:
+        return None
+    return best
+
+
+def _bounds_for(envelope: Any, entity_id: str, prop: str
+                ) -> List[Tuple[float, bool]]:
+    """The declared lines this property must stay inside, as (limit, is_upper).
+
+    Read off the topology the rollout already built rather than re-derived, so
+    a bound this engine judges against and a bound this figure is measured
+    against cannot be two different numbers.
+    """
+    topology = getattr(envelope, "topology", None)
+    node = topology.get_node(entity_id) if topology is not None else None
+    if node is None:
+        return []
+    state = (getattr(node, "axiom_states", {}) or {}).get(
+        f"BOUNDEDNESS:{prop}")
+    evidence = getattr(state, "evidence", None) if state else None
+    if not isinstance(evidence, dict):
+        return []
+    out: List[Tuple[float, bool]] = []
+    for key, upper in (("critical", True), ("warning", True),
+                       ("lower_critical", False), ("lower_warning", False)):
+        limit = evidence.get(key)
+        if isinstance(limit, (int, float)) and not isinstance(limit, bool):
+            out.append((float(limit), upper))
+    return out
 
 
 def _severity_at_least(name: str) -> Optional[int]:
@@ -326,11 +410,15 @@ def search(session: Any, topology: Any, *,
         for assumption in envelope.assumptions:
             if assumption not in result.assumptions:
                 result.assumptions.append(assumption)
-        result.invariants += len(findings)
+        # The rollout's own attempted count, not the findings it
+        # produced. Counting findings made a clean candidate contribute zero
+        # however many axioms ran over it -- and made the denominator move
+        # with the numerator it is supposed to give meaning to.
+        result.invariants += envelope.invariants
         if result.objective:
             value, interval, stamps = score(
                 candidate, result.objective, result.min_severity,
-                findings, monte_carlo_samples, seed)
+                findings, monte_carlo_samples, seed, envelope)
             candidate.objective = value
             candidate.interval = interval
             for stamp in stamps:

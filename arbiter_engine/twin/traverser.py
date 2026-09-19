@@ -10,6 +10,7 @@ value modes (CURRENT, PROJECTED, HYPOTHETICAL).
 """
 
 import logging
+import math
 import time
 from collections import deque
 from dataclasses import dataclass, field
@@ -117,6 +118,139 @@ def suggest_flow_direction(prop_name: str) -> Optional[str]:
 IMAGINED_PREFIX = "imagined_"
 
 
+def _declared_dynamics(model: Any) -> Optional[Set[Tuple[str, str]]]:
+    """(entity_type, property) pairs whose indicator declares `dynamics:`.
+
+    `None` when no model was supplied, which reproduces the old
+    behaviour exactly for the callers that never had one to give -- a kernel
+    used directly with a hand-built topology and no domain file. Those callers
+    are asking a narrower question than the published verbs do, and silently
+    refusing them would be a second wrong answer rather than a fix.
+
+    The pairs come from `IndicatorSpec.dynamics_config`, which is the same
+    field `projection/runner.py` reads to decide whether it may fit anything.
+    Read from the one place rather than re-derived, because two readings of
+    one declaration are how the two paths came to disagree in the first place.
+    """
+    if model is None:
+        return None
+    indicators = getattr(model, "indicators", None)
+    if not isinstance(indicators, dict):
+        return None
+    pairs: Dict[Tuple[str, str], Any] = {}
+    for entity_type, specs in indicators.items():
+        for spec in specs or ():
+            if getattr(spec, "dynamics_config", None):
+                pairs[(str(entity_type),
+                       str(getattr(spec, "property_name", "")
+                           or getattr(spec, "name", "")))] = spec
+    return pairs
+
+
+def _sigma_from_quantiles(quantiles: Dict[str, Any]) -> float:
+    """A standard deviation from a declared 90% interval, or 0.0.
+
+    `forecast/contract.py` already stamps `gaussian_from_mean_sigma` when it
+    widens a mean and sigma into quantiles; this is that conversion run the
+    other way, and it rests on the same assumption -- which is why the caller
+    stamps it rather than leaving a reader to infer it from an interval that
+    looks exact.
+    """
+    low, high = quantiles.get("q05"), quantiles.get("q95")
+    if not isinstance(low, (int, float)) or isinstance(low, bool):
+        return 0.0
+    if not isinstance(high, (int, float)) or isinstance(high, bool):
+        return 0.0
+    return max(0.0, (float(high) - float(low)) / (2.0 * 1.645))
+
+
+def _curve(fitted):
+    """A `(value, sigma)` reader over the fitted model, at any horizon.
+
+    One fit, many instants. Re-fitting per step would read the same
+    history a dozen times to reach the same parameters; re-forecasting is the
+    part that actually depends on the horizon, and it is the cheap part.
+    """
+    def at(horizon_s: float):
+        try:
+            forecast = fitted.forecast(float(horizon_s))
+        except Exception:  # noqa: BLE001 - a refusal is not a crash
+            return None
+        quantiles = dict(getattr(forecast, "quantiles", None) or {})
+        median = quantiles.get("q50")
+        if not isinstance(median, (int, float)) or isinstance(median, bool):
+            return None
+        return float(median), _sigma_from_quantiles(quantiles)
+    return at
+
+
+def _project_declared(values, spec, horizon_s: float):
+    """Fit and forecast through the model the indicator declares.
+
+    Returns `(projection, refusal)`, exactly one of which is set.
+
+    THE REFUSAL IS RETURNED, NOT SWALLOWED. The first version of this dropped
+    it and left the property unprojected, which turned `local_level`'s
+    `unidentifiable_parameter` -- *q and r do not separate from this series* --
+    into silence, and the caller then reported `model_missing` about a
+    DIFFERENT indicator that happened to be undeclared. A declared model whose
+    fit refused and an undeclared model are not the same fact, and the remedies
+    point in opposite directions: declare the parameters, versus declare a
+    model at all.
+
+    The MEDIAN is taken as the projected value because a `ProjectedValue`
+    carries one number and a forecast carries a distribution; q50 is the one
+    that means *the middle of what this model expects*. The spread is not
+    discarded so much as not representable here -- `project` reports the whole
+    distribution, and this is the seed for a rollout, not a replacement for it.
+    """
+    from ..projection.projector import PROJECTORS
+    dynamics = dict(getattr(spec, "dynamics_config", None) or {})
+    name = str(dynamics.get("model") or "")
+    projector = PROJECTORS.get(name)
+    if projector is None:
+        return None, ("model_missing",
+                      f"`dynamics.model` is {name!r}, which this engine does "
+                      f"not implement; known models are {sorted(PROJECTORS)}"), None
+    scope = {"entity_id": "", "property": str(
+        getattr(spec, "property_name", "") or getattr(spec, "name", ""))}
+    try:
+        fitted = projector.fit(values, dynamics, scope)
+    except Exception as exc:  # noqa: BLE001 - a refusal is not a crash
+        return None, ("internal_error",
+                      f"the {name} projector raised {type(exc).__name__}"), None
+    if fitted is None or not hasattr(fitted, "forecast"):
+        reason = str(getattr(fitted, "reason", "") or "insufficient_samples")
+        detail = str(getattr(fitted, "detail", "") or
+                     f"the declared {name} model could not be fitted")
+        return None, (reason, detail), None
+    horizon = float(spec.horizon.total_seconds()
+                    if getattr(spec, "horizon", None) else horizon_s)
+    try:
+        forecast = fitted.forecast(horizon)
+    except Exception as exc:  # noqa: BLE001
+        return None, ("internal_error",
+                      f"the {name} forecast raised {type(exc).__name__}"), None
+    quantiles = dict(getattr(forecast, "quantiles", None) or {})
+    median = quantiles.get("q50")
+    if not isinstance(median, (int, float)) or isinstance(median, bool):
+        return None, ("insufficient_samples",
+                      f"the {name} forecast carried no median to seed from"), None
+    return ProjectedValue(
+        value=float(median),
+        confidence=0.0,
+        horizon_s=horizon,
+        # the band, converted to one number. `q05`/`q95` bound a 90%
+        # interval, so the half-width over 1.645 is the standard deviation
+        # under the normal the projector's own quantiles already assume. Zero
+        # when the forecast reported no band, which keeps *nobody said* apart
+        # from *said zero*, the same rule `gain_sigma` follows.
+        sigma=_sigma_from_quantiles(quantiles),
+        model=f"{getattr(forecast, 'model', '')}:"
+              f"{getattr(forecast, 'source', '')}",
+    ), None, _curve(fitted)
+
+
 class TopologyTraverser:
     """Unified traversal engine for the Digital Twin topology."""
 
@@ -184,8 +318,28 @@ class TopologyTraverser:
         simulating = request.value_mode in (
             ValueMode.PROJECTED, ValueMode.HYPOTHETICAL)
         imagined: Dict[str, Dict[str, float]] = {}
+        #: the VARIANCE of each accumulated delta, propagated beside
+        #: it. Held as variance rather than as a standard deviation because
+        #: independent contributions add in variance and a walk sums many:
+        #: keeping sigmas here would mean squaring and rooting at every edge.
+        # SEEDED, not started empty, when the caller supplied a
+        # spread for the values it overrode. A rollout seeded from a forecast
+        # hands its band in here so a transition carries it downstream through
+        # its own gain, exactly as it carries a declared `gain_sigma:`.
+        imagined_variance: Dict[str, Dict[str, float]] = {
+            eid: dict(props) for eid, props
+            in (getattr(self, "seed_variance", None) or {}).items()}
         imagined_via: Dict[str, Dict[str, str]] = {}
         edges_without_dynamics: Set[str] = set()
+        #:. (node, sink) pairs whose axioms are evaluated after
+        #: the walk, once every contribution has landed. Simulating
+        #: walks only; a reachability walk derives no values, so its
+        #: per-node evaluation is already final when the node is popped.
+        deferred_evaluations: List[Tuple[TwinNode, List[Problem]]] = []
+        #:. Every declared transition the walk reached, held until the
+        #: whole reachable subgraph is known. Applied in DEPENDENCY order
+        #: afterwards, so a node's value is complete before anything reads it.
+        pending_transitions: List[Tuple[Any, str, str, float, TwinNode]] = []
         budget_left = max(0, int(request.max_transitions))
 
         # BFS queue: (entity_id, hop, cum_prob, cum_delay, path)
@@ -234,14 +388,27 @@ class TopologyTraverser:
             # Evaluate axiom states
             step_violations: List[Problem] = []
             if request.collect_axiom_violations:
-                step_violations, attempted = self._evaluate_axioms(
-                    node, values, imagined_properties)
-                result.problems_detected.extend(step_violations)
-                # Accumulated inside the `collect_axiom_violations`
-                # guard on purpose: with collection off nothing is evaluated,
-                # and the denominator must say zero rather than report the
-                # states the builder seeded.
-                result.axiom_evaluations_attempted += attempted
+                if simulating:
+                    # DEFERRED, because on a simulating walk a
+                    # node's value is not final when the node is popped. A
+                    # target reachable by two acyclic paths of unequal length
+                    # is popped at the shorter hop and the longer path's
+                    # contribution arrives later; evaluating here drew
+                    # findings from a partial value and then reported a
+                    # different, complete one. The list object is handed to
+                    # the step now and filled in place after the walk, so the
+                    # step still carries its own violations.
+                    deferred_evaluations.append((node, step_violations))
+                else:
+                    step_violations, attempted = self._evaluate_axioms(
+                        node, values, imagined_properties)
+                    result.problems_detected.extend(step_violations)
+                    # Accumulated inside the
+                    # `collect_axiom_violations` guard on purpose: with
+                    # collection off nothing is evaluated, and the denominator
+                    # must say zero rather than report the states the builder
+                    # seeded.
+                    result.axiom_evaluations_attempted += attempted
 
             # Record step
             step = TraversalStep(
@@ -313,18 +480,16 @@ class TopologyTraverser:
                     # member found by constructing the input for each reason
                     # rather than by grepping for the literal.
                     if simulating and edge.transitions:
-                        label = f"{current_id}->{next_id}"
-                        decline = SimulationDecline(
-                            reason="cycle_unsupported", location=label,
-                            detail=(
-                                f"this edge closes a loop back to {next_id}, "
-                                f"which this walk has already evaluated; its "
-                                f"contribution is NOT in the reported value, "
-                                f"because resolving a feedback path needs "
-                                f"iteration to a fixpoint and that is not "
-                                f"first-order"))
-                        if decline not in result.simulation_declines:
-                            result.simulation_declines.append(decline)
+                        # RECORDED, NOT JUDGED HERE. Whether this
+                        # edge closes a loop is a property of the whole
+                        # reachable subgraph, and the BFS only knows the one
+                        # path it walked. `a->d` beside `a->b->c->d` looks
+                        # identical from here to `a->b->a`; the difference is
+                        # only visible once every edge is in hand. The
+                        # ordering pass below decides, and it decides by
+                        # whether the target has already been resolved.
+                        pending_transitions.append(
+                            (edge, current_id, next_id, cum_delay, node))
                     continue
 
                 new_prob = cum_prob * edge.propagation_probability
@@ -348,17 +513,32 @@ class TopologyTraverser:
                 # declares no transitions is unaffected.
                 simulated_here = False
                 if simulating:
-                    budget_left = self._apply_transitions(
-                        edge=edge, source_id=current_id, target_id=next_id,
-                        source_values=values, node=node,
-                        cum_delay_at_source=cum_delay,
-                        request=request, result=result,
-                        imagined=imagined, imagined_via=imagined_via,
-                        budget_left=budget_left,
-                        already_final=(next_id in visited),
-                        edges_without_dynamics=edges_without_dynamics,
-                    )
-                    simulated_here = bool(edge.transitions)
+                    if edge.transitions:
+                        # deferred to the ordering pass, so the
+                        # source's value is final before it is read. An edge
+                        # applied when its source is popped carries whatever
+                        # that source had accumulated SO FAR, which is not the
+                        # same number on a graph where anything re-converges.
+                        pending_transitions.append(
+                            (edge, current_id, next_id, cum_delay, node))
+                        simulated_here = True
+                    else:
+                        # No transitions: this only files `missing_dynamics`
+                        # or `missing_declaration`, touches no value, and so
+                        # does not care what order it runs in. Left inline so
+                        # an edge inside a cycle still reports the gap even
+                        # though the ordering pass will never reach it.
+                        budget_left = self._apply_transitions(
+                            edge=edge, source_id=current_id,
+                            target_id=next_id,
+                            source_values=values, node=node,
+                            cum_delay_at_source=cum_delay,
+                            request=request, result=result,
+                            imagined=imagined, imagined_via=imagined_via,
+                            imagined_variance=imagined_variance,
+                            budget_left=budget_left,
+                            edges_without_dynamics=edges_without_dynamics,
+                        )
 
                 # Pruning
                 if new_prob < request.min_probability and not simulated_here:
@@ -408,9 +588,33 @@ class TopologyTraverser:
                     ))
 
         result.total_nodes_visited = len(visited)
+        if simulating and pending_transitions:
+            budget_left = self._apply_in_dependency_order(
+                pending_transitions, request=request, result=result,
+                imagined=imagined, imagined_via=imagined_via,
+                imagined_variance=imagined_variance,
+                budget_left=budget_left,
+                edges_without_dynamics=edges_without_dynamics)
+        # Every contribution has landed, so the values these axioms
+        # read are the ones the envelope reports. Drained in visit order so
+        # `problems_detected` keeps the sequence a caller already relied on.
+        for pending_node, sink in deferred_evaluations:
+            final_values = self._get_values(pending_node, request, imagined)
+            moved = {
+                prop for prop, value in final_values.items()
+                if isinstance(value, (int, float))
+                and not isinstance(value, bool)
+                and value != pending_node.entity.properties.get(prop)
+            }
+            violations, attempted = self._evaluate_axioms(
+                pending_node, final_values, moved)
+            sink.extend(violations)
+            result.problems_detected.extend(violations)
+            result.axiom_evaluations_attempted += attempted
         if simulating:
             self._finalise_simulation(
-                result, request, imagined, imagined_via, visited,
+                result, request, imagined, imagined_via, imagined_variance,
+                visited,
                 edges_without_dynamics)
         result.traversal_time_ms = (time.monotonic() - start_time) * 1000
         self.topology.last_traversal_at = now_utc()
@@ -604,7 +808,14 @@ class TopologyTraverser:
         overrides: Dict[str, Dict[str, Any]],
         horizon_s: float = 3600.0,
     ) -> TraversalResult:
-        """Perturb nodes and forward-propagate."""
+        """Perturb nodes and forward-propagate.
+
+        `horizon_s` was accepted and never passed on, so every
+        caller got the `TraversalRequest` default of one hour whatever it
+        asked for. A parameter a method takes and ignores is worse than one it
+        does not offer: asking for ten minutes returned the one-hour answer
+        with nothing to say it had.
+        """
         return self.traverse(TraversalRequest(
             start_nodes=list(overrides.keys()),
             direction=TraversalDirection.FORWARD,
@@ -612,6 +823,7 @@ class TopologyTraverser:
             overrides=overrides,
             max_hops=4,
             min_probability=0.05,
+            horizon_s=horizon_s,
         ))
 
     def discover_gaps(self, start_node: str) -> List[TopologyQuestion]:
@@ -632,7 +844,8 @@ class TopologyTraverser:
         )
 
     def project_values(self, horizon_s: float = 3600.0,
-                       window: Optional[timedelta] = None) -> int:
+                       window: Optional[timedelta] = None,
+                       model: Any = None) -> int:
         """Populate ``TwinNode.projected_values`` from observed history.
 
         This is the producer PREDICT mode never had. ``_get_values``
@@ -651,17 +864,57 @@ class TopologyTraverser:
         Returns the number of (node, property) projections written, so a
         caller can tell "projected nothing" from "projected and found
         nothing" — the same distinction drew for the checkers.
+
+        IT WILL NOT CHOOSE A MODEL ON THE AUTHOR'S BEHALF, and it
+        used to. This method fitted a curve and extrapolated it for any series
+        with three readings, whatever the model said, while the `project` verb
+        looked at the same indicator and DECLINED `model_missing` with the
+        sentence *no `dynamics` declared, so there is no model to fit; the
+        engine will not choose one on the author's behalf*. Two paths, the
+        same question, opposite answers -- and only one of them was the rule
+        this package states about itself.
+
+        Measured on a 120-sample random walk with no `dynamics:` declared:
+        `project` declined, and this returned 2683.89 against a last reading
+        of 2522.40 -- a confident extrapolation of +161 on a series going
+        nowhere, which is the exact failure `projection/projector.py` names in
+        its own opening as the reason a curve fit is not the default. Once
+        `rollout(seed_mode="projected")` began FILING those values as
+        predictions, the engine was scoring itself on numbers nobody declared
+        a model for.
+
+        The declaration is now read the same way `run_projection` reads it, so
+        an undeclared indicator is left unprojected and the location is
+        recorded for the caller to decline.
         """
         if self.history is None:
             return 0
         projector = self.trend_projector or TrendProjection()
         lookback = window or timedelta(hours=24)
         written = 0
+        self.undeclared_dynamics = []
+        #: (location, reason, detail) for every DECLARED model whose fit
+        #: refused. Kept apart from `undeclared_dynamics` because the two
+        #: send an author in opposite directions.
+        self.projection_refusals = []
+        #:. (entity, property) -> a callable taking a horizon in
+        #: seconds and returning `(value, sigma)`. Kept because a ROLLOUT does
+        #: not want one forecast, it wants the CURVE: every step of it is a
+        #: different instant, and holding one horizon's answer across all of
+        #: them says the source finished moving before the first step.
+        self.projection_curves = {}
+        declared = _declared_dynamics(model)
 
         for node in self.topology.nodes.values():
             entity = node.entity
             for prop_name, current in entity.properties.items():
                 if not isinstance(current, (int, float)) or isinstance(current, bool):
+                    continue
+                if declared is not None and (
+                        entity.type, prop_name) not in declared:
+                    # No `dynamics:` on this indicator. Recorded, not fitted.
+                    self.undeclared_dynamics.append(
+                        f"{entity.id}.{prop_name}")
                     continue
                 try:
                     values = self.history.get_values(
@@ -672,6 +925,29 @@ class TopologyTraverser:
                     # Below any sensible fit; leaving the property unprojected
                     # means PROJECTED falls back to its current value for it,
                     # which is honest — a projection was not made.
+                    continue
+                spec = (declared or {}).get(
+                    (entity.type, prop_name)) if declared else None
+                if spec is not None:
+                    # THE MODEL THE AUTHOR DECLARED, fitted by the
+                    # same projector `run_projection` would use. Gating the
+                    # old curve fit on a declaration was only half the
+                    # unification: an author who declared `local_level` and
+                    # got a trend extrapolation still had two paths answering
+                    # one question two ways, with nothing saying which they
+                    # had.
+                    projected, refusal, curve = _project_declared(
+                        values, spec, horizon_s)
+                    if projected is None:
+                        if refusal is not None:
+                            self.projection_refusals.append(
+                                (f"{entity.id}.{prop_name}", *refusal))
+                        continue
+                    node.projected_values[prop_name] = projected
+                    if curve is not None:
+                        self.projection_curves[
+                            (entity.id, prop_name)] = curve
+                    written += 1
                     continue
                 try:
                     trend = projector.project(values, horizon_s)
@@ -748,6 +1024,132 @@ class TopologyTraverser:
                 values[prop_name] = base + delta
         return values
 
+    def _apply_in_dependency_order(
+        self, pending, *, request, result,
+        imagined, imagined_via, imagined_variance,
+        budget_left: int, edges_without_dynamics) -> int:
+        """Apply every recorded transition with its source already resolved.
+
+        THE WALK ORDER AND THE DEPENDENCY ORDER ARE NOT THE SAME
+        ORDER, and applying a transition when the BFS happened to pop its
+        source meant reading a value that was not finished. On any graph where
+        two paths of unequal length meet, the shorter one arrives first, the
+        node is carried onward at that partial value, and the longer path's
+        contribution lands afterwards on a node whose own targets have already
+        been written. Measured on `a->d` beside `a->b->c->d` with `d->e`: `d`
+        ended correct at 3.0 and `e` sat at 2.0, short by the whole second
+        path, with a decline that could only name the edge and not the damage.
+
+        Kahn's algorithm over the recorded edges fixes the order rather than
+        reporting the consequence. A node is resolved only once every edge
+        into it has contributed, so `_get_values` reads a finished number and
+        the downstream walk carries it.
+
+        A CYCLE IS WHAT THIS CANNOT ORDER, which is the honest definition and
+        a narrower one than the walk could give. Two cases produce it and both
+        decline `cycle_unsupported`: an edge into a node already resolved, and
+        an edge whose source never resolves because it sits inside the loop.
+        An acyclic re-convergence is neither, and no longer reports anything --
+        there is nothing left to report, because the value is now right.
+        """
+        from collections import deque
+
+        out_edges: Dict[str, List[Any]] = {}
+        indegree: Dict[str, int] = {}
+        nodes: Set[str] = set()
+        for record in pending:
+            _, source_id, target_id, _, _ = record
+            nodes.add(source_id)
+            nodes.add(target_id)
+            out_edges.setdefault(source_id, []).append(record)
+            indegree[target_id] = indegree.get(target_id, 0) + 1
+        for node_id in nodes:
+            indegree.setdefault(node_id, 0)
+
+        # The start nodes are ROOTS whatever points at them: their values were
+        # supplied by the caller, not derived. Seeding them is what makes an
+        # edge back into one read as the loop it is, rather than deadlocking
+        # the whole pass.
+        queue = deque(n for n in nodes if indegree[n] == 0)
+        for start in request.start_nodes:
+            if start in nodes and start not in queue:
+                queue.append(start)
+
+        resolved: Set[str] = set()
+        while queue:
+            current_id = queue.popleft()
+            if current_id in resolved:
+                continue
+            resolved.add(current_id)
+            source_node = None
+            for record in out_edges.get(current_id, []):
+                edge, source_id, target_id, cum_delay, source_node = record
+                if target_id in resolved:
+                    self._decline_cycle(result, source_id, target_id,
+                                        closes=True)
+                    continue
+                budget_left = self._apply_transitions(
+                    edge=edge, source_id=source_id, target_id=target_id,
+                    # Read HERE, not when the edge was recorded: everything
+                    # into this node has contributed by now, and that is the
+                    # whole point of the ordering.
+                    source_values=self._get_values(
+                        source_node, request, imagined),
+                    node=source_node, cum_delay_at_source=cum_delay,
+                    request=request, result=result,
+                    imagined=imagined, imagined_via=imagined_via,
+                    imagined_variance=imagined_variance,
+                    budget_left=budget_left,
+                    edges_without_dynamics=edges_without_dynamics)
+                indegree[target_id] -= 1
+                if indegree[target_id] <= 0:
+                    queue.append(target_id)
+
+        for record in pending:
+            _, source_id, target_id, _, _ = record
+            if source_id not in resolved:
+                # Its source never became orderable, so it sits INSIDE a loop
+                # rather than closing one -- a different sentence, because an
+                # author sent to look for the edge that closes the loop will
+                # not find it here.
+                self._decline_cycle(result, source_id, target_id,
+                                    closes=False)
+        return budget_left
+
+    @staticmethod
+    def _decline_cycle(result, source_id: str, target_id: str,
+                       *, closes: bool) -> None:
+        """One `cycle_unsupported`, de-duplicated by edge.
+
+        TWO SENTENCES FOR TWO SITUATIONS. An edge into an already-resolved
+        node CLOSES a loop and is the edge an author should look at. An edge
+        whose source never resolved is INSIDE one -- it closes nothing, and
+        telling its author to go and find the edge that closes the loop is
+        advice that can fail: in `a->b->c->b` neither loop member ever
+        resolves, so BOTH of its edges take this branch and no edge takes the
+        other one. Measured, which is why the sentence says what is true of
+        the value instead of pointing at a decline that may not be there.
+        Both are `cycle_unsupported` because both are the same refusal.
+        """
+        if closes:
+            detail = (f"this edge closes a loop back to {target_id}; its "
+                      f"contribution is NOT in the reported value, because "
+                      f"resolving a feedback path needs iteration to a "
+                      f"fixpoint and that is not first-order")
+        else:
+            detail = (f"{source_id} sits inside a feedback loop, so its own "
+                      f"value never settles and nothing it drives can be "
+                      f"projected from it; this edge contributed nothing. "
+                      f"Any value reported for {source_id} carries only the "
+                      f"contributions from outside the loop. Declare the "
+                      f"coupling in one direction, or accept that this "
+                      f"first-order pass will not resolve it")
+        decline = SimulationDecline(
+            reason="cycle_unsupported", location=f"{source_id}->{target_id}",
+            detail=detail)
+        if decline not in result.simulation_declines:
+            result.simulation_declines.append(decline)
+
     def _apply_transitions(
         self, *, edge, source_id: str, target_id: str,
         source_values: Dict[str, Any], node: TwinNode,
@@ -755,7 +1157,8 @@ class TopologyTraverser:
         result: TraversalResult,
         imagined: Dict[str, Dict[str, float]],
         imagined_via: Dict[str, Dict[str, str]],
-        budget_left: int, already_final: bool,
+        imagined_variance: Dict[str, Dict[str, float]],
+        budget_left: int,
         edges_without_dynamics: Set[str],
     ) -> int:
         """Push one edge's declared transitions onto the target's deltas.
@@ -866,25 +1269,52 @@ class TopologyTraverser:
             if delta_source == 0.0:
                 continue
 
-            if already_final:
-                # The target was evaluated before this contribution arrived.
-                # Applying it now would leave the reported value disagreeing
-                # with the findings already drawn from it, so it is refused
-                # with the reason that says why: resolving it needs iteration
-                # to a fixpoint, which is not first-order.
-                result.simulation_declines.append(SimulationDecline(
-                    reason="cycle_unsupported", location=label,
-                    detail=(f"{target_id} was already evaluated when this "
-                            f"edge contributed; a feedback path needs "
-                            f"iteration this first-order pass does not do")))
-                continue
+            # the `already_final` refusal that sat here is gone.
+            # It could never fire: the visited branch returned before this
+            # function was reached, so the flag was always False. Its premise
+            # is also no longer true — axiom evaluation on a simulating walk
+            # is deferred until every contribution has landed, so no target is
+            # `already evaluated` while the walk is still running.
 
             fraction = edge.response_fraction(elapsed)
-            delta_target = (transition.gain * delta_source * fraction
-                            + transition.offset)
+            # THE OFFSET IS PART OF THE PROPAGATION, so it is
+            # charged the same response fraction as the gain term. It used to
+            # be added in full the moment the source moved, which put a value
+            # on the far end of an edge whose declared delay had not elapsed:
+            # measured on a 120s delay with `offset: 7.0`, a walk at a 60s
+            # horizon reported the target 7 units away from its reading while
+            # `fraction` was 0.0. A declared dead time that a constant term
+            # walks straight through is not a dead time.
+            #
+            # At `fraction == 1.0` this is arithmetically identical to what it
+            # replaced, so a steady-state answer is unchanged.
+            delta_target = (transition.gain * delta_source
+                            + transition.offset) * fraction
             imagined.setdefault(target_id, {}).setdefault(
                 transition.to_property, 0.0)
             imagined[target_id][transition.to_property] += delta_target
+
+            # UNCERTAINTY PROPAGATED BESIDE THE VALUE, first order.
+            # The contribution is `g * d * f`, so a declared spread on `g`
+            # scales it by `|d| * f`, and any spread already on `d` -- an
+            # upstream edge's -- scales by `g * f`. Independent declarations
+            # add in variance, which is the same superposition rule the value
+            # itself follows one line above.
+            #
+            # FIRST ORDER, and stamped as such: the product of two uncertain
+            # gains along a chain is not Gaussian, and this is the delta
+            # method, exact for one hop and an approximation beyond it. The
+            # engine already tells a reader its response is first order; this
+            # is the same statement about the spread.
+            source_variance = imagined_variance.get(source_id, {}).get(
+                transition.from_property, 0.0)
+            contribution_variance = (
+                (transition.gain_sigma * abs(delta_source) * fraction) ** 2
+                + (transition.gain * fraction) ** 2 * source_variance)
+            if contribution_variance:
+                bucket = imagined_variance.setdefault(target_id, {})
+                bucket[transition.to_property] = bucket.get(
+                    transition.to_property, 0.0) + contribution_variance
             imagined_via.setdefault(target_id, {})[
                 transition.to_property] = transition.source
             result.transitions_applied.append(TransitionApplied(
@@ -901,6 +1331,7 @@ class TopologyTraverser:
         self, result: TraversalResult, request: TraversalRequest,
         imagined: Dict[str, Dict[str, float]],
         imagined_via: Dict[str, Dict[str, str]],
+        imagined_variance: Dict[str, Dict[str, float]],
         visited: Set[str], edges_without_dynamics: Set[str],
     ) -> None:
         """Turn the delta map into absolute values and stamp the assumptions.
@@ -923,6 +1354,11 @@ class TopologyTraverser:
                 result.imagined_sources.setdefault(entity_id, {})[
                     prop_name] = imagined_via.get(entity_id, {}).get(
                         prop_name, "")
+                variance = imagined_variance.get(entity_id, {}).get(
+                    prop_name, 0.0)
+                if variance > 0.0:
+                    result.imagined_sigma.setdefault(entity_id, {})[
+                        prop_name] = math.sqrt(variance)
 
         if result.transitions_unapplied:
             result.simulation_declines.append(SimulationDecline(
@@ -938,6 +1374,11 @@ class TopologyTraverser:
             n for n in visited
             if n not in projected and n not in request.start_nodes)
 
+        if result.imagined_sigma:
+            # Said out loud, because an interval is the thing a reader is most
+            # likely to take as exact.
+            result.assumptions.append("first_order_uncertainty")
+            result.assumptions.append("independent_declared_spreads")
         if result.transitions_applied:
             result.assumptions.append("linear_superposition")
             result.assumptions.append("first_order_response")
