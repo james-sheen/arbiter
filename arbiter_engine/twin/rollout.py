@@ -34,6 +34,7 @@ import uuid
 from datetime import timedelta
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
+from ..fire_frequency import counting_aside
 from .actions import (ActionInstance, ActionRefused, ActionTemplate,
                       deltas_for, load_templates, resolve)
 from .topology import (SimulationDecline, TraversalDirection,
@@ -186,6 +187,108 @@ def _clone_history(session: Any) -> Tuple[Any, int, Optional[SimulationDecline]]
     return clone, seeded, None
 
 
+def _deliver(topology: Any, *,
+             movements: Dict[Tuple[str, str], Dict[float, float]],
+             baseline: Dict[str, Dict[str, float]],
+             state: Dict[str, Dict[str, float]],
+             starts: Sequence[str],
+             clock: float,
+             budget: int,
+             spread_at: Any,
+             offsets_charged: Set[Tuple[str, str]],
+             ) -> Tuple[Dict[str, Dict[str, float]],
+                        Dict[str, Dict[str, Dict[Any, float]]],
+                        List[Any]]:
+    """What the declared couplings have put into each property by `clock`.
+
+    ONE implementation, two callers, and the second is why it was
+    lifted out of `run`. Building a trajectory needs this at the step clock;
+    resolving an action whose delta READS the standing value -- `set` and
+    `scale` -- needs the same answer at the action's own instant, which is
+    somewhere inside the step and not at either end of it. Resolving against
+    the step boundary instead left a `set 20` reporting 22.3865, an error of
+    exactly one step's worth of the coupling's delivery, counted twice.
+
+    Returns the contributions, the signed spread that came with them, and the
+    walks themselves -- so the caller building a trajectory can count them
+    against its budget and read their declines, and the caller merely ASKING
+    can discard them. An asking caller passes a COPY of `offsets_charged`:
+    a declared `offset:` is spent once per coupling, and a question must not
+    spend it on the answer's behalf.
+    """
+    contributions: Dict[str, Dict[str, float]] = {}
+    spreads: Dict[str, Dict[str, Dict[Any, float]]] = {}
+    walks: List[Any] = []
+    groups: Dict[float, Dict[Tuple[str, str], float]] = {}
+    for key, by_instant in movements.items():
+        for when, delta in by_instant.items():
+            groups.setdefault(when, {})[key] = delta
+    budget_left = budget
+    for when in sorted(groups):
+        elapsed = clock - when
+        if elapsed < 0:
+            continue
+        moved = groups[when]
+        props_by_entity: Dict[str, set] = {}
+        for eid, prop in moved:
+            props_by_entity.setdefault(eid, set()).add(prop)
+        # Only THIS group's properties carry a moved value, and the value
+        # they carry is the baseline plus the delta of THIS MOVEMENT --
+        # not the cumulative state, which would charge an earlier
+        # movement's displacement this group's elapsed time. Every other
+        # property sits at its baseline, so it measures a zero delta and
+        # contributes nothing to this walk.
+        overrides = {
+            eid: {
+                name: (baseline.get(eid, {}).get(name, value)
+                       + moved[(eid, name)]
+                       if name in props_by_entity[eid]
+                       else baseline.get(eid, {}).get(name, value))
+                for name, value in state.get(eid, {}).items()
+            }
+            for eid in props_by_entity
+        }
+        if not overrides:
+            continue
+        request = TraversalRequest(
+            start_nodes=[n for n in starts if n in overrides] or
+            sorted(overrides),
+            direction=TraversalDirection.FORWARD,
+            value_mode=ValueMode.HYPOTHETICAL,
+            max_hops=8,
+            overrides=overrides,
+            horizon_s=max(elapsed, 0.0),
+            max_transitions=budget_left,
+        )
+        traverser = TopologyTraverser(topology)
+        # The doubt a movement carries is an INPUT to the walk, so a
+        # transition carries it downstream through its own gain the same way
+        # it carries a declared `gain_sigma:`.
+        traverser.seed_spread = spread_at(when)
+        # The SAME set across the step's groups: the walk reads it to
+        # know which offsets are spent and adds the ones it spends.
+        traverser.offsets_charged = offsets_charged
+        walk = traverser.traverse(request)
+        walks.append(walk)
+        budget_left = max(0, budget_left - len(walk.transitions_applied))
+        for eid, values in walk.imagined_values.items():
+            for prop, value in values.items():
+                base = baseline.get(eid, {}).get(prop)
+                if base is None:
+                    continue
+                bucket = contributions.setdefault(eid, {})
+                bucket[prop] = bucket.get(prop, 0.0) + (
+                    float(value) - float(base))
+        for eid, props in getattr(walk, "imagined_spread", {}).items():
+            for prop, contributions_by_source in props.items():
+                sbucket = spreads.setdefault(eid, {}).setdefault(prop, {})
+                for source_key, contribution in (
+                        contributions_by_source.items()):
+                    sbucket[source_key] = sbucket.get(
+                        source_key, 0.0) + float(contribution)
+    return contributions, spreads, walks
+
+
 def run(session: Any, topology: Any, *,
         actions: Sequence[ActionInstance] = (),
         horizon_s: float = 3600.0,
@@ -317,6 +420,30 @@ def run(session: Any, topology: Any, *,
     #: The steady state was right throughout, which is why a test that checks
     #: where a trajectory ENDS could not see it.
     movements: Dict[Tuple[str, str], Dict[float, float]] = {}
+    #:. (entity, property) -> what the declared couplings had
+    #: delivered to it by the END OF THE LAST COMPLETED STEP, and the signed
+    #: doubt that came with it.
+    #:
+    #: Held apart from `movements` because the two propagate differently: a
+    #: movement is walked from this property OUTWARD, while a contribution
+    #: that arrived here has already been walked onward by the walk that
+    #: delivered it. Folding the second into the first counts it twice; and
+    #: dropping it, which is what this module did, loses the coupling
+    #: altogether. Measured on a tank an `add` touched at t=600 s under a
+    #: 120/600 exponential pump edge: the tank froze at 60.03 for the rest of
+    #: the hour where 64.97 was declared, lost its declared spread, and
+    #: handed the 5.03 it had already received to the sump a second time --
+    #: with `transitions_applied` counting every one of them and nothing
+    #: declined. The invariant every step restores is
+    #:
+    #:     state = baseline + sum(movements) + received
+    #: The DOUBT that came with it is deliberately NOT held here beside the
+    #: value. An action's delta is resolved at the action's own instant, so
+    #: the doubt it inherits has to be read at that instant too -- which the
+    #: same walk returns, one step fresher than anything carried over from
+    #: the last one. A second copy here would be the staler of two records of
+    #: one fact, which is how the two come to disagree.
+    received: Dict[Tuple[str, str], float] = {}
     #:. (entity, property) -> a reader over the fitted forecast. A
     #: rollout wants the CURVE, not one horizon's answer: every step is a
     #: different instant, and holding one across all of them says the source
@@ -337,6 +464,18 @@ def run(session: Any, topology: Any, *,
     seed_sigma: Dict[Tuple[str, str], float] = {}
     seed_sensitivity: Dict[Tuple[str, str], Dict[float, float]] = {}
     seed_carried: Dict[Tuple[str, str], float] = {}
+    #:. (entity, property) -> {instant -> {uncertainty source -> the
+    #: SIGNED doubt this action's own movement carries from it}}. The same
+    #: quantity `seed_sensitivity` holds for a forecast band, for doubt that
+    #: arrived through a declared `gain_sigma:` instead. An action whose delta
+    #: is measured FROM the standing value inherits the standing value's
+    #: doubt: a `set` pins the property and carries that doubt away with the
+    #: opposite sign, a `scale k` multiplies it, an `add` neither reads nor
+    #: removes it. Without this the doubt stayed where the value no longer
+    #: was -- a tank `set` to 20 went on reporting the whole coupling's
+    #: spread, and a tank `scale`d by 2 reported half of what it carried.
+    action_sensitivity: Dict[Tuple[str, str],
+                             Dict[float, Dict[Any, float]]] = {}
     if seed_mode == "projected":
         curves = dict(getattr(
             getattr(topology, "_last_projector", None),
@@ -394,6 +533,41 @@ def run(session: Any, topology: Any, *,
 
     budget_left = max(0, int(max_transitions))
     starts = list(start_nodes or sorted(entities))
+
+    def _spread_at(when: float) -> Dict[str, Dict[str, Dict[Any, float]]]:
+        """The doubt the movements at `when` carry into the walk, signed.
+
+        this group's SHARE of each seed's doubt. The whole variance
+        used to be handed to every group, so a property both seeded and acted
+        on propagated its forecast's band once per group and the two were then
+        added in quadrature -- measured at sqrt(2) times a doubt the action
+        had in fact removed.
+
+        and the same share of whatever the COUPLINGS had put into a
+        property an action then moved. Both are doubt an action's own delta
+        inherited by being measured from a value that had it, so both ride out
+        on that delta; `seed_spread` has been keyed by the source of the doubt
+        since and needs no widening to carry a `gain` key beside a
+        `seed` one. MERGED rather than assigned, because one property can be
+        both: a forecast-seeded tank that a declared coupling also drives.
+        """
+        out: Dict[str, Dict[str, Dict[Any, float]]] = {}
+        for (eid, prop), by_when in seed_sensitivity.items():
+            sensitivity = by_when.get(when)
+            sigma = seed_sigma.get((eid, prop), 0.0)
+            if not sensitivity or not sigma:
+                continue
+            bucket = out.setdefault(eid, {}).setdefault(prop, {})
+            key = ("seed", eid, prop)
+            bucket[key] = bucket.get(key, 0.0) + sensitivity * sigma
+        for (eid, prop), by_instant in action_sensitivity.items():
+            carried = by_instant.get(when)
+            if not carried:
+                continue
+            bucket = out.setdefault(eid, {}).setdefault(prop, {})
+            for key, contribution in carried.items():
+                bucket[key] = bucket.get(key, 0.0) + contribution
+        return out
 
     # A ROLLOUT UNDER ACTIONS IS A COUNTERFACTUAL, NOT A FORECAST.
     # This engine never dispatches: a rollout carrying actions reports
@@ -465,7 +639,11 @@ def run(session: Any, topology: Any, *,
             if at is None:
                 continue
             value, sigma = at
-            state.setdefault(entity_id, {})[prop] = float(value)
+            # plus what the couplings had delivered here. The
+            # forecast describes this property's OWN trajectory; overwriting
+            # the state with it alone would discard every coupling into it.
+            state.setdefault(entity_id, {})[prop] = (
+                float(value) + received.get((entity_id, prop), 0.0))
             # The seed is one movement, at t=0, whose DELTA is re-read from
             # the curve at every step. Registered here as well as at the
             # overlay so a curve that starts flat and moves later is still a
@@ -573,11 +751,49 @@ def run(session: Any, topology: Any, *,
         # answer, so they are refused by name with both values in the refusal
         # and the property is left where it was.
         refused_pairs: Set[Tuple[str, str]] = set()
-        for (entity_id, prop), items in sorted(intents.items()):
-            base = state.get(entity_id, {}).get(prop)
-            if not isinstance(base, (int, float)) or isinstance(base, bool):
+        # WHAT THE COUPLINGS HAVE DELIVERED BY THE INSTANT EACH
+        # ACTION LANDS. `set` and `scale` are the two effects whose delta
+        # READS the standing value, and on a property that is also a
+        # transition's `to:` the standing value includes what the couplings
+        # put there. This resolved the delta against `state`, which is written
+        # at the END of a step, while the state it then wrote used what the
+        # couplings had delivered by THIS one -- two clocks, one subtraction.
+        # Measured on a tank SET to 20 at t=600 s under a 600 s exponential
+        # pump edge: 22.3865 reported at `step_s=300`, 20.3869 at 60, 20.1247
+        # at 20. The error is exactly one step's worth of the coupling's
+        # delivery and it shrinks with the step, which is the signature of a
+        # discretisation artefact in a module whose whole design is that it
+        # has none.
+        #
+        # Asked once per distinct instant rather than once per property, and
+        # only when something is actually being resolved. The walks are
+        # DISCARDED: they are the engine reading its own state to answer a
+        # question, not transitions it applied to build this trajectory, and
+        # counting them would inflate the denominator a caller reads to find
+        # out how much of the declared topology ran. They are handed a COPY of
+        # `offsets_charged` so a question cannot spend a declared `offset:`.
+        delivered_at: Dict[float, Tuple[Dict[str, Dict[str, float]],
+                                        Dict[str, Dict[str, Dict[Any,
+                                                                 float]]]]] = {}
+        for (entity_id, prop), items in intents.items():
+            if {kind for kind, _, _ in items} == {"add"}:
+                # An increment does not read the standing value, so there is
+                # nothing here for it to be resolved against.
                 continue
-            base = float(base)
+            when = action_times.get((entity_id, prop), at_s)
+            if when in delivered_at:
+                continue
+            values_then, spread_then, _ = _deliver(
+                topology, movements=movements, baseline=baseline, state=state,
+                starts=starts, clock=when, budget=budget_left,
+                spread_at=_spread_at, offsets_charged=set())
+            delivered_at[when] = (values_then, spread_then)
+
+        for (entity_id, prop), items in sorted(intents.items()):
+            standing = state.get(entity_id, {}).get(prop)
+            if (not isinstance(standing, (int, float))
+                    or isinstance(standing, bool)):
+                continue
             kinds = {kind for kind, _, _ in items}
             values = {value for _, value, _ in items}
             bucket = action_deltas.setdefault(entity_id, {})
@@ -587,12 +803,58 @@ def run(session: Any, topology: Any, *,
             # while the forecast still describes it.
             carried = seed_carried.get((entity_id, prop), 0.0)
             when_acted = action_times.get((entity_id, prop), at_s)
+            values_then, spread_then = delivered_at.get(when_acted, ({}, {}))
+            arrived_then = values_then.get(entity_id, {}).get(prop, 0.0)
+            # the value this property ACTUALLY HAS at the instant
+            # the action lands: its baseline, plus every movement of its own
+            # registered so far, plus what the couplings had delivered by
+            # then. `state` is the same quantity one step later, which is the
+            # whole of the defect above.
+            base = (baseline.get(entity_id, {}).get(prop, 0.0)
+                    + sum(movements.get((entity_id, prop), {}).values())
+                    + arrived_then)
+            # The doubt that came with what arrived, per declared source. The
+            # seed's own share is excluded: `_seed_moves` already carries it,
+            # and counting it in both places would carry it twice.
+            received_then = {
+                key: contribution
+                for key, contribution in spread_then.get(
+                    entity_id, {}).get(prop, {}).items()
+                if not (isinstance(key, tuple) and key and key[0] == "seed")}
 
             def _seed_moves(delta_sensitivity: float, left: float) -> None:
+                # ADDED to whatever this instant already carries,
+                # not assigned. The seed's own share sits at instant 0.0 and
+                # an action at `at_s=0` -- *do this now* -- lands on the same
+                # key: assigning overwrote +1 with -1, so a source pinned by a
+                # `set` at t=0 handed its whole forecast band to its targets
+                # with the sign flipped. Measured, the pinned pump reported no
+                # spread and the tank it feeds reported 0.861, which is the
+                # pump's band through the gain; the same action at `at_s=1`
+                # left the tank with none, which is the answer for both.
                 if carried:
-                    seed_sensitivity.setdefault(
-                        (entity_id, prop), {})[when_acted] = delta_sensitivity
+                    by_when = seed_sensitivity.setdefault(
+                        (entity_id, prop), {})
+                    by_when[when_acted] = (by_when.get(when_acted, 0.0)
+                                           + delta_sensitivity)
                     seed_carried[(entity_id, prop)] = left
+
+            def _received_moves(factor: float) -> None:
+                """how much of the doubt the COUPLINGS had put into
+                this property the action's own movement carries away with it:
+                all of it with the opposite sign for a `set`, which pins the
+                property and leaves only later arrivals in doubt; `k - 1`
+                times it for a `scale k`, which multiplies what is standing;
+                none for an `add`, which neither reads the standing value nor
+                removes it. The same three cases `_seed_moves` states for a
+                forecast band, because it is the same kind of quantity.
+                """
+                if not received_then or not factor:
+                    return
+                by_key = action_sensitivity.setdefault(
+                    (entity_id, prop), {}).setdefault(when_acted, {})
+                for key, contribution in received_then.items():
+                    by_key[key] = by_key.get(key, 0.0) + factor * contribution
 
             if kinds == {"add"}:
                 # The one effect that superposes, and the only one whose
@@ -603,6 +865,7 @@ def run(session: Any, topology: Any, *,
                 # An increment does not depend on where the property was, so
                 # it carries none of the doubt and erases none of it.
                 _seed_moves(0.0, carried)
+                _received_moves(0.0)
                 continue
             if kinds == {"scale"}:
                 factor = 1.0
@@ -610,6 +873,7 @@ def run(session: Any, topology: Any, *,
                     factor *= value
                 bucket[prop] = bucket.get(prop, 0.0) + (base * factor - base)
                 _seed_moves((factor - 1.0) * carried, factor * carried)
+                _received_moves(factor - 1.0)
                 if len(items) > 1:
                     _assume(result, "scalings_compose_by_multiplication")
                 continue
@@ -624,6 +888,7 @@ def run(session: Any, topology: Any, *,
                 # because it is measured FROM the seeded value -- and the
                 # property keeps none.
                 _seed_moves(-carried, 0.0)
+                _received_moves(-1.0)
                 continue
             labels = sorted({label for _, _, label in items})
             asked = ", ".join(f"{kind} {value:g}" for kind, value, _ in items)
@@ -706,97 +971,63 @@ def run(session: Any, topology: Any, *,
             standing = state.get(eid, {}).get(prop)
             if standing is None or not by_instant:
                 continue
-            drift = (float(standing) - baseline.get(eid, {}).get(prop, 0.0)
-                     - sum(by_instant.values()))
+            decomposed = (baseline.get(eid, {}).get(prop, 0.0)
+                          + sum(by_instant.values())
+                          + received.get((eid, prop), 0.0))
+            drift = float(standing) - decomposed
             if drift:
+                # REPORTED, not only absorbed. `received` is the
+                # third term of the invariant this step restores, and with it
+                # subtracted the decomposition and the state agree in every
+                # case the module has a name for, so a residue here is a
+                # defect rather than a displacement. The fold stays, because
+                # the alternative is propagating a state the source does not
+                # show; what changes is that it stops being silent.
+                #
+                # `math.isclose` at its own default, rather than a threshold
+                # this engine picked: the question is whether two floats are
+                # the same number, which is a question about floats.
                 by_instant[max(by_instant)] += drift
+                if not math.isclose(float(standing), decomposed,
+                                    rel_tol=1e-9):
+                    result.declines.append(SimulationDecline(
+                        "internal_error", f"{eid}.{prop}",
+                        f"the imagined value {float(standing):g} and its own "
+                        f"movement decomposition {decomposed:g} disagree by "
+                        f"{drift:g} at t={at_s:g}s; the difference was folded "
+                        f"into the latest movement so the value stands, and "
+                        f"the time course of this property is not derived "
+                        f"from the declarations alone"))
 
-        contributions: Dict[str, Dict[str, float]] = {}
-        #:. entity -> property -> {uncertainty source -> that
-        #: source's SIGNED contribution}, accumulated across movement groups.
-        #:
-        #: This summed the groups' VARIANCES, on the reasoning that groups are
-        #: separate couplings firing from different instants. They are not:
-        #: the groups are the same declared couplings walked at different
-        #: elapsed times, so one `gain_sigma:` fires in every group a source
-        #: moved in, and adding those in quadrature counted one number as
-        #: several independent ones. Measured on a pump moved +500 then +100
-        #: with `gain_sigma: 0.002`: the tank settled at 1.0198 where the
-        #: declaration says 1.2, and two EQUAL movements were narrow by
-        #: sqrt(2). Contributions from one source add linearly here and the
-        #: squares are taken once below -- which also lets them CANCEL, so a
-        #: source moved out and back leaves a target with no spread at all,
-        #: the answer for a target sitting where it started.
-        spreads: Dict[str, Dict[str, Dict[Any, float]]] = {}
         fractions: set = set()
-        #: Sources whose declared `offset:` this step has already taken. The
-        #: offset belongs to the coupling, not to each movement of its
-        #: source, so it develops from the first instant the source moved and
-        #: later groups charge the gain term alone. Handed to each walk and
-        #: added to BY the walk, so a constant term further down a chain is
-        #: counted once as well.
+        # Sources whose declared `offset:` this step has already taken. The
+        # offset belongs to the coupling, not to each movement of its
+        # source, so it develops from the first instant the source moved and
+        # later groups charge the gain term alone. Handed to each walk and
+        # added to BY the walk, so a constant term further down a chain is
+        # counted once as well. A fresh set per step, and the walks that
+        # merely ANSWER a question above were handed a copy of it.
         offsets_charged: Set[Tuple[str, str]] = set()
-        groups: Dict[float, Dict[Tuple[str, str], float]] = {}
-        for key, by_instant in movements.items():
-            for when, delta in by_instant.items():
-                groups.setdefault(when, {})[key] = delta
-        for when in sorted(groups):
-            elapsed = at_s - when
-            if elapsed < 0:
-                continue
-            moved = groups[when]
-            props_by_entity: Dict[str, set] = {}
-            for eid, prop in moved:
-                props_by_entity.setdefault(eid, set()).add(prop)
-            # Only THIS group's properties carry a moved value, and the value
-            # they carry is the baseline plus the delta of THIS MOVEMENT --
-            # not the cumulative state, which would charge an earlier
-            # movement's displacement this group's elapsed time. Every other
-            # property sits at its baseline, so it measures a zero delta and
-            # contributes nothing to this walk.
-            overrides = {
-                eid: {
-                    name: (baseline.get(eid, {}).get(name, value)
-                           + moved[(eid, name)]
-                           if name in props_by_entity[eid]
-                           else baseline.get(eid, {}).get(name, value))
-                    for name, value in state.get(eid, {}).items()
-                }
-                for eid in props_by_entity
-            }
-            if not overrides:
-                continue
-            request = TraversalRequest(
-                start_nodes=[n for n in starts if n in overrides] or
-                sorted(overrides),
-                direction=TraversalDirection.FORWARD,
-                value_mode=ValueMode.HYPOTHETICAL,
-                max_hops=8,
-                overrides=overrides,
-                horizon_s=max(elapsed, 0.0),
-                max_transitions=budget_left,
-            )
-            traverser = TopologyTraverser(topology)
-            # The seed's doubt is an INPUT to the walk, so a transition
-            # carries it downstream through its own gain the same way it
-            # carries a declared `gain_sigma:`.
-            # this group's SHARE of each seed's doubt, signed. The
-            # whole variance used to be handed to every group, so a property
-            # both seeded and acted on propagated its forecast's band once per
-            # group and the two were then added in quadrature -- measured at
-            # sqrt(2) times a doubt the action had in fact removed.
-            traverser.seed_spread = {}
-            for (eid, prop), by_when in seed_sensitivity.items():
-                sensitivity = by_when.get(when)
-                sigma = seed_sigma.get((eid, prop), 0.0)
-                if not sensitivity or not sigma:
-                    continue
-                traverser.seed_spread.setdefault(eid, {})[prop] = {
-                    ("seed", eid, prop): sensitivity * sigma}
-            # The SAME set across the step's groups: the walk reads it to
-            # know which offsets are spent and adds the ones it spends.
-            traverser.offsets_charged = offsets_charged
-            walk = traverser.traverse(request)
+        # `spreads` is entity -> property -> {uncertainty source -> that
+        # source's SIGNED contribution}, accumulated across movement groups.
+        #
+        # This summed the groups' VARIANCES, on the reasoning that
+        # groups are separate couplings firing from different instants. They
+        # are not: the groups are the same declared couplings walked at
+        # different elapsed times, so one `gain_sigma:` fires in every group a
+        # source moved in, and adding those in quadrature counted one number
+        # as several independent ones. Measured on a pump moved +500 then
+        # +100 with `gain_sigma: 0.002`: the tank settled at 1.0198 where the
+        # declaration says 1.2, and two EQUAL movements were narrow by
+        # sqrt(2). Contributions from one source add linearly there and the
+        # squares are taken once below -- which also lets them CANCEL, so a
+        # source moved out and back leaves a target with no spread at all,
+        # the answer for a target sitting where it started.
+        contributions, spreads, walks = _deliver(
+            topology, movements=movements, baseline=baseline, state=state,
+            starts=starts, clock=at_s, budget=budget_left,
+            spread_at=_spread_at, offsets_charged=offsets_charged)
+        for walk in walks:
             result.transitions_attempted += walk.transitions_attempted
             result.transitions_applied += len(walk.transitions_applied)
             budget_left = max(0, budget_left - len(walk.transitions_applied))
@@ -809,31 +1040,25 @@ def run(session: Any, topology: Any, *,
             for assumption in walk.assumptions:
                 if assumption not in result.assumptions:
                     result.assumptions.append(assumption)
-            for eid, values in walk.imagined_values.items():
-                for prop, value in values.items():
-                    base = baseline.get(eid, {}).get(prop)
-                    if base is None:
-                        continue
-                    bucket = contributions.setdefault(eid, {})
-                    bucket[prop] = bucket.get(prop, 0.0) + (
-                        float(value) - float(base))
-            for eid, props in getattr(walk, "imagined_spread", {}).items():
-                for prop, contributions_by_source in props.items():
-                    sbucket = spreads.setdefault(eid, {}).setdefault(prop, {})
-                    for source_key, contribution in (
-                            contributions_by_source.items()):
-                        sbucket[source_key] = sbucket.get(
-                            source_key, 0.0) + float(contribution)
 
         step.response_fractions = sorted(fractions)
         # a seeded property's OWN spread is what it still carries
         # of its forecast: all of it while nobody has acted, none once a
         # `set` has pinned it, `k` times it after a `scale k`.
+        #
+        # written as a KEYED contribution rather than straight into
+        # `step.sigma`, so that a property which is both seeded and driven by
+        # a declared coupling gets ONE accounting instead of two, and the
+        # later one no longer silently replaces the earlier. SET rather than
+        # added: a walk that started at this property already carried this
+        # group's share of its seed into the bucket, and the shares summed
+        # over the groups are exactly `carried`. Written even when it is zero,
+        # because a `set` pins the property and the two shares the walk
+        # delivered cancel only if BOTH of them arrive.
         for (eid, prop), sigma in seed_sigma.items():
-            carried = abs(seed_carried.get((eid, prop), 0.0)) * sigma
-            if carried > 0.0:
-                step.sigma.setdefault(eid, {})[prop] = carried
-                result.has_declared_spread = True
+            carried = seed_carried.get((eid, prop), 0.0) * sigma
+            spreads.setdefault(eid, {}).setdefault(prop, {})[
+                ("seed", eid, prop)] = carried
         for eid, props in spreads.items():
             for prop, contributions_by_source in props.items():
                 # WHO DROVE THIS VALUE. `gain` keys carry the
@@ -846,19 +1071,34 @@ def run(session: Any, topology: Any, *,
                 if drove:
                     step.drivers.setdefault(eid, {})[prop] = drove
                 variance = sum(c * c for c in contributions_by_source.values())
-                if variance > 0.0 and (eid, prop) not in movements:
+                # no longer skipped for a property in `movements`.
+                # An action or a seed drives a property directly; that does
+                # not stop a declared coupling driving it too, and the doubt
+                # on what the coupling delivered is the property's doubt.
+                if variance > 0.0:
                     step.sigma.setdefault(eid, {})[prop] = math.sqrt(variance)
                     result.has_declared_spread = True
 
+        # A COUPLING INTO A MOVED PROPERTY STILL ARRIVES.
+        # This skipped every property in `movements`, on the reasoning that a
+        # transition must not overwrite what an operator set or a forecast
+        # supplied. It did not overwrite: it DROPPED, while the envelope went
+        # on reporting the transition as applied. Superposition is the whole
+        # rule, so a property is its baseline plus its own movements plus what
+        # the couplings delivered -- and what they delivered is remembered, so
+        # the next step does not mistake it for a movement of this property's
+        # own and walk it outward a second time.
+        arrived: Dict[Tuple[str, str], float] = {}
         for eid, props in contributions.items():
             for prop, delta in props.items():
-                if (eid, prop) in movements:
-                    # An action or a projected seed drives this property
-                    # directly; a transition into it must not overwrite the
-                    # value the operator set or the forecast supplied.
-                    continue
-                state.setdefault(eid, {})[prop] = (
-                    baseline.get(eid, {}).get(prop, 0.0) + delta)
+                arrived[(eid, prop)] = delta
+        for key in set(arrived) | set(received):
+            eid, prop = key
+            state.setdefault(eid, {})[prop] = (
+                baseline.get(eid, {}).get(prop, 0.0)
+                + sum(movements.get(key, {}).values())
+                + arrived.get(key, 0.0))
+        received = arrived
 
         # 3. Write the imagined state into the clone, at the imagined time.
         stamp = now + timedelta(seconds=at_s)
@@ -959,7 +1199,18 @@ def _evaluate(session: Any, state: Dict[str, Dict[str, float]],
     findings: List[Any] = []
     declines: List[SimulationDecline] = []
     try:
-        outcome = reasoner.detect(shadows, session.graph, history)
+        # THE IMAGINED WORLD DOES NOT WRITE INTO THE LIVE COUNTER.
+        # The reasoner counts every finding it dispatches into the
+        # process-wide fire tracker, and these findings are about a state
+        # nobody has: measured on the shipped example, one live `check`
+        # recorded 2 fires and one `plan` recorded 600 in the same buckets,
+        # tripping the tracker's own high-rate WARN on a world that does not
+        # exist. Nothing reads the counts back today, which is why it could
+        # sit there; the rule this module opens with -- the clone is never
+        # the live history -- is the same rule, and this was the one channel
+        # it was not being kept on.
+        with counting_aside():
+            outcome = reasoner.detect(shadows, session.graph, history)
     except Exception as exc:  # noqa: BLE001 - a decline must not become a crash
         return [], [SimulationDecline(
             "internal_error", "<reasoner>",

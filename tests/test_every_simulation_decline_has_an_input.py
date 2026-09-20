@@ -345,6 +345,23 @@ class TestEachOwnedReasonHasAnInput:
             session, ["p"], value_mode="hypothetical",
             overrides={"p": {"v": 9.0}}))
 
+    def test_coupling_uninstantiated(self, tmp_path):
+        """The declared pair with nothing to run on.
+
+        A `transition:` block lives on a relationship RULE. The rule needs an
+        EDGE of its type between two entities of its types before it can move
+        anything, and a session can hold both entities and no edge -- which is
+        the state every client of a transport with no way to build one is
+        permanently in. Constructed by omitting `add_relationship` and
+        nothing else, because that is the only way it arises.
+        """
+        session = api.EngineSession()
+        session.load_model(_model(tmp_path, BASE, "uninstantiated"))
+        session.add_entity("p", "P", {"v": 1.0})
+        session.add_entity("t", "T", {"w": 1.0})
+        assert "coupling_uninstantiated" in _reasons(api.rollout(
+            session, actions=[_act()], horizon_s=180.0, step_s=60.0))
+
     SHORT_SERIES = """
 domain:
   id: shortseries
@@ -519,6 +536,8 @@ class TestTheVocabularyHasNoUnexplainedMember:
             "no_declared_tolerance",
             # two non-additive effects on one property, one instant.
             "contradictory_actions",
+            # a declared coupling with no edge to run on.
+            "coupling_uninstantiated",
         }
         # AND THE PROJECTION SET. `seed_mode="projected"` runs the
         # declared projector, so a simulation carries whatever that projector

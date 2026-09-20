@@ -286,6 +286,26 @@ TOOL_SPECS: List[Dict[str, Any]] = [
         },
     },
     {
+        "name": "add_relationship",
+        "description": (
+            "Join two registered entities. CONNECTIVITY reads the graph, and "
+            "so does every declared coupling: a `transition:` block lives on "
+            "a relationship RULE, and the rule has nothing to run on until an "
+            "edge of that type exists between two entities of the right "
+            "types. Without this the simulation verbs answer over a topology "
+            "with no edges in it."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "source_id": {"type": "string"},
+                "relation_type": {"type": "string"},
+                "target_id": {"type": "string"},
+            },
+            "required": ["source_id", "relation_type", "target_id"],
+        },
+    },
+    {
         "name": "rollout",
         "description": (
             "Run the model forward under actions and judge every imagined "
@@ -306,6 +326,7 @@ TOOL_SPECS: List[Dict[str, Any]] = [
                 "seed_mode": {"type": "string",
                               "enum": ["current", "projected"]},
                 "max_transitions": {"type": "integer"},
+                "file_predictions": {"type": "boolean"},
             },
         },
     },
@@ -380,6 +401,7 @@ def _rollout(session: EngineSession, arguments: Dict[str, Any]) -> Envelope:
         step_s=float(arguments.get("step_s", 60.0)),
         seed_mode=str(arguments.get("seed_mode", "current")),
         max_transitions=int(arguments.get("max_transitions", 100_000)),
+        file_predictions=bool(arguments.get("file_predictions", False)),
     )
 
 
@@ -437,6 +459,20 @@ def _add_entity(session: EngineSession, arguments: Dict[str, Any]) -> Envelope:
     return model_describe(session)
 
 
+def _add_relationship(session: EngineSession,
+                      arguments: Dict[str, Any]) -> Envelope:
+    """Joins two entities, then answers with `gaps`.
+
+    `gaps` rather than a count, on the same reasoning as `add_observations`:
+    the reply to the call that built the edge is where a reader finds out
+    what the edge did and did not make reachable.
+    """
+    session.add_relationship(
+        arguments["source_id"], arguments["relation_type"],
+        arguments["target_id"])
+    return gaps(session)
+
+
 def _add_observations(session: EngineSession,
                       arguments: Dict[str, Any]) -> Envelope:
     """Feeds a series, then answers with `gaps`.
@@ -473,6 +509,7 @@ _HANDLERS = {
     "plan": _plan,
     "load_model": _load_model,
     "add_entity": _add_entity,
+    "add_relationship": _add_relationship,
     "add_observations": _add_observations,
 }
 
@@ -544,10 +581,12 @@ def build_server(session: EngineSession | None = None):
         step_s: float = 300.0,
         seed_mode: str = "current",
         max_transitions: int = 100_000,
+        file_predictions: bool = False,
     ) -> str:
         return _emit("rollout", {
             "actions": actions, "horizon_s": horizon_s, "step_s": step_s,
             "seed_mode": seed_mode, "max_transitions": max_transitions,
+            "file_predictions": file_predictions,
         })
 
     async def plan_tool(
@@ -579,6 +618,13 @@ def build_server(session: EngineSession | None = None):
         return _emit("add_entity", {
             "entity_id": entity_id, "entity_type": entity_type,
             "properties": properties, "name": name,
+        })
+
+    async def add_relationship_tool(source_id: str, relation_type: str,
+                                    target_id: str) -> str:
+        return _emit("add_relationship", {
+            "source_id": source_id, "relation_type": relation_type,
+            "target_id": target_id,
         })
 
     async def add_observations_tool(entity_id: str, property_name: str,
@@ -636,6 +682,7 @@ def build_server(session: EngineSession | None = None):
         "infer": infer_tool,
         "load_model": load_model_tool,
         "add_entity": add_entity_tool,
+        "add_relationship": add_relationship_tool,
         "add_observations": add_observations_tool,
         # The SAME omission the comment above records, made again by
         # the world-model arc and caught by the same guard -- at construction,

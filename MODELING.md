@@ -758,6 +758,15 @@ superpose, and the offset develops from the first of them. So the settled
 value is `gain x total change + offset` once, however many adjustments it took
 to arrive.
 
+**A source that returns to where it started has still made a change**, and the
+formula says so literally: its target settles at `baseline + offset` rather
+than at `baseline`. Measured with `offset: 7.0` and `gain: 0.02`, a pump taken
+1000 -> 1500 -> 1000 leaves its tank at 57.0 while a pump nobody touched
+leaves it at 50.0. The offset belongs to the COUPLING having fired, not to
+the net displacement, so it is charged once the coupling has run and is not
+refunded when the source comes back. Declare the constant term only where it
+describes something that persists once the source has moved at all.
+
 **`gain_sigma:` is how sure you are of the gain, and it is optional.** A
 datasheet that reads *0.003 per rpm, plus or minus 10 %* has told you one;
 most couplings are declared without it and behave exactly as before. Declare
@@ -767,6 +776,22 @@ probability rather than a 0 or a 1, and a rollout's projections become
 FALSIFIABLE -- the declared band is the window inside which a later reading
 counts as having confirmed them, so the engine can be scored on its own
 forecasts.
+
+Where `gain_sigma: estimate` asks this engine to propose one, the proposal
+carries `residual_autocorrelation` and
+`gain_sigma_assumes_independent_residuals` beside it. The standard error
+offered as a spread assumes the fit's residuals are independent, and neither
+fit path gives it that -- both difference the target's readings, so the
+residuals correlate at lag 1 near -0.5 either way. What decides whether that
+matters is the declared `response_model`: fitted through `step`, the regressor
+is differenced along with the target and the correlation cancels out of the
+estimator; fitted through `exponential`, the regressor is a level and the
+standard error comes out several times too wide. Measured over 200 trials at
+each of two noise levels: 1.03x the true scatter on `step`, 5.17x on
+`exponential`. The engine reports both facts and corrects neither number --
+the error is in the conservative direction, and choosing between two
+estimators on an author's behalf is the same class of decision as adopting a
+fitted gain.
 
 Nothing infers it. A spread is not read off a correlation, and it is not
 `confidence:` under another name: that field weights whether the coupling
@@ -845,7 +870,35 @@ able to say what the model asserts.
 **Several transitions may ride on one rule**, as a list, when one relationship
 drives more than one property. Contributions from concurrent edges to the same
 property ADD, and `linear_superposition` is stamped on any result that relied
-on it.
+on it. **That includes a property an ACTION also moved**: a value is its
+baseline, plus every movement of its own, plus whatever the couplings
+delivered. An action does not displace a coupling into the same property and
+a coupling does not overwrite an action; they superpose, which is what the one
+rule means. Where the action's own effect reads the standing value -- `set`
+moves the property BY `X - standing`, `scale k` by `standing x (k-1)` -- the
+value it reads is the one the property has at the instant the action lands,
+couplings included.
+
+**Edges in SERIES are a different question, and the engine composes them by
+multiplying their step responses.** A value two hops out is charged the first
+edge's response fraction and then the second edge's, against a source that is
+already lagged, so it develops as the PRODUCT `f1(t) x f2(t - d1)`. For linear
+stages in series the exact answer is their convolution, and the two are not
+the same curve: two equal 600 s lags with no dead time give a series response
+of `1 - (1 + t/tau)exp(-t/tau)` against a product of `(1 - exp(-t/tau))^2`,
+and the product is early by up to 16.2 units per 100 at `t = 960 s`. The
+steady state is exact and the TRANSIENT is fast, so a breach two hops out is
+predicted sooner than the declared dynamics imply.
+
+`series_edges_compose_by_product` is stamped on any result that relied on it,
+which means a chain of edges that actually shape a transient: one hop does not
+carry the stamp, and neither does a chain of `step` edges, whose product IS
+their convolution. Composing the cascade exactly is tractable only for the
+linear time-invariant models, and the partial-fraction form for distinct time
+constants cancels catastrophically as two of them approach each other -- so a
+robust version of it needs a near-equality tolerance, which is a number nobody
+declared and therefore not this engine's to pick. The approximation stands,
+and it is named.
 
 ## Acting on the model: `action_templates`
 

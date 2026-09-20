@@ -442,6 +442,25 @@ class TwinEdge:
             return min(math.log(1 + t / tau) / math.log(2), 1.0)
         return 1.0
 
+    @property
+    def shapes_the_transient(self) -> bool:
+        """Does this edge's declaration bend the response, or only delay it?
+
+        A `step` edge reaches its full impact the instant its dead
+        time elapses, so two of them in series compose EXACTLY: the product
+        of a step delayed by d1 and a step delayed by d2 is a step delayed by
+        d1 + d2, which is also what the convolution gives. Any other declared
+        model spreads the impact over its time constant, and the product of
+        two such curves is NOT their convolution -- which is the assumption
+        the walk makes and now stamps.
+
+        Read off the DECLARATION rather than off a fraction at one instant,
+        so the answer is a fact about the model and not about the moment the
+        caller asked.
+        """
+        return (self.response_model != ResponseModel.STEP
+                and self.time_constant_s > 0.0)
+
     def effective_impact(self, elapsed_s: float) -> float:
         """Combined impact = coupling_strength x response_fraction(t)."""
         return self.coupling_strength * self.response_fraction(elapsed_s)

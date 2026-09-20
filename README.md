@@ -353,8 +353,9 @@ serve a different caller: an agent invoking tools, not a library user composing 
 a peer of `Entity`, and flattening them into one namespace would say it was. The module is the promise;
 its membership is documented here and does not change inside a minor version.
 
-Those verbs, and the three session-setup calls beside them, are exposed over MCP by
-`arbiter_engine.mcp.server` — fourteen tools, a thin transport over exactly these functions, needing
+Those verbs, and the four session-setup calls beside them — `load_model`, `add_entity`,
+`add_relationship`, `add_observations` — are exposed over MCP by
+`arbiter_engine.mcp.server` — fifteen tools, a thin transport over exactly these functions, needing
 the optional `mcp` extra. That module is a deep path: importable, and not one of the supported names
 above. The sentence here read *the same five … not part of the eleven* through 0.1.16, naming a verb
 count that was never five and a name count two releases stale.

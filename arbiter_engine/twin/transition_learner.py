@@ -91,6 +91,29 @@ class LearnedTransition:
     #: True when the block said `gain_sigma: estimate`, so a reader can tell a
     #: spread the author ASKED for from one this engine measured anyway.
     sigma_requested: bool = False
+    #:. Lag-1 autocorrelation of the fit's own residuals: whether the
+    #: independence `gain_standard_error` assumes actually held. Near -0.5 on
+    #: BOTH fit paths, because both difference the target's readings.
+    residual_autocorrelation: float = 0.0
+    #:. Whether `gain_standard_error` can be read the way its own
+    #: docstring says: as how well these readings pin the slope down.
+    #:
+    #: True on a `step` fit, where the regressor is differenced along with
+    #: the target and the residual correlation cancels out of the estimator.
+    #: FALSE on an `exponential` one, where the fit is `dy/alpha + y_{t-1} =
+    #: G x_t + c`: the regressor is a LEVEL, the noise amplified by `1/alpha`
+    #: telescopes against a regressor that barely moves between samples, and
+    #: the estimator ends up far more precise than its own residual scatter
+    #: suggests. Measured over 200 trials at each of two noise levels, the
+    #: ordinary standard error against the empirical scatter of the fitted
+    #: gain: 1.03x when this is True, 5.17x when it is False.
+    #:
+    #: A FLAG AND NOT A CORRECTION. The exact correction is not estimable on
+    #: this data -- see `_fit` -- and the direction of the error is the safe
+    #: one: interval coverage measured 60/60 either way, so `disagreement`
+    #: under-triggers rather than over-triggers. What is wrong is the claim,
+    #: which is why this says so rather than quietly narrowing anything.
+    standard_error_assumes_independence: bool = True
 
     @property
     def contradicts_declaration(self) -> bool:
@@ -159,20 +182,36 @@ def _alpha_per_pair(times: List[Any], tau: float) -> Optional[np.ndarray]:
 
 
 def _fit(x: np.ndarray, y: np.ndarray
-         ) -> Tuple[float, float, float, float, float]:
-    """Least squares `y = gain*x + intercept`, with a 95% band on the slope.
+         ) -> Tuple[float, float, float, float, float, float]:
+    """Least squares `y = gain*x + intercept`, with a 95% band on the slope
+    and the lag-1 autocorrelation of its own residuals.
 
     The band is the normal approximation, matching
     `MonteCarloOutcomeDistribution.confidence_interval_95` rather than
     introducing a t-distribution and a second convention. `scipy` is not a
     dependency of this package and a slope interval does not justify becoming
     one.
+
+    AND THE STANDARD ERROR'S OWN ASSUMPTION, MEASURED. That band
+    assumes the residuals are uncorrelated, and on an `exponential` edge this
+    engine is what breaks the assumption: fitting through a declared lag means
+    rearranging to `dy/alpha + y_{t-1}`, which differences the target's
+    measurement noise into an MA(1) with a strong negative correlation at
+    lag 1. Measured on a declared 0.02 through a 600 s lag sampled every 60 s,
+    60 trials at each of two noise levels: the reported standard error was
+    4.08x the empirical scatter of the fitted gain, at BOTH levels.
+
+    Reported rather than corrected. Correcting means choosing an estimator on
+    the author's behalf, and nothing else on this surface adopts, widens or
+    replaces a number somebody declared. A reader who sees a strongly negative
+    value here knows the standard error beside it is an over-estimate, and
+    roughly by how much, with the engine having decided nothing.
     """
     n = len(x)
     x_mean, y_mean = float(np.mean(x)), float(np.mean(y))
     sxx = float(np.sum((x - x_mean) ** 2))
     if sxx <= 0.0:
-        return 0.0, y_mean, 0.0, 0.0, 0.0
+        return 0.0, y_mean, 0.0, 0.0, 0.0, 0.0
     gain = float(np.sum((x - x_mean) * (y - y_mean)) / sxx)
     intercept = y_mean - gain * x_mean
     residuals = y - (gain * x + intercept)
@@ -184,7 +223,39 @@ def _fit(x: np.ndarray, y: np.ndarray
     else:
         standard_error = 0.0
     margin = 1.96 * standard_error
-    return gain, intercept, r_squared, gain - margin, gain + margin
+    # THE ASSUMPTION THAT STANDARD ERROR RESTS ON, MEASURED.
+    #
+    # It divides the residual scatter by the regressor's scatter, which is
+    # right when the residuals are independent. Neither fit path gives it
+    # that: both difference the target's readings, so the residuals are an
+    # MA(1) whose lag-1 correlation measures near -0.5 EITHER WAY.
+    #
+    # The correlation alone therefore does not say whether the number is
+    # wrong, and it was reported alone in the first version of this change.
+    # What decides it is whether the REGRESSOR was differenced along with
+    # the target -- which `learn_transitions` knows from the declared
+    # `response_model` and passes in. Measured over 200 trials at each of
+    # two noise levels, the ordinary standard error against the empirical
+    # scatter of the fitted gain: 1.03x where both were differenced, 5.17x
+    # where only the target was.
+    #
+    # NOT CORRECTED HERE, and the reason is a measurement rather than a
+    # preference. The exact MA(1) sandwich is the textbook correction and it
+    # is not estimable on this data: the long-run variance of an MA(1) with
+    # a coefficient near -1 is nearly zero, so the sample estimate came out
+    # NON-POSITIVE in 81 of 200 trials on the very path it exists for, and
+    # 1.37x when it did not. A number that silently falls back to the one it
+    # was meant to replace, two times in five, is the default-nobody-can-see
+    # shape this engine refuses everywhere else.
+    autocorrelation = 0.0
+    if n > 2 and sse > 0.0:
+        centred = residuals - float(np.mean(residuals))
+        scatter = float(np.sum(centred ** 2))
+        if scatter > 0.0:
+            autocorrelation = float(
+                np.sum(centred[1:] * centred[:-1]) / scatter)
+    return (gain, intercept, r_squared, gain - margin, gain + margin,
+            autocorrelation)
 
 
 def learn_transitions(session: Any, topology: Any,
@@ -326,7 +397,8 @@ def learn_transitions(session: Any, topology: Any,
                     f"{model}`"))
                 continue
 
-            gain, intercept, r_squared, low, high = _fit(x_fit, y_fit)
+            (gain, intercept, r_squared, low, high,
+             autocorrelation) = _fit(x_fit, y_fit)
             # The 95% band is `gain +/- 1.96 * se`, so the half-width divided
             # by 1.96 recovers the standard error without `_fit` growing a
             # sixth return value that three callers would have to thread.
@@ -341,6 +413,8 @@ def learn_transitions(session: Any, topology: Any,
                                else transition.gain),
                 response_model=model,
                 gain_standard_error=standard_error,
+                residual_autocorrelation=autocorrelation,
+                standard_error_assumes_independence=(model == "step"),
                 sigma_requested=bool(getattr(transition, "sigma_estimated",
                                              False)),
             ))

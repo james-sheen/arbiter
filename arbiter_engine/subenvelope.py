@@ -207,6 +207,19 @@ VOCABULARIES: Dict[str, frozenset] = {
         # Scalings are NOT refused -- multiplication is commutative, so they
         # compose without an ordering.
         "contradictory_actions",
+        # a declared coupling with NO INSTANCE to run on. A
+        # `transition:` block lives on a relationship RULE, and the rule has
+        # nothing to move until an edge of that type joins two entities of
+        # the right types. A session that holds a Pump and a Tank and no
+        # `feeds` edge between them ran every simulation verb happily: the
+        # rollout reported `transitions_applied: 0`, the tank sat at its
+        # baseline while the pump was throttled by 500 rpm, `plan` ranked
+        # five candidates that all did the same nothing, and NOTHING in any
+        # of those envelopes said the declared coupling had nowhere to run.
+        # For an engine whose product is *did you look*, that is a reportable
+        # absence -- and it is the state every client of a transport with no
+        # way to build an edge is permanently in.
+        "coupling_uninstantiated",
     }) | {reason.value for reason in NotEvaluatedReason}
       # AND THE PROJECTION VOCABULARY, folded in rather than
       # re-listed. `seed_mode="projected"` runs the declared projector, so a

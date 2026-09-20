@@ -32,6 +32,7 @@ no shadow storage.
 """
 
 import logging
+from contextlib import contextmanager
 from collections import Counter, defaultdict, deque
 from datetime import datetime, timedelta
 from .clock import as_naive_utc, now_utc
@@ -252,3 +253,31 @@ def reset_shared_tracker() -> None:
     """Drop the shared tracker. For tests that need isolation between cases."""
     global _SHARED_TRACKER
     _SHARED_TRACKER = None
+
+
+@contextmanager
+def counting_aside():
+    """fires recorded inside this block go to a throwaway counter.
+
+    The tracker is process-wide because a fire rate is a property of a
+    PROCESS. A simulator evaluating the same eight axioms over a state
+    nobody has is not that process observing anything, and its fires used to
+    land in the same buckets: measured on the shipped example, one live
+    `check` recorded 2 and one `plan` recorded 600, enough to trip this
+    module's own high-rate WARN on a world that does not exist.
+
+    A context rather than a flag in the dispatcher. The dispatcher is shared
+    by every domain and every verb and has no business knowing which of its
+    callers is imagining; the caller that IS imagining already owns that
+    line, and draws it in the same place it clones the history and prefixes
+    the findings. Restored on the way out including on the way out through an
+    exception, or one simulation would silence every later live check in the
+    process -- the same defect pointing the other way.
+    """
+    global _SHARED_TRACKER
+    standing = _SHARED_TRACKER
+    _SHARED_TRACKER = FireFrequencyTracker()
+    try:
+        yield _SHARED_TRACKER
+    finally:
+        _SHARED_TRACKER = standing

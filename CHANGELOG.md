@@ -20,20 +20,243 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
-Six defects an outside reading of 0.2.4 found, each REPRODUCED before it was
-fixed. The note was explicit that it had run nothing and derived its
-conclusions from the source and the response formula; every one of them was
-then constructed and measured against the tree, and the measurements are the
-numbers quoted below. One further claim in the same note is refuted here.
+## [0.2.5] — 2026-09-20
 
-A SECOND reading, of the commit that fixed those, then found four more. It
-ran nothing either. Two of the four are real and are fixed below; two are
-refuted, for the same reason the first note's spare claim was -- each is true
-of the concept it names and false of the code that implements it. The first
-note said an exponential never reaches 1.0, which is true of the reals and
-false of float64. This one says a `trend` seed is a ramp, which is true of the
-word and false of `TrendCurve`, and that `TrendProjection` is the projection
-path that guessed, which names a different class from the one that did.
+**What a 0.2.4 user is getting.** 0.2.4 shipped the simulation surface --
+`rollout`, `plan`, the transition learner, the prediction ledger -- and that
+surface was wrong in ways a reader of its envelope could not see. A lagged
+edge froze at whatever fraction one step reached. A property moved twice was
+walked as though the whole displacement arrived at the second instant. A
+coupling into a property an action also moved was dropped while the envelope
+reported it applied. A plan was scored for a trajectory it had not run, an
+objective was summed in binary floating point so equal costs stopped comparing
+equal, and a calibration counted twelve samples of one trajectory as twelve
+independent pieces of evidence. All of that is fixed below, each entry
+carrying the measurement that found it.
+
+**Nothing here breaks a reader.** `meta.schema_version` does not move. Every
+change is additive -- a key, a decline member, an assumption stamp, an MCP
+tool -- or a wrong number becoming right, which is what this package's
+compatibility document names as patch-legal. The one thing to know before
+upgrading is in **Compatibility** at the end of this section: several checks
+now FIRE or DECLINE where 0.2.4 was silent, and silence was the defect in
+every case.
+
+**How this section was produced, once rather than per entry.** Four outside
+readings of this surface arrived between 0.2.4 and here, and every claim in
+each was REPRODUCED against the tree before anything was changed. Three of the
+four ran nothing and derived their conclusions from the source; the fourth ran
+everything it claimed, and all seven of its findings held. Across the four,
+six claims were refuted rather than fixed, each for the same reason: true of
+the concept named and false of the code implementing it -- an exponential that
+never reaches 1.0 (true of the reals, false of float64), a `trend` seed said
+to be a ramp (true of the word, false of `TrendCurve`). The refutations are
+kept below under their own headings, because a claim this project examined and
+rejected is part of the record of what was checked. The numbers quoted
+throughout are measured, not derived.
+
+### Fixed — an action on a property a coupling also drives
+
+The eighth reading of this surface, and the first that ran everything it
+claimed, reported seven defects. All seven reproduced, exactly, including
+every number in them. It also delivered a patch for the two it rated highest,
+with tests that pass under it and a clean run of the whole suite.
+
+**That patch is not what shipped, and the reason is the point of this entry.**
+It restores the right invariant and it introduces a new silent wrong number in
+doing so. Under it, a `set` to 20 on a tank a pump is still filling reports
+22.3865 at the instant of the action, where the clean tree reports 20 and then
+freezes. The error is exactly `REACH * (f(t) - f(t - step_s))` -- one step's
+worth of the coupling's delivery, counted twice -- and it tracks the step size
+precisely: 2.3865 at `step_s=300`, 0.3869 at 60, 0.1247 at 20. It shrinks as
+the step shrinks, which is the signature of a discretisation artefact in a
+module whose whole design is that it has none.
+
+It survived the patch's own six tests and all 1950 shipped ones because `add`
+is immune -- its delta does not read the standing value -- and because NO
+shipped test had an `action_templates:` entry whose `applies_to` entity is a
+transition's target. That gap is what hid the original defect too.
+
+- **A transition into a property an action also moved still arrives.** Every
+  coupling contribution into a property that had a movement of its own was
+  DISCARDED, while the envelope went on reporting the transition as applied
+  and declining nothing. The drift reconciliation then treated what had
+  already arrived as an unexplained displacement of the property's own and
+  folded it into the latest movement, which was walked outward again -- so
+  the value was lost at the target and double-counted downstream. Measured on
+  a pump feeding a tank through `gain: 0.02`: `set 1500` on the pump with
+  `add +5` on the tank settled at 55.0 where the declared arithmetic gives
+  65.0; under a 120/600 exponential edge with the `add` at t=600 s the tank
+  FROZE at 60.0341 for the remaining fifty minutes against a declared 64.9697,
+  lost its declared `gain_sigma:` from that instant on, and handed the 5.03 it
+  had already received to a downstream sump a second time (30.0039 against
+  24.9697). Reachable from `plan` the moment a template writes a property some
+  coupling also drives -- a top-up, a vent, a bleed valve, a manual reset. The
+  invariant now restored every step is
+  `state = baseline + sum(movements) + received`.
+
+- **`set` and `scale` on such a property read the value it actually has.**
+  Their deltas depend on where the property was, and that was read from the
+  state written at the END of the previous step while the state written
+  afterwards used what the couplings had delivered by THIS one. The two
+  clocks are now one: the delta is resolved against the standing value at the
+  action's own instant, which costs one extra walk per action and none per
+  step.
+
+- **And the doubt travels with the value.** A `set` pins a property, so the
+  doubt the couplings had put into it is gone and only LATER arrivals are
+  still in doubt; a `scale k` multiplies what is standing, so it multiplies
+  that doubt. This is the treatment a seeded forecast's band has had since
+  0.2.4 and a contribution that arrived through a declared `gain_sigma:` is
+  the same kind of quantity. Measured before: a tank `set` to 20 went on
+  reporting the coupling's full 0.6321 spread, and a tank scaled by 2
+  reported 0.9502 where 1.5823 was carried.
+
+- **A walk reports a spread it was handed even when it moved no value.** The
+  emission loop iterated the value deltas, so a start node carrying doubt and
+  gaining nothing from that walk fell out of the report. A spread is a claim
+  about a value, not a by-product of changing one.
+
+- **A forecast-seeded source pinned by a `set` at `at_s=0` hands on no band.**
+  The per-instant sensitivity was ASSIGNED rather than accumulated, and an
+  action at `at_s=0` lands on the seed's own instant, so `+1` became `-1`
+  instead of `0`. Measured on a `random_walk` pump feeding a tank through
+  `gain: 0.02` with no declared `gain_sigma:`, the pump SET to 2000 rpm: the
+  tank reported 0.861 at `at_s=0` and nothing at `at_s=1` or `at_s=60`. This
+  fix is the outside patch's, adopted as delivered.
+
+- **A decomposition that disagrees with the state says so.** The fold that
+  absorbed the difference remains, because propagating a state the source does
+  not show is worse; it is no longer silent. Measured across 40 rollout
+  configurations covering every effect kind, both seed modes and two step
+  sizes: it fires in none of them.
+
+### Fixed — the imagined world stays out of the live counter
+
+- **A rollout no longer counts its findings in the process-wide fire-rate
+  telemetry.** The reasoner records every finding it dispatches, and a rollout
+  reaches the same dispatcher over a state nobody has. Measured on the shipped
+  example at a tank level of 92 %: one live `check` recorded 2 fires and one
+  `plan` recorded 600 in the same buckets -- `BOUNDEDNESS: 301`,
+  `HOMEOSTASIS: 301` -- enough to trip this package's own high-rate WARN on a
+  world that does not exist. Nothing in the tree reads the counts back, so no
+  verdict moved; the rule the rollout opens with, that the clone is never the
+  live history, is the same rule, and this was the one channel it was not
+  being kept on. Closed with a context the rollout owns rather than a flag in
+  the dispatcher, which is shared by every domain and every verb.
+
+### Fixed — a forecast is graded at its horizon
+
+- **A value prediction is no longer confirmed by a reading taken anywhere in
+  its window.** Grading took the observation closest to the horizon with no
+  bound on how far away the closest one was, so one reading graded every
+  horizon the window contained. Measured: twelve predictions filed for
+  t = 300 … 3600 s, then ONE tank reading 60 s after the rollout and silence
+  for the rest of the hour, returned `confirmed 12, falsified 0, ungradeable
+  0, confirm_rate 1.0, brier 0.0025` -- a perfect score off the quietest
+  possible mirror. A reading now grades the record whose horizon it is
+  NEAREST to, out of the horizons that episode filed -- a rollout files one
+  per step, so the records themselves supply the spacing and nothing had to
+  be chosen. One reading grades at most one record; the rest are
+  `ungradeable`, which is the channel being silent at the instant they are
+  about, and silence has always been that.
+
+  `grace_s` was tried as the bound first and is recorded here because it
+  looks right: it is already the ledger's statement of how long past the
+  horizon it will wait, so reading it symmetrically seemed to introduce no
+  new number. A ledger may declare `grace_s=0`, and one in this tree's suite
+  does -- which means *I will not wait past the horizon*, not *a reading must
+  land on it to the second*. Under the symmetric reading, five seconds of
+  ordinary sampling jitter became `ungradeable`, and ten shipped tests in the
+  derived net said so before any of this was believed.
+
+### Added — the world model can be exercised over MCP
+
+- **`add_relationship` is an MCP tool.** It is the only path by which a
+  session acquires an edge, and a `transition:` block lives on a relationship
+  RULE -- so without it every MCP session ran the simulation verbs over a
+  topology with no edges. Measured through `dispatch` on the shipped example:
+  a rollout throttling the pump by 500 rpm reported `transitions_applied: 0`,
+  a tank flat at its baseline, and `not_checked: []`; `plan` ranked five
+  candidates that all did the same nothing and chose by tie-break. That is the
+  0.2.3 shape this file already describes, reached through a missing tool
+  rather than a frozen transient.
+- **`rollout` accepts `file_predictions`,** so the closed loop -- file,
+  mirror, grade -- can be started over this transport at all.
+- **A dispatch-only end-to-end test** now drives load, entities, edge,
+  rollout-with-filing and describe using only what the transport offers. The
+  existing guard checks that every declared tool has a handler, which it
+  always did: the verbs were never declared, and only a test that has a job to
+  finish can see an absence.
+
+### Added — a declared coupling with nowhere to run is reported
+
+- **`coupling_uninstantiated`** joins the simulation decline vocabulary, and
+  `couplings_declared` / `couplings_instantiated` join `checked` on `rollout`
+  and `plan`. A rule whose type joins no pair of entities in this session had
+  nothing to move, and every verb answered as though it had. Reported per
+  RULE: which pairs SHOULD have been joined is the author's business, and the
+  engine does not guess at it.
+
+### Added — how edges in series compose
+
+- **`series_edges_compose_by_product`** is stamped whenever a contribution
+  crosses more than one transient-shaping edge. The walk charges each edge's
+  response fraction against a source that is itself already lagged, so a value
+  two hops out is the PRODUCT of the two step responses; for linear stages in
+  series the answer is their CONVOLUTION. Measured on two 600 s lags with unit
+  gains and a 100-unit step at the head: the second hop reads 39.96 at t=600 s
+  against a series response of 26.42, and 63.70 at t=960 s against 47.51 --
+  early by 16.19 at the worst. Steady state is exact; `plan` ranks on
+  transients.
+
+  **Stamped rather than composed, and the reason is not cost.** Composing the
+  cascade exactly is tractable only for the LTI models, and the
+  partial-fraction form for distinct time constants cancels catastrophically
+  as two of them approach each other -- so a robust implementation needs a
+  near-equality tolerance, which is a number nobody declared and therefore not
+  this engine's to choose. The stamp fires only on a chain of edges that
+  actually shape a transient: one hop does not carry it, and neither does a
+  chain of `step` edges, which compose exactly.
+
+### Added — what a proposed `gain_sigma:` is worth
+
+- **`residual_autocorrelation`** and
+  **`gain_sigma_assumes_independent_residuals`** are reported beside a
+  proposal. That standard error assumes independent residuals and neither fit
+  path gives it that: both difference the target's readings, so the residuals
+  are an MA(1) whose lag-1 correlation measures near -0.5 EITHER WAY. The
+  correlation alone therefore says nothing about whether the number is wrong.
+  What decides it is whether the REGRESSOR was differenced along with the
+  target -- which the declared `response_model` settles. Measured over 200
+  trials at each of two noise levels, the ordinary standard error against the
+  empirical scatter of the fitted gain: **1.03x** on a `step` edge and
+  **5.17x** on an `exponential` one, with the same autocorrelation on each.
+
+  **A flag, not a correction.** The exact MA(1) sandwich is the textbook fix
+  and it is not estimable here: the long-run variance of an MA(1) whose
+  coefficient sits near -1 is nearly zero, so the sample estimate came out
+  NON-POSITIVE in 81 of 200 trials -- on the very path it exists for -- and
+  1.37x when it did not. Interval coverage measured 60/60 either way, so
+  `disagreement` under-triggers rather than over-triggers; what is wrong is
+  the claim beside the number, not any verdict, and this says so rather than
+  quietly narrowing anything.
+
+### Fixed — a spread nobody declared is not a declared zero
+
+- **`transitions.declared[].gain_sigma` reports `None` where none was
+  declared**, and carries `gain_sigma_requested` beside it. All three of a
+  measured spread, `gain_sigma: estimate` and an absent key reported `0.0`,
+  which is the claim that the gain is exact -- and this format's own rule is
+  that a value nobody measured the spread of and a value known to be exact are
+  different claims, the second much the stronger. `estimate` was the worse
+  case: an author writes it to say they do NOT know the number. The runtime
+  always honoured the distinction and only the report did not.
+
+---
+
+The first two readings of 0.2.4 found six defects and then four more, each
+reproduced before it was fixed.
 
 ### Fixed
 

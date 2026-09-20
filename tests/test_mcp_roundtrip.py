@@ -75,6 +75,12 @@ ARGUMENTS = {
     "plan": {"horizon_s": 120.0, "step_s": 60.0},
     "load_model": {"model": _MINIMAL_MODEL},
     "add_entity": {"entity_id": "x", "entity_type": "Unit"},
+    # The session's own entity joined to itself by a relation type
+    # the loaded model does not declare: the graph takes the edge either way,
+    # which is what this walk is about, and no declared rule is instantiated
+    # by it, so the envelope shapes below stay what they were.
+    "add_relationship": {"source_id": ENTITY_ID, "relation_type": "feeds",
+                         "target_id": ENTITY_ID},
     "add_observations": {"entity_id": ENTITY_ID,
                          "property_name": "level_pct",
                          "values": [1.0, 2.0]},
@@ -97,7 +103,15 @@ class TestTheRoutingTable:
         reads = {"model_describe", "check", "traverse", "gaps", "attest",
                  "project", "discover", "entail", "infer", "rollout",
                  "plan"}
-        feeders = {"load_model", "add_entity", "add_observations"}
+        # AND THE EDGE. `add_relationship` is the third input kind:
+        # a `transition:` block lives on a relationship RULE and has nothing
+        # to move until an edge of its type exists, so a surface without this
+        # one can be read and filled and still cannot run the world model.
+        # Measured before it was added: a rollout throttling the pump by 500
+        # rpm reported `transitions_applied: 0` and a flat tank, and declined
+        # nothing.
+        feeders = {"load_model", "add_entity", "add_relationship",
+                   "add_observations"}
         assert reads | feeders == set(TOOL_NAMES)
 
     @pytest.mark.parametrize("name", TOOL_NAMES)

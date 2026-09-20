@@ -345,6 +345,13 @@ class TopologyTraverser:
                 bucket = imagined_spread.setdefault(eid, {}).setdefault(prop, {})
                 bucket.setdefault(("seed", eid, prop), math.sqrt(variance))
         imagined_via: Dict[str, Dict[str, str]] = {}
+        #:. (entity, property) pairs whose value arrived through an
+        #: edge that SHAPES the transient rather than merely delaying it. A
+        #: transition reading one of these is the second lag of a chain, and
+        #: the walk composes chains by MULTIPLYING the two step responses --
+        #: which is not their convolution, and is the one assumption this
+        #: walk makes without saying so.
+        shaped: Set[Tuple[str, str]] = set()
         edges_without_dynamics: Set[str] = set()
         #:. (node, sink) pairs whose axioms are evaluated after
         #: the walk, once every contribution has landed. Simulating
@@ -609,7 +616,8 @@ class TopologyTraverser:
                 imagined=imagined, imagined_via=imagined_via,
                 imagined_spread=imagined_spread,
                 budget_left=budget_left,
-                edges_without_dynamics=edges_without_dynamics)
+                edges_without_dynamics=edges_without_dynamics,
+                shaped=shaped)
         # Every contribution has landed, so the values these axioms
         # read are the ones the envelope reports. Drained in visit order so
         # `problems_detected` keeps the sequence a caller already relied on.
@@ -1042,7 +1050,8 @@ class TopologyTraverser:
     def _apply_in_dependency_order(
         self, pending, *, request, result,
         imagined, imagined_via, imagined_spread,
-        budget_left: int, edges_without_dynamics) -> int:
+        budget_left: int, edges_without_dynamics,
+        shaped: Optional[Set[Tuple[str, str]]] = None) -> int:
         """Apply every recorded transition with its source already resolved.
 
         THE WALK ORDER AND THE DEPENDENCY ORDER ARE NOT THE SAME
@@ -1115,7 +1124,8 @@ class TopologyTraverser:
                     imagined=imagined, imagined_via=imagined_via,
                     imagined_spread=imagined_spread,
                     budget_left=budget_left,
-                    edges_without_dynamics=edges_without_dynamics)
+                    edges_without_dynamics=edges_without_dynamics,
+                    shaped=shaped)
                 indegree[target_id] -= 1
                 if indegree[target_id] <= 0:
                     queue.append(target_id)
@@ -1175,6 +1185,7 @@ class TopologyTraverser:
         imagined_spread: Dict[str, Dict[str, Dict[Any, float]]],
         budget_left: int,
         edges_without_dynamics: Set[str],
+        shaped: Optional[Set[Tuple[str, str]]] = None,
     ) -> int:
         """Push one edge's declared transitions onto the target's deltas.
 
@@ -1404,6 +1415,36 @@ class TopologyTraverser:
                 for source_key, contribution in source_spread.items():
                     bucket[source_key] = bucket.get(source_key, 0.0) + (
                         carried * contribution)
+            # IS THIS THE SECOND LAG OF A CHAIN? The walk reads a
+            # source that is itself already lagged and charges this edge's own
+            # fraction against it, so a value two hops out is the PRODUCT
+            # `f1(t) * f2(t - d1)` of the two step responses. For linear
+            # stages in series the answer is their CONVOLUTION, and the two
+            # are different curves: with two equal 600 s lags and no dead
+            # time, the series response is `1 - (1 + t/tau)exp(-t/tau)`
+            # against the product `(1 - exp(-t/tau))^2`, and the product is
+            # early by up to 16.19 units per 100 at t = 960 s. Steady state
+            # is exact; the transient is not, and `plan` ranks on transients.
+            #
+            # Composing them exactly is tractable only for the LTI models,
+            # and the partial-fraction form for distinct time constants
+            # cancels catastrophically as two of them approach each other --
+            # so a robust version needs a near-equality tolerance, which is a
+            # number nobody declared and therefore not this engine's to
+            # choose. The assumption stands and is stamped, which is the rule
+            # every other assumption on this walk already follows.
+            if shaped is not None:
+                if edge.shapes_the_transient:
+                    if (source_id, transition.from_property) in shaped:
+                        if ("series_edges_compose_by_product"
+                                not in result.assumptions):
+                            result.assumptions.append(
+                                "series_edges_compose_by_product")
+                    shaped.add((target_id, transition.to_property))
+                elif (source_id, transition.from_property) in shaped:
+                    # A pure step passes the chain along without lengthening
+                    # it: whatever reached the source is what leaves here.
+                    shaped.add((target_id, transition.to_property))
             imagined_via.setdefault(target_id, {})[
                 transition.to_property] = transition.source
             result.transitions_applied.append(TransitionApplied(
@@ -1457,6 +1498,32 @@ class TopologyTraverser:
                 if variance > 0.0:
                     result.imagined_sigma.setdefault(entity_id, {})[
                         prop_name] = math.sqrt(variance)
+
+        # A PROPERTY THE CALLER HANDED A SPREAD FOR REPORTS IT,
+        # even when no transition moved it in THIS walk. The loop above
+        # iterates the VALUE deltas, so a start node that carries doubt but
+        # gains no value from this walk fell out of the report entirely: the
+        # rollout hands a `set` action's own movement the doubt it took off
+        # the property it pinned, and that doubt reached the property's
+        # targets -- correctly, through the gains -- while the property
+        # itself went on reporting the doubt as though nothing had pinned it.
+        # A spread is not a by-product of a value change; it is a claim about
+        # a value, and the walk was told this one.
+        for entity_id, props in imagined_spread.items():
+            node = self.topology.get_node(entity_id)
+            if node is None:
+                continue
+            for prop_name, contributions in props.items():
+                if not contributions:
+                    continue
+                if prop_name in result.imagined_spread.get(entity_id, {}):
+                    continue
+                base = node.entity.properties.get(prop_name)
+                if not isinstance(base, (int, float)) or isinstance(
+                        base, bool):
+                    continue
+                result.imagined_spread.setdefault(entity_id, {})[
+                    prop_name] = dict(contributions)
 
         if result.transitions_unapplied:
             result.simulation_declines.append(SimulationDecline(

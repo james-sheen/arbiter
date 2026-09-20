@@ -585,10 +585,13 @@ class PredictionLedger:
     ) -> Optional[PredictionResidualProblem]:
         """value-kind grading — against the OBSERVATION stream,
         at maturity only (a value predicted AT horizon is not confirmable
-        early), using the observation closest to the horizon. No
-        observations in-window = the channel was silent = UNGRADEABLE
-        (not-looking is not evidence). Without histories the record stays
-        pending — the mirror is required to grade."""
+        early), using the observation closest to the horizon AND nearer to
+        this horizon than to any other this episode filed. No observations
+        in-window = the channel was silent = UNGRADEABLE (not-looking is not
+        evidence), and so is a window whose readings all belong to a sibling
+        horizon — silence AT the instant this record is about. Without
+        histories the record stays pending — the mirror is required to
+        grade."""
         window_end = record.predicted_at + timedelta(
             seconds=record.horizon_s + self.grace_s)
         if now < window_end or histories is None:
@@ -596,13 +599,51 @@ class PredictionLedger:
         observations = self._observations_for(
             list(histories), record.entity_id, record.indicator or "",
             record.predicted_at, window_end)
-        if not observations:
+        target = record.predicted_at + timedelta(seconds=record.horizon_s)
+        # AND EACH READING GRADES ONE HORIZON, not every horizon
+        # whose window contains it. This took the observation closest to the
+        # horizon with no bound on how far away the closest one was, so a
+        # single reading graded every record filed over it: measured, twelve
+        # forecasts spanning an hour all came back `confirmed` from one tank
+        # reading taken 60 s after the rollout, for a `confirm_rate` of 1.0
+        # and a `brier` of 0.0025 off the quietest possible mirror.
+        #
+        # THE BOUND IS THE OTHER HORIZONS THIS EPISODE FILED, and it is not a
+        # number anyone had to choose: a reading grades the record whose
+        # horizon it is NEAREST to, and the records themselves say where
+        # those are. A rollout files one per step, so the horizons come
+        # spaced by the caller's own `step_s` and the rule reads as *the
+        # reading nearest this instant*, which is what grading at an instant
+        # means.
+        #
+        # `grace_s` was tried here first and is wrong, which is worth
+        # recording because it looks right: it is already this ledger's
+        # statement of how long past the horizon the window stays open, so
+        # reading it symmetrically seemed to introduce nothing. But a ledger
+        # may declare `grace_s=0` -- one in this tree's own suite does -- and
+        # that means *I will not wait past the horizon*, not *a reading must
+        # land on it to the second*. Under the symmetric reading it made
+        # every real mirror ungradeable.
+        siblings = [
+            other for other in self._records
+            if other.kind == record.kind
+            and other.entity_id == record.entity_id
+            and other.indicator == record.indicator
+            and other.traversal_id == record.traversal_id]
+        horizons = sorted({
+            other.predicted_at + timedelta(seconds=other.horizon_s)
+            for other in siblings}) or [target]
+        mine = [
+            observation for observation in observations
+            if min(horizons,
+                   key=lambda h: abs(
+                       (observation[0] - h).total_seconds())) == target]
+        if not mine:
             record.verdict = GRADE_UNGRADEABLE
             record.graded_at = now
             return None
-        target = record.predicted_at + timedelta(seconds=record.horizon_s)
         observed_at, observed = min(
-            observations, key=lambda o: abs((o[0] - target).total_seconds()))
+            mine, key=lambda o: abs((o[0] - target).total_seconds()))
         delta = abs(observed - (record.value or 0.0))
         if record.tolerance is not None and delta <= record.tolerance:
             record.verdict = GRADE_CONFIRMED

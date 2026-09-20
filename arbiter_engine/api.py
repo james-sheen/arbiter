@@ -21,7 +21,8 @@ whole relationship, and it points one way only.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import (Any, Dict, Iterable, List, Optional, Sequence, Set,
+                    Tuple)
 
 from .clock import as_naive_utc, as_of, now_utc
 from arbiter_engine.axiom_thresholds import (
@@ -741,7 +742,27 @@ def _proposed_transitions(session: EngineSession) -> Dict[str, Any]:
              # proposal and an author who wrote nothing is owed the option
              # without being told they got it wrong.
              "gain_sigma": p.gain_standard_error,
-             "gain_sigma_requested": p.sigma_requested}
+             "gain_sigma_requested": p.sigma_requested,
+             # WHETHER THE ASSUMPTION BESIDE `gain_sigma` HELD,
+             # and what the number is worth if it did not. That standard
+             # error assumes independent residuals; both fit paths difference
+             # the target's readings, so the residuals are an MA(1) with a
+             # lag-1 correlation near -0.5 on BOTH. The correlation alone
+             # therefore says nothing about whether the number is wrong --
+             # measured over 200 trials, the ordinary standard error was
+             # 1.03x the empirical scatter on a `step` edge and 5.17x on an
+             # `exponential` one, with the same autocorrelation on each. The
+             # flag is what discriminates, and it is read off the declared
+             # response model rather than estimated: the exact MA(1)
+             # correction is not estimable here, coming out non-positive in
+             # 81 of 200 trials on the path it exists for. Coverage was 60/60
+             # either way, so `disagreement` under-triggers rather than
+             # over-triggers and what is wrong is the CLAIM, not a verdict.
+             # Reported, not corrected: choosing between two estimators on an
+             # author's behalf is the one thing this surface does not do.
+             "residual_autocorrelation": p.residual_autocorrelation,
+             "gain_sigma_assumes_independent_residuals":
+                 p.standard_error_assumes_independence}
             for p in proposals],
         "not_fitted": [
             {"edge": r.location, "reason": r.reason, "detail": r.detail}
@@ -896,7 +917,24 @@ def _transition_coverage(model, session: Optional[EngineSession] = None
                 "to": transition.to_property,
                 "gain": transition.gain,
                 "source": transition.source,
-                "gain_sigma": transition.gain_sigma,
+                # `None` WHERE NOBODY DECLARED ONE, rather than a
+                # zero. This reported `0.0` for all three of a measured
+                # spread, a requested one and an absent one, and only the
+                # first of those is a number: a value nobody measured the
+                # spread of and a value known to be exact are different
+                # claims, and the second is much the stronger. `estimate` was
+                # the worse case, because it came back as the opposite of
+                # what the author wrote it to say. The runtime always honoured
+                # the distinction -- an undeclared spread reaches no value and
+                # produces no interval -- and only the report did not.
+                "gain_sigma": (transition.gain_sigma
+                               if transition.gain_sigma else None),
+                # Said HERE and not only under `proposed_transitions`, which
+                # is a different block and is empty whenever the fit did not
+                # succeed: on a coupling with too little history, the request
+                # was otherwise invisible.
+                "gain_sigma_requested": bool(
+                    getattr(transition, "sigma_estimated", False)),
             }
             if session is not None:
                 record = _projection_record(
@@ -1543,6 +1581,70 @@ def traverse(session: EngineSession, start_nodes: Sequence[str],
     return _WithPayload(envelope, payload)
 
 
+def _uninstantiated_couplings(session: "EngineSession", topology: Any
+                              ) -> Tuple[List[Decline], int, int]:
+    """Declared couplings with no edge to run on, and the two counts.
+
+    A `transition:` block lives on a relationship RULE, so it has
+    nothing to move until an edge of that type joins two entities of the
+    declared types. A session that never called `add_relationship` runs every
+    simulation verb happily over a topology with no edges: measured on the
+    shipped example, `rollout` throttling the pump by 500 rpm reported
+    `transitions_applied: 0` and a tank sitting at its baseline, `plan`
+    ranked five candidates that all did the same nothing, and neither
+    envelope said why. That is the one place this engine's premise -- report
+    what you did not check -- was not carried through, and it is the state
+    every client of a transport that cannot build an edge is permanently in.
+
+    Reported per RULE rather than per entity pair. Which pairs SHOULD have
+    been joined is the author's business and the engine does not guess at it;
+    that a declared coupling has nowhere at all to run is a fact about this
+    session, and it is the fact a caller needs.
+    """
+    from arbiter_engine.twin.builder import TopologyBuilder
+    rules = list(getattr(session.model, "relationship_rules", None) or [])
+    instantiated: Set[Tuple[str, str, str]] = set()
+    for bucket in (getattr(topology, "edges", {}) or {}).values():
+        for edge in bucket:
+            source = topology.get_node(getattr(edge, "source_id", ""))
+            target = topology.get_node(getattr(edge, "target_id", ""))
+            if source is None or target is None:
+                continue
+            instantiated.add((getattr(source.entity, "type", ""),
+                              getattr(edge, "relation_type", ""),
+                              getattr(target.entity, "type", "")))
+    declines: List[Decline] = []
+    declared = instanced = 0
+    for rule in rules:
+        if not isinstance(rule, dict):
+            continue
+        transitions, _ = TopologyBuilder._transitions_from_rule(
+            rule, rule.get("source_type", "?"), rule.get("target_type", "?"))
+        if not transitions:
+            continue
+        declared += 1
+        label = (f"{rule.get('source_type', '?')}"
+                 f"-{rule.get('type', '?')}->"
+                 f"{rule.get('target_type', '?')}")
+        key = (rule.get("source_type", ""), rule.get("type", ""),
+               rule.get("target_type", ""))
+        if key in instantiated:
+            instanced += 1
+            continue
+        declines.append(Decline(
+            "coupling_uninstantiated", {"location": label},
+            detail=(
+                f"this model declares a transition on {label} and no "
+                f"{rule.get('type', '?')} edge joins a "
+                f"{rule.get('source_type', '?')} to a "
+                f"{rule.get('target_type', '?')} in this session, so the "
+                f"coupling had nothing to run on. Values downstream of it "
+                f"did not move because the engine was not told they are "
+                f"connected, not because the model says they hold still. "
+                f"Call add_relationship for the pairs this rule describes.")))
+    return declines, declared, instanced
+
+
 def rollout(session: EngineSession,
             actions: Optional[Sequence[Any]] = None,
             horizon_s: float = 3600.0,
@@ -1653,6 +1755,9 @@ def rollout(session: EngineSession,
         declines.append(Decline(
             refusal.reason, {"location": refusal.location},
             detail=refusal.detail or None))
+    uninstantiated, couplings_declared, couplings_instantiated = (
+        _uninstantiated_couplings(session, topology))
+    declines.extend(uninstantiated)
 
     sub = SubEnvelope(
         kind="simulation",
@@ -1664,6 +1769,11 @@ def rollout(session: EngineSession,
             "actions_scheduled": len(list(actions or ())),
             "actions_refused": len(result.refused_actions),
             "history_seeded": result.history_seeded,
+            # the DENOMINATOR beside the attempt count. A zero
+            # `transitions_applied` means either nothing was due to move yet
+            # or nothing could; these two say which.
+            "couplings_declared": couplings_declared,
+            "couplings_instantiated": couplings_instantiated,
         },
         findings=findings,
         not_checked=declines,
@@ -1800,6 +1910,13 @@ def plan(session: EngineSession,
             refusal.reason, {"location": refusal.location},
             detail=refusal.detail or None))
 
+    # a plan ranks rollouts, so a coupling with nowhere to run
+    # silences every candidate equally and the ranking falls to the
+    # tie-break. That reads exactly like a model in which no action helps.
+    uninstantiated, couplings_declared, couplings_instantiated = (
+        _uninstantiated_couplings(session, topology))
+    declines.extend(uninstantiated)
+
     best = result.candidates[0] if (result.ranked and result.candidates) else None
     sub = SubEnvelope(
         kind="simulation",
@@ -1808,6 +1925,8 @@ def plan(session: EngineSession,
             "rollouts_run": result.rollouts_run,
             "plans_untested": result.plans_untested,
             "ranked": int(bool(result.ranked)),
+            "couplings_declared": couplings_declared,
+            "couplings_instantiated": couplings_instantiated,
         },
         findings=[],
         not_checked=declines,
