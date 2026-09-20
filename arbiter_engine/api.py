@@ -903,7 +903,17 @@ def _transition_coverage(model, session: Optional[EngineSession] = None
                  f"{rule.get('target_type', '?')}")
         transitions, gaps = TopologyBuilder._transitions_from_rule(
             rule, rule.get('source_type', '?'), rule.get('target_type', '?'))
-        refused.extend(g.description for g in gaps)
+        # the entry says which RULE, not only which key. Blocks are
+        # indexed within their own rule, so two rules that each refuse their
+        # first block both reported `transition[0]` and nothing distinguished
+        # them. With a dozen edges, several forgetting the same key, the
+        # report named a defect and withheld its address.
+        #
+        # Prepended to the existing description rather than replacing it, and
+        # the element stays a string: readers of this list do substring tests
+        # on the key name, and changing the element to a mapping would break
+        # them for a field they already have.
+        refused.extend(f"{label}: {g.description}" for g in gaps)
         if not transitions:
             without.append({
                 "rule": label,
@@ -2009,8 +2019,29 @@ def gaps(session: EngineSession,
     #
     # Deduplicated on the same `(gap_type, location)` key, so a structural gap
     # that a traversal also found keeps the traversal's richer context path.
+    #
+    # read the COLLECTOR, not the attribute. `topology.gaps` is one
+    # of three populations: `get_unresolved_gaps()` returns it plus every
+    # node-level and edge-level gap, minus the resolved ones. The refusal
+    # `_build_transitions` files for a `transition:` block missing a required
+    # key lands on `edge.gaps`, so it was in the collector and not in the
+    # attribute, and this loop could not see it however it was called.
+    #
+    # Which is the defect the comment directly above describes, one level
+    # down. That fix read the topology-level list because that was the list
+    # nothing read; the sibling populations were already being collected by a
+    # method written for exactly this, and the callsite kept reaching past it.
+    # Measured on a Pump-feeds-Header model whose transition omits `source`:
+    # the collector returns `missing_declaration @ p1->h1`, `topology.gaps` is
+    # empty, and `gaps` answered `questions: []` beside `meta.source: live`.
+    #
+    # Net new questions on all six shipped examples, after this dedup: zero.
+    # The collector returns roughly twice as many raw objects and they
+    # collapse onto the keys the traversal already reports. Nothing in the
+    # shipped models declares a coupling it then refuses, which is the reason
+    # the path was never exercised.
     from arbiter_engine.twin.topology import TopologyQuestion
-    for gap in getattr(topology, "gaps", ()):
+    for gap in topology.get_unresolved_gaps():
         key = (getattr(getattr(gap, "gap_type", None), "value", None),
                getattr(gap, "location", None))
         if key in seen:

@@ -370,6 +370,34 @@ was no supported spelling for the call. The first bridge built on this engine re
 existed. Both still work and neither is promised. [BRIDGES.md](BRIDGES.md) documents the record
 shape, `source=`, the `raced` vocabulary and the ordering.
 
+## Is this a world model?
+
+Not in the sense the term now carries, and the difference is the whole design. A world model is
+**learned** — a network fitted to trajectories or video, which returns a next state for any input,
+including inputs it has never seen and without being able to say which those were. This engine's
+dynamics are **declared**. A coupling is a sentence with a number and its provenance, and a block
+missing any of `from`, `to`, `gain`, `source` is refused by name rather than completed with a
+default.
+
+The overlap is narrow and mostly one word. `rollout` here means: apply declared transitions and
+declared action effects on a private clone of the session, evaluate all eight axioms over every
+imagined state, prefix those findings `imagined_` so a simulated breach can never read as a live
+one, and dispatch nothing, ever. It does not mean sampling a learned latent forward under a policy.
+
+The engine does fit numbers, and stops short of adopting them. `gain: estimate` declares the
+coupling and withholds the number; the fit is reported under `model_describe` with its `n`, its
+`r_squared` and an interval, and it projects nothing until an author writes a number down.
+`discover` proposes edges and never adopts one. The rule is the same in both: measuring and
+proposing are the engine's, declaring is the author's.
+
+**Where a learned model fits — as the producer, with this engine keeping the books.** Declare
+`forecast:` on an indicator and feed predictions through `ingest_forecasts`. The eight axioms then
+run over the forecast itself; a forecast that never arrives is a finding, because `expected_from`
+made it an obligation; an unknown or stale producer is declined by name; and every producer is
+graded against a parameter-free random-walk baseline fitted only on what it could have seen when
+it issued. `examples/margin_book.yaml` is that shape. The division of labour is the point: a world
+model predicts, and this audits.
+
 ## What is not here, and why
 
 The engine is open. The knowledge and the operations are not.

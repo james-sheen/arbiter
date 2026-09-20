@@ -170,10 +170,24 @@ class TopologyGap:
     resolved: bool = False
     resolution_value: Optional[Any] = None
     resolution_confidence: float = 0.0
+    #: an exact question, for a gap whose type does not determine
+    #: one. A template keyed on `gap_type` assumes each type asks a single
+    #: question, and `MISSING_DECLARATION` stopped being one type of claim
+    #: when a refused `transition:` block started using it: the template
+    #: asks *which quantities balance against which, and in which direction*,
+    #: which is the right question for a conservation gap and the wrong one
+    #: for an author who declared both quantities and the direction and
+    #: omitted `source`. Asking it sends them to re-derive what they wrote.
+    #:
+    #: Left `None` everywhere else, so no existing gap changes what it asks.
+    #: `{location}` is substituted exactly as in the templates.
+    question_override: Optional[str] = None
 
     @property
     def question(self) -> str:
         """Generate the natural-language question this gap implies."""
+        if self.question_override:
+            return self.question_override.format(location=self.location)
         templates = {
             GapType.MISSING_NODE: "What entity is at the other end of '{location}'?",
             GapType.MISSING_EDGE: "What does entity '{location}' connect to?",

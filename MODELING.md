@@ -836,9 +836,17 @@ came from. Nothing is changed for you.
 missing any of them is refused rather than completed.** This is the same rule
 `consistency:` follows for its tolerance and `homeostasis:` for its setpoint,
 and it matters more here: a gain nobody declared is a number a reader would
-act on, invented by the engine. A refused block is reported by name — in
-`model_describe` under `transitions.refused_blocks`, before anything is run,
-and again as a `missing_declaration` decline if a traversal needed it.
+act on, invented by the engine. A refused block is reported by name on three
+surfaces: in `model_describe` under `transitions.refused_blocks`, before
+anything is run and carrying the rule it was declared on; as a
+`missing_declaration` question from `gaps`, naming the key that is absent; and
+again as a `missing_declaration` decline if a traversal needed it.
+
+An edge that declares no `transition:` at all is a different claim and gets a
+different name. It has refused nothing — there is nothing to refuse — so it
+raises `missing_dynamics` when a caller asks for a value across it, and no
+refusal question. Saying *no transition declared* about a block sitting in the
+file would send an author looking for something they had already written.
 
 **`source:` is the provenance of the NUMBER and is not optional.** A gain off a
 datasheet and a gain somebody fitted are different claims, and a reader

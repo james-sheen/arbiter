@@ -20,6 +20,70 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A `transition:` block the loader refused reached `gaps` as silence.** A
+  block missing any of `from`, `to`, `gain`, `source` is refused rather than
+  completed with a default, and the refusal is filed as a
+  `missing_declaration` gap naming the key that was absent. That gap is
+  attached to the edge. `gaps` read the topology-level list, which is one of
+  three populations, so a model declaring a coupling and omitting `source`
+  answered `questions: []` beside `meta.source: live` — the engine reporting
+  that it looked and found nothing missing, on the one verb whose whole job is
+  naming what is missing.
+
+  `DigitalTwinTopology.get_unresolved_gaps()` already collected all three
+  populations. `gaps` now reads it, deduplicated on the same
+  `(gap_type, location)` key, so a gap a traversal also found keeps the
+  traversal's richer context path.
+
+  **Net new questions on all six shipped examples: zero.** The collector
+  returns roughly twice as many raw gap objects and they collapse onto the
+  keys the traversal already reported. That measurement is also the diagnosis:
+  no shipped example declares a coupling it then refuses, so no example
+  exercised the path. One that does is now in the suite, and a guard pins the
+  property rather than the six counts.
+
+  A value-mode `traverse` and `rollout` reported this refusal the whole time,
+  as a `missing_declaration` decline, and they distinguish it from
+  `missing_dynamics` on purpose: reporting *no transition declared* for a
+  block sitting in the author's file would send them looking for something
+  already written. That split is unchanged and now pinned.
+
+- **The refusal question asked for something the author had already written.**
+  The description named the missing key and nothing serialised it, so the text
+  reaching a caller was the gap type's generic template — written for a
+  conservation gap, and asking *which quantities balance against which, and in
+  which direction*. An author who declared both quantities and the direction
+  and left out `source` was being asked to re-derive their own block. A gap may
+  now carry an exact question, left unset everywhere else, and a refused
+  transition asks: `Which value does `source` take for the transition on
+  'p1->h1'?`
+
+- **`transitions.refused_blocks` said which key and not which rule.** Blocks
+  are indexed within their own rule, so two rules each refusing their first
+  block both reported `transition[0]` with nothing to tell them apart. Each
+  entry is now prefixed with its rule label. The element stays a string;
+  readers do substring tests on the key name.
+
+- **A README guard could not go green.** It asserted the README still called
+  the PREDICT path *plumbed but unfed* — true when `ProjectedValue` was
+  constructed only in a test, false since 0.1.15 fed the path with `project`,
+  and red since the sentence left the README on 2026-09-17. It now pins the
+  relationship in both directions and was proved live by reintroducing the
+  sentence.
+
+### Added
+
+- **The README answers whether this is a world model.** The term appeared once
+  on the published surface, in `ROADMAP.md`, and nowhere in the README — so
+  the question was left to readers, one of whom answered it in 464 lines. The
+  section states the line the rest of the engine holds: dynamics are declared
+  or refused, never learned; `rollout` means declared transitions and declared
+  action effects on a private clone that dispatches nothing; and a learned
+  model belongs on the producing side, with `forecast:`, `ingest_forecasts`
+  and the shadow axioms keeping its books against a random-walk baseline.
+
 ## [0.2.5] — 2026-09-20
 
 **What a 0.2.4 user is getting.** 0.2.4 shipped the simulation surface --

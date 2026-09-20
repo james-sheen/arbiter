@@ -481,6 +481,14 @@ class TopologyBuilder:
                         f"{', '.join(REQUIRED_TRANSITION_KEYS)} is not "
                         f"completed with a default"),
                     discovered_during="build",
+                    # the description carried which key was absent
+                    # and nothing serialised it, so the question reaching a
+                    # caller was the type's generic template. The author does
+                    # not need to be asked which quantities couple; they wrote
+                    # that. They need the one word they left out.
+                    question_override=(
+                        f"Which value does `{', '.join(missing)}` take for "
+                        f"the transition on '{{location}}'?"),
                 ))
                 continue
             # `gain: estimate` declares the pair and withholds the
