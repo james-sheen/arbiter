@@ -30,6 +30,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import math
+import uuid
 from datetime import timedelta
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
@@ -71,6 +72,15 @@ class RolloutStep:
     #: reached it, on the same rule the walk follows: an absent entry means
     #: nobody declared a spread, not that the spread is zero.
     sigma: Dict[str, Dict[str, float]] = field(default_factory=dict)
+    #:. entity -> {property -> the couplings that drove this value},
+    #: each as `relation:from->to`. Taken from the per-source spread
+    #: breakdown the walk already computes, so it costs nothing to derive and
+    #: cannot drift from what actually contributed. It is what lets a
+    #: coupling's confirm rate be over ITS OWN projections: the report used
+    #: to resolve the entities of a rule's target type and match on the
+    #: target property alone, so two rules into one property each claimed
+    #: every record and four records produced eight attributions.
+    drivers: Dict[str, Dict[str, List[str]]] = field(default_factory=dict)
     #:. What the reasoner ATTEMPTED over this imagined state, taken
     #: from `DetectionResult.evaluations_attempted`. Not derivable from
     #: `findings` and `declines`: an evaluation that ran and found nothing
@@ -224,6 +234,12 @@ def run(session: Any, topology: Any, *,
     if unreadable is not None:
         result.declines.append(unreadable)
     now = _now(session)
+    #:. ONE id for everything this rollout files. A rollout is one
+    #: trajectory however many instants it reports, so the records it files
+    #: are one episode -- which is what `traversal_id` has always meant on an
+    #: impact record, and what a calibration needs in order to say whether
+    #: `confirm_rate: 1.0` came from twelve trials or from one.
+    episode_id = str(uuid.uuid4())
 
     # The imagined state, as absolute values per entity. Seeded from the
     # present, or from the projections if the caller asked for them.
@@ -306,9 +322,21 @@ def run(session: Any, topology: Any, *,
     #: different instant, and holding one across all of them says the source
     #: finished moving before the first step ran.
     curves: Dict[Tuple[str, str], Any] = {}
-    #: The seed's own forecast variance, per step. Held apart from the
-    #: transitions' because it GROWS with the horizon and theirs does not.
-    seed_variance: Dict[str, Dict[str, float]] = {}
+    #:. (entity, property) pairs an action has moved, cumulative
+    #: across steps. A forecast describes the unmanaged trajectory, so it
+    #: stops being overlaid on a property somebody has intervened on.
+    acted: Set[Tuple[str, str]] = set()
+    #:. The forecast's own spread, and how much of it each movement
+    #: of the property carries. A seeded property that is then acted on has
+    #: its action's delta measured FROM the seeded value, so the two
+    #: movements depend on the one forecast with OPPOSITE signs and the
+    #: doubt cancels exactly as far as the action pins it: `set` leaves
+    #: none, `add` leaves all of it, `scale k` leaves k times it. Without
+    #: the sign both movements propagated the same band and a rollout
+    #: reported sqrt(2) times a doubt that should have been gone.
+    seed_sigma: Dict[Tuple[str, str], float] = {}
+    seed_sensitivity: Dict[Tuple[str, str], Dict[float, float]] = {}
+    seed_carried: Dict[Tuple[str, str], float] = {}
     if seed_mode == "projected":
         curves = dict(getattr(
             getattr(topology, "_last_projector", None),
@@ -397,7 +425,59 @@ def run(session: Any, topology: Any, *,
         at_s = index * step_s
         step = RolloutStep(index=index, at_s=at_s)
 
-        # 1. Actions whose time falls inside this step.
+        # 1. THE SEED AT *THIS* INSTANT, not at the horizon.
+        #     `_seed_from_projection` overlays one forecast, taken at the full
+        #     `horizon_s`, and every step then read it. Measured on a 60-minute
+        #     rollout in 5-minute steps: step one reported the tank at the
+        #     value it reaches after an hour, because the source had been
+        #     seeded with its 60-minute projection and held there. The same
+        #     shape as the frozen transient -- a single-point answer stretched
+        #     across a trajectory.
+        #
+        #     The forecast's own SPREAD comes with it, which it did not
+        #     before. A projector returns a distribution and only the median
+        #     was kept, so a rollout seeded from a forecast inherited the
+        #     number and none of the doubt.
+        # AND IT RUNS BEFORE THE ACTIONS, not after.
+        #     It used to overwrite them: a property carrying a `dynamics:`
+        #     block could not be acted on at all, because this loop reassigned
+        #     `state` from the curve every step. Measured with the pump SET to
+        #     2500 rpm, `seed_mode='projected'` reported the pump at 1885.798
+        #     -- its last observation -- the tank at its untouched baseline,
+        #     and `throttle@pump1` in `actions_applied`, with nothing
+        #     declined. The drift reconciliation below then zeroed the
+        #     action's own movement to agree with that state, so the
+        #     decomposition was consistent and consistently wrong.
+        #
+        #     A projection is fitted from history and cannot know about an
+        #     action scheduled in the future, so it describes the UNMANAGED
+        #     trajectory. The two compose with nobody guessing: the forecast
+        #     governs a property up to the instant it is acted on, and the
+        #     action governs it from there. Hence the order, and hence
+        #     `acted` -- once an action has moved a property, no later step
+        #     re-seeds it, and the movement registered at t=0 keeps the
+        #     displacement the forecast had reached when the intervention
+        #     landed, so the target's response to both still superposes.
+        for (entity_id, prop), curve in curves.items():
+            if (entity_id, prop) in acted:
+                continue
+            at = curve(at_s)
+            if at is None:
+                continue
+            value, sigma = at
+            state.setdefault(entity_id, {})[prop] = float(value)
+            # The seed is one movement, at t=0, whose DELTA is re-read from
+            # the curve at every step. Registered here as well as at the
+            # overlay so a curve that starts flat and moves later is still a
+            # movement when it does.
+            movements.setdefault((entity_id, prop), {})[0.0] = float(
+                value) - baseline.get(entity_id, {}).get(prop, float(value))
+            if sigma > 0.0:
+                seed_sigma[(entity_id, prop)] = float(sigma)
+                seed_sensitivity.setdefault((entity_id, prop), {})[0.0] = 1.0
+                seed_carried[(entity_id, prop)] = 1.0
+
+        # 1b. Actions whose time falls inside this step.
         action_deltas: Dict[str, Dict[str, float]] = {}
         #:. (entity, property) -> the action's OWN scheduled time, not
         #: this step's. An action at `at_s=0` fires in step 1, whose clock
@@ -416,6 +496,12 @@ def run(session: Any, topology: Any, *,
         #: The rule is about the SET of effects meeting at one instant, so the
         #: set has to be complete before anything is decided.
         intents: Dict[Tuple[str, str], List[Tuple[str, float, str]]] = {}
+        #:. (label, the (entity, property) pairs that instance asked
+        #: for), one entry per instance that got this far. `actions_applied`
+        #: is rebuilt from it once the refusals are known, so an instance
+        #: survives when ANY of its effects did -- an action touching two
+        #: properties, one of which collided, still happened.
+        intended: List[Tuple[str, Set[Tuple[str, str]]]] = []
         for instance, template in schedule:
             # Half-open on the left EXCEPT for the first step, which is closed
             # at zero. `at_s=0` -- *do this now* -- is the most natural thing a
@@ -439,8 +525,17 @@ def run(session: Any, topology: Any, *,
                     result.assumptions.append(assumption)
             if not deltas:
                 continue
-            step.actions_applied.append(
-                f"{instance.template}@{instance.entity_id}")
+            # RECORDED PER INSTANCE, not per label. The label is
+            # `template@entity` and carries neither the parameters nor
+            # `at_s`, so two instances of one template on one entity share
+            # it. This list was appended to once per instance -- twice -- and
+            # the refusal below removed once per DISTINCT label, over a set,
+            # so one occurrence survived a refusal that applied nothing: a
+            # step in which the pump never moved reported `throttle_pump@
+            # pump1` as applied, in the one field a caller reads to find out
+            # what happened.
+            intended.append((f"{instance.template}@{instance.entity_id}",
+                             {(instance.entity_id, prop) for prop in deltas}))
 
             if template.settle_s > step_s:
                 # The actuator is slower than the step. Reported rather than
@@ -477,6 +572,7 @@ def run(session: Any, topology: Any, *,
         # in, and the engine computes it. Two DIFFERENT settings have no
         # answer, so they are refused by name with both values in the refusal
         # and the property is left where it was.
+        refused_pairs: Set[Tuple[str, str]] = set()
         for (entity_id, prop), items in sorted(intents.items()):
             base = state.get(entity_id, {}).get(prop)
             if not isinstance(base, (int, float)) or isinstance(base, bool):
@@ -485,18 +581,35 @@ def run(session: Any, topology: Any, *,
             kinds = {kind for kind, _, _ in items}
             values = {value for _, value, _ in items}
             bucket = action_deltas.setdefault(entity_id, {})
+            # how much of the forecast's doubt this movement
+            # carries, and how much the property keeps afterwards. `carried`
+            # is the property's current sensitivity to its own seed, 1.0
+            # while the forecast still describes it.
+            carried = seed_carried.get((entity_id, prop), 0.0)
+            when_acted = action_times.get((entity_id, prop), at_s)
+
+            def _seed_moves(delta_sensitivity: float, left: float) -> None:
+                if carried:
+                    seed_sensitivity.setdefault(
+                        (entity_id, prop), {})[when_acted] = delta_sensitivity
+                    seed_carried[(entity_id, prop)] = left
+
             if kinds == {"add"}:
                 # The one effect that superposes, and the only one whose
                 # composition needs no ordering AND no single answer: two
                 # increments are two increments.
                 for _, value, _ in items:
                     bucket[prop] = bucket.get(prop, 0.0) + value
+                # An increment does not depend on where the property was, so
+                # it carries none of the doubt and erases none of it.
+                _seed_moves(0.0, carried)
                 continue
             if kinds == {"scale"}:
                 factor = 1.0
                 for _, value, _ in items:
                     factor *= value
                 bucket[prop] = bucket.get(prop, 0.0) + (base * factor - base)
+                _seed_moves((factor - 1.0) * carried, factor * carried)
                 if len(items) > 1:
                     _assume(result, "scalings_compose_by_multiplication")
                 continue
@@ -505,6 +618,12 @@ def run(session: Any, topology: Any, *,
                 # what asking for it twice asks for.
                 bucket[prop] = bucket.get(prop, 0.0) + (
                     items[0][1] - base)
+                # A SETTING PINS THE PROPERTY. Whatever the forecast said, the
+                # property is now the number asked for, so the delta carries
+                # exactly the doubt the seed had -- with the opposite sign,
+                # because it is measured FROM the seeded value -- and the
+                # property keeps none.
+                _seed_moves(-carried, 0.0)
                 continue
             labels = sorted({label for _, _, label in items})
             asked = ", ".join(f"{kind} {value:g}" for kind, value, _ in items)
@@ -519,43 +638,27 @@ def run(session: Any, topology: Any, *,
                 f"share it, so nothing was applied to it. Schedule them at "
                 f"different times, or declare the one effect meant."))
             action_times.pop((entity_id, prop), None)
-            for instance_label in labels:
-                if instance_label in step.actions_applied:
-                    step.actions_applied.remove(instance_label)
+            refused_pairs.add((entity_id, prop))
+
+        # what actually happened, rebuilt once every refusal is
+        # known. An instance is reported applied when at least one of the
+        # properties it asked for survived.
+        step.actions_applied = [label for label, pairs in intended
+                                if pairs - refused_pairs]
 
         for entity_id, deltas in action_deltas.items():
             for prop, delta in deltas.items():
                 state.setdefault(entity_id, {})
                 state[entity_id][prop] = state[entity_id].get(prop, 0.0) + delta
-
-        # 1b. THE SEED AT *THIS* INSTANT, not at the horizon.
-        #     `_seed_from_projection` overlays one forecast, taken at the full
-        #     `horizon_s`, and every step then read it. Measured on a 60-minute
-        #     rollout in 5-minute steps: step one reported the tank at the
-        #     value it reaches after an hour, because the source had been
-        #     seeded with its 60-minute projection and held there. The same
-        #     shape as the frozen transient -- a single-point answer stretched
-        #     across a trajectory.
-        #
-        #     The forecast's own SPREAD comes with it, which it did not
-        #     before. A projector returns a distribution and only the median
-        #     was kept, so a rollout seeded from a forecast inherited the
-        #     number and none of the doubt.
-        seed_variance = {}
-        for (entity_id, prop), curve in curves.items():
-            at = curve(at_s)
-            if at is None:
-                continue
-            value, sigma = at
-            state.setdefault(entity_id, {})[prop] = float(value)
-            # The seed is one movement, at t=0, whose DELTA is re-read from
-            # the curve at every step. Registered here as well as at the
-            # overlay so a curve that starts flat and moves later is still a
-            # movement when it does.
-            movements.setdefault((entity_id, prop), {})[0.0] = float(
-                value) - baseline.get(entity_id, {}).get(prop, float(value))
-            if sigma > 0.0:
-                seed_variance.setdefault(entity_id, {})[prop] = float(sigma) ** 2
+                # from here on this property is managed, and the
+                # forecast that described it unmanaged is not overlaid again.
+                # SAID OUT LOUD when it actually happens, because a reader
+                # comparing two seed modes sees a property stop following its
+                # forecast and nothing else in the envelope explains why.
+                if (entity_id, prop) in curves and (
+                        entity_id, prop) not in acted:
+                    _assume(result, "projection_superseded_by_action")
+                acted.add((entity_id, prop))
 
         # 2. Transitions, re-derived from the instant each source MOVED.
         #
@@ -609,10 +712,22 @@ def run(session: Any, topology: Any, *,
                 by_instant[max(by_instant)] += drift
 
         contributions: Dict[str, Dict[str, float]] = {}
-        #: Variances, summed across movement groups. Groups are separate
-        #: declared couplings firing from different instants, so their spreads
-        #: add the same way the walk adds them WITHIN a group: in variance.
-        variances: Dict[str, Dict[str, float]] = {}
+        #:. entity -> property -> {uncertainty source -> that
+        #: source's SIGNED contribution}, accumulated across movement groups.
+        #:
+        #: This summed the groups' VARIANCES, on the reasoning that groups are
+        #: separate couplings firing from different instants. They are not:
+        #: the groups are the same declared couplings walked at different
+        #: elapsed times, so one `gain_sigma:` fires in every group a source
+        #: moved in, and adding those in quadrature counted one number as
+        #: several independent ones. Measured on a pump moved +500 then +100
+        #: with `gain_sigma: 0.002`: the tank settled at 1.0198 where the
+        #: declaration says 1.2, and two EQUAL movements were narrow by
+        #: sqrt(2). Contributions from one source add linearly here and the
+        #: squares are taken once below -- which also lets them CANCEL, so a
+        #: source moved out and back leaves a target with no spread at all,
+        #: the answer for a target sitting where it started.
+        spreads: Dict[str, Dict[str, Dict[Any, float]]] = {}
         fractions: set = set()
         #: Sources whose declared `offset:` this step has already taken. The
         #: offset belongs to the coupling, not to each movement of its
@@ -665,8 +780,19 @@ def run(session: Any, topology: Any, *,
             # The seed's doubt is an INPUT to the walk, so a transition
             # carries it downstream through its own gain the same way it
             # carries a declared `gain_sigma:`.
-            traverser.seed_variance = {
-                eid: dict(props) for eid, props in seed_variance.items()}
+            # this group's SHARE of each seed's doubt, signed. The
+            # whole variance used to be handed to every group, so a property
+            # both seeded and acted on propagated its forecast's band once per
+            # group and the two were then added in quadrature -- measured at
+            # sqrt(2) times a doubt the action had in fact removed.
+            traverser.seed_spread = {}
+            for (eid, prop), by_when in seed_sensitivity.items():
+                sensitivity = by_when.get(when)
+                sigma = seed_sigma.get((eid, prop), 0.0)
+                if not sensitivity or not sigma:
+                    continue
+                traverser.seed_spread.setdefault(eid, {})[prop] = {
+                    ("seed", eid, prop): sensitivity * sigma}
             # The SAME set across the step's groups: the walk reads it to
             # know which offsets are spent and adds the ones it spends.
             traverser.offsets_charged = offsets_charged
@@ -691,19 +817,35 @@ def run(session: Any, topology: Any, *,
                     bucket = contributions.setdefault(eid, {})
                     bucket[prop] = bucket.get(prop, 0.0) + (
                         float(value) - float(base))
-            for eid, spreads in getattr(walk, "imagined_sigma", {}).items():
-                for prop, sigma in spreads.items():
-                    vbucket = variances.setdefault(eid, {})
-                    vbucket[prop] = vbucket.get(prop, 0.0) + float(sigma) ** 2
+            for eid, props in getattr(walk, "imagined_spread", {}).items():
+                for prop, contributions_by_source in props.items():
+                    sbucket = spreads.setdefault(eid, {}).setdefault(prop, {})
+                    for source_key, contribution in (
+                            contributions_by_source.items()):
+                        sbucket[source_key] = sbucket.get(
+                            source_key, 0.0) + float(contribution)
 
         step.response_fractions = sorted(fractions)
-        for eid, props in seed_variance.items():
-            for prop, variance in props.items():
-                if variance > 0.0:
-                    step.sigma.setdefault(eid, {})[prop] = math.sqrt(variance)
-                    result.has_declared_spread = True
-        for eid, props in variances.items():
-            for prop, variance in props.items():
+        # a seeded property's OWN spread is what it still carries
+        # of its forecast: all of it while nobody has acted, none once a
+        # `set` has pinned it, `k` times it after a `scale k`.
+        for (eid, prop), sigma in seed_sigma.items():
+            carried = abs(seed_carried.get((eid, prop), 0.0)) * sigma
+            if carried > 0.0:
+                step.sigma.setdefault(eid, {})[prop] = carried
+                result.has_declared_spread = True
+        for eid, props in spreads.items():
+            for prop, contributions_by_source in props.items():
+                # WHO DROVE THIS VALUE. `gain` keys carry the
+                # coupling; `seed` keys carry a forecast and are not a
+                # coupling's doing.
+                drove = sorted({
+                    f"{key[3]}:{key[5]}->{key[6]}"
+                    for key in contributions_by_source
+                    if isinstance(key, tuple) and key and key[0] == "gain"})
+                if drove:
+                    step.drivers.setdefault(eid, {})[prop] = drove
+                variance = sum(c * c for c in contributions_by_source.values())
                 if variance > 0.0 and (eid, prop) not in movements:
                     step.sigma.setdefault(eid, {})[prop] = math.sqrt(variance)
                     result.has_declared_spread = True
@@ -741,7 +883,8 @@ def run(session: Any, topology: Any, *,
         #    it, the filer saw an empty mapping and filed nothing while
         #    reporting nothing missing, because there was nothing to miss.
         if filing:
-            _file_step(session, result, step, at_s, movements)
+            _file_step(session, result, step, at_s, movements,
+                       episode_id, now)
 
     if filing and result.values_without_tolerance:
         # ONE decline carrying the count, which is the rule every other
@@ -858,7 +1001,8 @@ def _assume(result: 'RolloutResult', assumption: str) -> None:
 
 def _file_step(session: Any, result: 'RolloutResult',
                step: 'RolloutStep', at_s: float,
-               driven: Dict[Tuple[str, str], Dict[float, float]]) -> None:
+               driven: Dict[Tuple[str, str], Dict[float, float]],
+               episode_id: str, predicted_at: Any) -> None:
     """File one imagined instant as a falsifiable value prediction.
 
     TOLERANCE IS NOT INVENTED HERE. `PredictionLedger.record_value_prediction`
@@ -904,6 +1048,21 @@ def _file_step(session: Any, result: 'RolloutResult',
                     tolerance=1.96 * float(sigma),
                     horizon_s=float(at_s),
                     confidence=0.95,
+                    # ONE EPISODE ID FOR THE WHOLE ROLLOUT, and the
+                    # instant it was RUN FOR rather than the instant the row
+                    # was written. `traversal_id` means *the episode this came
+                    # from* -- `record_impacts` has always shared one across a
+                    # traversal -- and passing none minted a fresh uuid per
+                    # record, so twelve steps of ONE trajectory looked like
+                    # twelve unrelated episodes to anything reading the
+                    # calibration. They are not independent: one declared gain
+                    # drives every step, and measured against a mirror the
+                    # tank either tracked the curve or did not -- 12 confirmed
+                    # and 0 falsified, or 0 and 12, never a mix.
+                    traversal_id=episode_id,
+                    predicted_at=predicted_at,
+                    couplings=tuple(
+                        step.drivers.get(entity_id, {}).get(prop, ())),
                 )
                 result.predictions_filed += 1
             except Exception:  # noqa: BLE001 - a ledger refusal is not a crash

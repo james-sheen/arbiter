@@ -324,7 +324,18 @@ class TrendCurve(Projector):
                 evidence={"n": len(series), "slope": slope})
         # Carried as a local-level `Fitted` so one shape reaches the runner:
         # the level is the line AT the last sample, the spread is the
-        # measurement width, and `q` extrapolates the line across the horizon.
+        # measurement width, and `q` is the process noise.
+        #
+        # `q` WIDENS THE BAND; IT DOES NOT EXTRAPOLATE THE LINE.
+        # This comment said it extrapolated, which is what the name `trend`
+        # suggests and is not what the arithmetic does: `Fitted.forecast`
+        # holds `mean = level` at every horizon and adds `q * horizon_s` to
+        # the variance. So a steeper fitted slope makes the forecast WIDER,
+        # never higher -- the median of `dynamics: {model: trend}` does not
+        # trend. That is the demotion this class documents above, carried
+        # through to the arithmetic deliberately; naming it here because a
+        # reader who took the comment at its word would predict a ramp and
+        # measure a flat line with a growing band.
         return Fitted(level=intercept + slope * xs[-1],
                       variance=0.0, q=slope * slope, r=spread * spread,
                       last_at=series[-1][0], n=len(series),

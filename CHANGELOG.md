@@ -522,6 +522,267 @@ found by asking what the filed numbers MEAN rather than whether they appear.
   reports, and `plan` ranks candidates on that difference. Declaring it is now
   reported as an unknown key rather than silently stored.
 
+### Fixed — the third reading
+
+A third outside reading of the unreleased tree, again deriving everything from
+the source and running nothing. Three findings, all three real, all three
+fixed. One of the three proposed a remedy that is wrong in a case it did not
+test, and reproducing the other two found two further defects it could not
+have seen.
+
+**An offset belongs to a coupling, not to a source property.** The
+charge-once rule added one release earlier was keyed `(source, property)`,
+which is the right granularity for the same coupling firing twice and the
+wrong one for two couplings leaving one property: both are walked in a single
+pass, so the first marked the property spent and the second charged nothing,
+in that step and every later one. Measured on a source moving `1.0 -> 2.0`
+with `offset: 5.0` to one neighbour and `offset: 7.0` to another: the rollout
+settled the second at `21.0` while `traverse`, which sets no `offsets_charged`
+at all, said `28.0`. The same happened for two `transition:` blocks on one
+rule sharing `from:` — measured `21.0` against `28.0` again. The charge is now
+keyed by the coupling: source, target, relation type, the transition's
+position on the edge, and its endpoints. The relation type and the position
+are both in the key because neither is implied by the endpoints — two rules
+may join one pair of entities, and nothing stops one rule declaring two
+transitions with the same `from:` and `to:`.
+
+**One declared spread is one uncertainty, however many ways it reaches a
+value.** Spreads were combined in quadrature everywhere, which is the rule for
+INDEPENDENT contributions and was silently applied to one declared number
+arriving more than once. Three ways to arrive twice, all measured:
+
+- two movements of one source through one coupling — `+500` then `+100` rpm
+  with `gain_sigma: 0.002` settled the tank at `1.0198` where the one declared
+  number says `1.2`, and two EQUAL movements were narrow by `sqrt(2)`;
+- two paths to one target inside a SINGLE walk — a spread on `S -> A` reaching
+  `T` directly and again through `M` gave `14.142` where `T = A + M = 2A` says
+  `20.0`. This one was never a rollout defect; `traverse` reported it too;
+- a seeded property later pinned by a `set`, whose two movements carry the
+  forecast's doubt with opposite signs.
+
+The walk now carries the SIGNED contribution of each independent uncertainty
+source rather than one pooled variance, and the squares are taken once at the
+end. Two different `gain_sigma:` lines are still two sources and still add in
+quadrature — that is what `independent_declared_spreads` has always claimed,
+and the stamp is now only that claim rather than also an excuse for the
+arithmetic.
+
+**The sign is half of it.** The correct quantity is the absolute value of the
+SIGNED sum, not the sum of absolute values; the two agree only when every
+movement pushes the same way. A source moved up by 500 and then back down by
+500 leaves its target exactly where it started, and it does so for ANY value
+of the gain — so the gain's spread cannot reach it and the answer is zero.
+Measured before: `1.4142`. Summing absolute values would report `2.0`, further
+from the truth than the defect.
+
+**An action on a property that carries a forecast was silently discarded.**
+Not reported by the reading. `seed_mode='projected'` overlaid each step's
+projection AFTER the actions and re-ran every step, so a property carrying a
+`dynamics:` block could not be acted on at all. Measured with a pump SET to
+2500 rpm against a 200-sample random walk: `seed_mode='current'` reported the
+pump at `2500.000` and the tank at `62.2840`; `seed_mode='projected'` reported
+the pump at `1885.798` — its last observation — and the tank at its untouched
+baseline of `50.0000`, with `throttle@pump1` in `actions_applied` and nothing
+declined. The drift reconciliation then zeroed the action's own movement to
+agree with that state, so the decomposition was consistent and consistently
+wrong. This module's own comment already says what is wrong with that: an
+action that is accepted and silently never applied is worse than one that is
+refused. A projection is fitted from history and cannot know about an action
+scheduled in the future, so it describes the UNMANAGED trajectory: the
+forecast now governs a property up to the instant it is acted on and the
+action governs it from there, and the envelope says so: a rollout that
+overrode a projection stamps `projection_superseded_by_action`. `plan` was
+never exposed — it pins `seed_mode='current'`.
+
+### Corrected — `trend` widens the band and does not point it
+
+`dynamics: {model: trend}` fits a straight line, takes the LEVEL at the last
+sample, and carries the SLOPE as process noise, so its median is flat across
+every horizon and a steeper fitted slope makes the forecast wider rather than
+higher. Three documents said otherwise: this format's own specification said
+`trend` "fits a straight line and extrapolates it", the comment beside the
+return said `q` "extrapolates the line across the horizon", and an outside
+reading reasoned from the word and predicted a ramp. All three describe what
+the NAME suggests. The arithmetic was right and is unchanged; the sentences
+are now the arithmetic's.
+
+### Fixed — what a plan claims to have measured
+
+Four defects on the planning surface, found by running it rather than by
+reading it, and one of them was hiding the next.
+
+**`expected_findings` is summed EXACTLY.** The objective is a sum of
+`1.0 / priority_score` -- reciprocals of small integers, of which 1/3 and 1/5
+have no binary representation -- so the total depended on how many findings of
+which severity arrived in what order. Two consequences. The reported number
+was wrong in its last bits on this package's own published example: 24
+findings of priorities 1 and 3, exact cost 16, reported `16.000000000000004`.
+And TWO PLANS THAT COST THE SAME STOPPED COMPARING EQUAL, which matters
+because the planner sorts on `(objective, len(actions))` and its own comment
+says fewer actions wins an EXACT tie -- so a tie lost to rounding is not a tie
+at all, and the candidate carrying more actions wins on 4e-16 of accumulated
+error. Every multiset of at most eight findings over the five reachable
+weights was enumerated: 553 of them scored something other than their exact
+cost, and 67 exact totals are reachable by more than one float value. The
+sharpest pair, `[2,3,3,3,5,5,5,5]` against `[1,2,5,5,5,5]`, are both 23/10 and
+came out `2.3` and `2.3000000000000003`. Accumulated as an exact rational and
+rounded once at the end. NO TOLERANCE was introduced: deciding how close two
+costs must be before the engine calls them equal is a domain question nobody
+declared, and the exact total needs no such decision.
+
+**A refused action is no longer reported as applied.** `actions_applied` holds
+`template@entity`, which carries neither the parameters nor `at_s`, so two
+instances of one template on one entity share a label. The list was appended
+to once per INSTANCE and the refusal removed once per DISTINCT label, over a
+set, so one occurrence survived a refusal that applied nothing: measured, a
+step in which the pump never moved reported `throttle_pump@pump1` as applied,
+in the one field a caller reads to find out what happened. Rebuilt per
+instance once the refusals are known, so an instance is reported applied when
+at least one property it asked for survived -- an action touching two
+properties, one of which collided, still happened.
+
+**A plan none of whose actions ran carries no score.** With `max_depth: 2` the
+planner offers a second setting of a property already set at the same instant.
+The rollout refuses the pair, so nothing is applied and the trajectory is the
+do-nothing one -- and the candidate was scored anyway: measured on the shipped
+example, three candidates with `transitions_applied: 0` and `objective: 16.0`,
+which is exactly `do_nothing`'s cost, under a label naming two actions. An
+earlier pass put `contradictory_actions` into those rows, which made the fact
+attributable without making the number true. They are now unranked, sort to
+the end, and keep their refusal. THIS FIX DID NOT WORK UNTIL THE ONE ABOVE
+DID: the planner asks whether anything ran, and the field it asks was saying
+yes.
+
+**Every candidate carries its own assumptions.** `score` has always returned
+them per candidate -- whether a clearance figure was sampled from a declared
+spread or came from a trajectory that had none -- and they were merged into
+the plan-level list with the per-candidate fact dropped. One plan carrying
+both `deterministic_transitions` and `declared_gain_spread_sampled` left a
+reader unable to attribute either, and `interval` does not settle it:
+`[0.0, 0.0]` is what a deterministic candidate reports AND what a sampled one
+reports when no sample cleared.
+
+### Added — a ranking that says how close the call was
+
+`expected_findings` sums a cost per finding the rollout produced, over the
+single trajectory the engine simulated. A finding is a comparison against a
+declared line, so the objective is a STEP FUNCTION of values the engine often
+knows only to within a declared `gain_sigma:` -- and it is evaluated at the
+MEDIAN trajectory, with no part of that spread reaching the figure the ranking
+uses. Measured on the shipped example, throttling to 800 rpm against a
+`warning: 85`:
+
+    starts at settles at objective
+      88.8 84.812 14.000
+      88.9 84.912 14.333
+      89.0 85.012 16.000
+
+A tenth of a point of level moves the ranking by 12 %, while the declared
+spread on that value at that step is 0.3988 -- four times the distance that
+flipped it. The candidate's `interval` was `None` throughout: the doubt was
+computed, carried and reported per step, then not carried into the number the
+plan is ranked on.
+
+Two additions, and NEITHER CHANGES A RANKING. A ranked plan stamps
+`objective_evaluated_at_median`, so a reader of the ENVELOPE -- not only of
+the guide -- knows where the figure was taken. And every candidate carries
+`margin_sigmas`: the closest any imagined value came to a line it was judged
+against, in units of that value's own declared spread. On the case above the
+winning candidate reports `0.027`, which is the number that tells a reader
+whether 14.333-against-16.000 is two findings apart or one coin flip apart.
+`None` when nothing declared a spread that reached the trajectory: a distance
+in units nobody declared is not a measurement.
+
+**What this deliberately does NOT do is make the objective an expectation.**
+That needs the probability of each of eight axioms firing over a trajectory,
+not just a threshold crossing, and inventing it would be the engine answering
+a question nobody declared. `clearance_probability` is the objective that
+samples the declared spread, and it already returns an interval.
+
+### Fixed — a coupling is graded on its own projections
+
+`model_describe` reports, beside every declared coupling, how its own
+projections fared, and its docstring is emphatic about why the denominator
+travels with the figure: *a confirm rate over two graded records is not the
+same statement as one over two hundred*. Two things made that denominator the
+wrong number, and both were measured on the surface an AUTHOR reads about
+their own declaration.
+
+**It counted records the coupling never drove.** A value prediction is filed
+per entity and property; the report resolved the entities of the rule's TARGET
+TYPE and matched on the target property alone, so two rules into one property
+each claimed ALL of the records. Measured with four records on
+`tank1.level_pct`: `Pump-feeds->Tank` reported `graded 4, falsified 4` and
+`Heater-warms->Tank` reported `graded 4, falsified 4` -- four records
+producing eight attributions, with neither coupling able to say whether it was
+responsible. Measured end to end, a heater whose source never moved claimed
+all twelve of a pump's projections.
+
+**It counted one trajectory as many.** A rollout files one record per step, so
+twelve steps driven by one declared gain against one mirror confirm or falsify
+together. Measured: `graded 12, confirmed 0, confirm_rate 0.0` from a single
+rollout, while the ledger's own `episodes_n` correctly said 1. The author was
+told *0 of 12 projections this coupling drove were confirmed* -- which reads
+as twelve contradictions of a datasheet number and is one.
+
+A filed value now records WHICH COUPLINGS DROVE IT, taken from the per-source
+spread breakdown the walk already computes, so it costs nothing to derive and
+cannot drift from what actually contributed. The report counts only its own
+records, adds `episodes`, and the remedy says what it rests on -- *0 of 12
+projections. from 1 trajectory*. A value driven by two couplings still
+belongs to both; that is a membership test, not an equality one. Records with
+no attribution are COUNTED AND NAMED under `unattributed` rather than claimed
+by everyone or dropped, which is the shape `entity_type_unattributed_n`
+already uses in the same ledger.
+
+**The remedy's TRIGGER is deliberately unchanged.** Deciding how much evidence
+is enough before doubting a declaration is a domain question, so the engine
+reports the evidence and the author weighs it -- the same line every other
+learned quantity in this package sits on.
+
+### Fixed — a calibration that says how many trajectories it saw
+
+A rollout files one value prediction per step per property, so a 12-step
+rollout of one coupled property files 12 records. They are ONE trajectory: the
+same declared gain drives every step, the predicted values come off one curve,
+and the mirror either tracks it or does not. Measured against a mirror in
+which the tank never moved, `confirmed 12, falsified 0, confirm_rate 1.0,
+brier 0.0025`; against one drifting 2.0 per step, `confirmed 0, falsified 12,
+confirm_rate 0.0, brier 0.9025`. All or nothing both times, because there was
+only ever one trial -- and a reader given `1.0 over 12 records` reads twelve
+successes.
+
+`confirm_rate` and `brier` are the figures that answer whether this engine's
+projections can be trusted, and the ledger is otherwise emphatic about exactly
+this class of mistake: *coverage_90 over four records and over four thousand
+are different statements*. It already carried the field that fixes it.
+`PredictionRecord.traversal_id` means THE EPISODE THIS CAME FROM, and
+`record_impacts` has always used it that way -- one id per traversal, shared
+by every impact. The rollout passed none, so a fresh uuid was minted per
+record and twelve steps of one trajectory looked like twelve unrelated
+episodes. The same call let `predicted_at` default to the moment each row
+happened to be written rather than the instant the rollout was run for.
+
+A rollout now stamps one episode id on everything it files, and
+`calibration()` reports `episodes_n`: how many distinct episodes its graded
+records came from. It is an UPPER BOUND on independence and not a claim of it
+-- two rollouts of one entity over overlapping horizons are two episodes and
+still correlated -- but it rules out the case that is purely an artefact of
+how the engine files. `None` rather than 0 when nothing has been graded, on
+the same rule every other aggregate there follows.
+
+### Documented — when two spreads add, and how
+
+The rule was implemented one release earlier and stated nowhere. Contributions
+from the SAME declared number add LINEARLY and with their signs: one coupling
+walked at two movement instants, or one spread reaching a target by two paths.
+Contributions from DIFFERENT declarations add in quadrature, which is what
+`independent_declared_spreads` has always meant. Two pumps feeding one tank
+under one rule are two couplings and two gains -- the datasheet tolerance
+describes a population and each pump is its own draw from it -- so they
+combine in quadrature; the same pump throttled twice is one gain, so its
+contributions add.
+
 ### Compatibility
 
 All of the above are patch-legal under COMPATIBILITY.md: counts that were
@@ -566,6 +827,46 @@ release; this is not one, and the distinction is the wire shape rather than
 the word *field*.
 
 ---
+
+**The third reading.** All patch-legal, and two of them change answers rather than adding anything.
+
+A model that declares an `offset:` on more than one coupling from one property
+gets a different number from a rollout than it did, and the new one is the one
+`traverse` was already reporting. A model that declares a `gain_sigma:` gets a
+different spread wherever the same declaration reached a value more than once:
+WIDER when the movements agree in sign, narrower or zero when they oppose. A
+model whose rollout sets a property that carries a `dynamics:` block gets an
+answer where it previously got its own baseline back. In all three the
+previous number was wrong, and no model that declares none of those things
+moves at all.
+
+`TraversalResult` gains `imagined_spread`, the per-source breakdown
+`imagined_sigma` is the root of the sum of the squares of. It is additive, and
+its keys are opaque and only ever compared for equality.
+
+**The planning surface.** All patch-legal. A model using `expected_findings`
+gets an objective that differs in its last bits from the one it got before,
+and the new one is the exactly-rounded value; where that changed a ranking it
+changed it toward the documented tie-break rather than away from it. A
+candidate whose actions were all refused now reports `objective: null` where
+it reported a number it had not measured, and `PlanCandidate` gains an
+`assumptions` list, which is additive.
+
+**The ledger.** `calibration()` gains `episodes_n`, which is additive, and a
+rollout's filed records now share one `traversal_id` and one `predicted_at`
+instead of carrying one each. Nothing that reads a record by id or grades one
+changes: the maturity window is `predicted_at + horizon_s`, and the instants
+differed by microseconds.
+
+**The coupling report.** Additive and patch-legal. A coupling's `projections`
+block gains `episodes` and `unattributed`; `PredictionRecord` gains
+`couplings`, which a rollout fills and every other filer leaves empty. A
+coupling that never drove a record stops reporting that record's verdict as
+its own -- a number that was wrong becoming absent rather than wrong.
+
+**The ranking.** Additive. `PlanCandidate` gains `margin_sigmas` and a ranked
+plan on `expected_findings` gains one assumption stamp. No objective value and
+no candidate order changes.
 
 ## [0.2.4] — 2026-09-18
 

@@ -326,9 +326,24 @@ class TopologyTraverser:
         # spread for the values it overrode. A rollout seeded from a forecast
         # hands its band in here so a transition carries it downstream through
         # its own gain, exactly as it carries a declared `gain_sigma:`.
-        imagined_variance: Dict[str, Dict[str, float]] = {
-            eid: dict(props) for eid, props
-            in (getattr(self, "seed_variance", None) or {}).items()}
+        #
+        # AND IT IS KEYED BY THE SOURCE OF THE DOUBT, not pooled
+        # into one variance per property. Each entry is
+        # `{uncertainty source -> that source's SIGNED contribution to this
+        # property, in the property's own units}`; the variance is the sum of
+        # their squares, taken once at the end. One declared number reaching
+        # a property by two routes lands in ONE bucket and adds linearly,
+        # which is what being the same number means; two different
+        # declarations land in two and add in quadrature, which is what
+        # `independent_declared_spreads` has always claimed.
+        imagined_spread: Dict[str, Dict[str, Dict[Any, float]]] = {
+            eid: {prop: dict(contributions)
+                  for prop, contributions in props.items()}
+            for eid, props in (getattr(self, "seed_spread", None) or {}).items()}
+        for eid, props in (getattr(self, "seed_variance", None) or {}).items():
+            for prop, variance in props.items():
+                bucket = imagined_spread.setdefault(eid, {}).setdefault(prop, {})
+                bucket.setdefault(("seed", eid, prop), math.sqrt(variance))
         imagined_via: Dict[str, Dict[str, str]] = {}
         edges_without_dynamics: Set[str] = set()
         #:. (node, sink) pairs whose axioms are evaluated after
@@ -535,7 +550,7 @@ class TopologyTraverser:
                             cum_delay_at_source=cum_delay,
                             request=request, result=result,
                             imagined=imagined, imagined_via=imagined_via,
-                            imagined_variance=imagined_variance,
+                            imagined_spread=imagined_spread,
                             budget_left=budget_left,
                             edges_without_dynamics=edges_without_dynamics,
                         )
@@ -592,7 +607,7 @@ class TopologyTraverser:
             budget_left = self._apply_in_dependency_order(
                 pending_transitions, request=request, result=result,
                 imagined=imagined, imagined_via=imagined_via,
-                imagined_variance=imagined_variance,
+                imagined_spread=imagined_spread,
                 budget_left=budget_left,
                 edges_without_dynamics=edges_without_dynamics)
         # Every contribution has landed, so the values these axioms
@@ -613,7 +628,7 @@ class TopologyTraverser:
             result.axiom_evaluations_attempted += attempted
         if simulating:
             self._finalise_simulation(
-                result, request, imagined, imagined_via, imagined_variance,
+                result, request, imagined, imagined_via, imagined_spread,
                 visited,
                 edges_without_dynamics)
         result.traversal_time_ms = (time.monotonic() - start_time) * 1000
@@ -1026,7 +1041,7 @@ class TopologyTraverser:
 
     def _apply_in_dependency_order(
         self, pending, *, request, result,
-        imagined, imagined_via, imagined_variance,
+        imagined, imagined_via, imagined_spread,
         budget_left: int, edges_without_dynamics) -> int:
         """Apply every recorded transition with its source already resolved.
 
@@ -1098,7 +1113,7 @@ class TopologyTraverser:
                     node=source_node, cum_delay_at_source=cum_delay,
                     request=request, result=result,
                     imagined=imagined, imagined_via=imagined_via,
-                    imagined_variance=imagined_variance,
+                    imagined_spread=imagined_spread,
                     budget_left=budget_left,
                     edges_without_dynamics=edges_without_dynamics)
                 indegree[target_id] -= 1
@@ -1157,7 +1172,7 @@ class TopologyTraverser:
         result: TraversalResult,
         imagined: Dict[str, Dict[str, float]],
         imagined_via: Dict[str, Dict[str, str]],
-        imagined_variance: Dict[str, Dict[str, float]],
+        imagined_spread: Dict[str, Dict[str, Dict[Any, float]]],
         budget_left: int,
         edges_without_dynamics: Set[str],
     ) -> int:
@@ -1230,7 +1245,7 @@ class TopologyTraverser:
         # between one delay and two.
         elapsed = float(request.horizon_s) - float(cum_delay_at_source)
 
-        for transition in edge.transitions:
+        for position, transition in enumerate(edge.transitions):
             result.transitions_attempted += 1
             if transition.estimated:
                 # the pair is declared and the magnitude is not, so
@@ -1279,9 +1294,9 @@ class TopologyTraverser:
             # collector writes, produces a delta of exactly zero at every
             # step. Measured: a source carrying +/- 62.75 rpm reached the tank
             # as no interval at all instead of +/- 1.25 points.
-            source_variance = imagined_variance.get(source_id, {}).get(
-                transition.from_property, 0.0)
-            if delta_source == 0.0 and not source_variance:
+            source_spread = imagined_spread.get(source_id, {}).get(
+                transition.from_property, {})
+            if delta_source == 0.0 and not source_spread:
                 continue
 
             # the `already_final` refusal that sat here is gone.
@@ -1311,9 +1326,28 @@ class TopologyTraverser:
             # charged as many times as the source moved and the steady state
             # would drift to `g*(d1+d2) + 2c`. It belongs to the edge, so it
             # develops from the FIRST instant the source moved and the caller
-            # names the sources whose offsets it has already taken.
+            # names the couplings whose offsets it has already taken.
+            #
+            # KEYED BY THE COUPLING, NOT BY THE SOURCE PROPERTY.
+            # The first version of this key was `(source_id,
+            # from_property)`, which is the right granularity for the same
+            # coupling firing twice and the wrong one for TWO COUPLINGS
+            # LEAVING ONE PROPERTY. Both are walked in a single pass, so the
+            # first edge charged its offset and marked the property spent and
+            # the second read it as spent and charged nothing -- in that step
+            # and in every later one. Measured: a source moving 1.0 -> 2.0
+            # with `offset: 5.0` to one neighbour and `offset: 7.0` to
+            # another settled the second at 21.0 while `traverse`, which sets
+            # no `offsets_charged` at all, said 28.0.
+            #
+            # The relation type and the transition's POSITION on the edge are
+            # in the key because neither is implied by the endpoints: two
+            # rules can join one pair of entities, and nothing stops one rule
+            # declaring two transitions with the same `from:` and `to:`. Two
+            # of those are two couplings and carry two offsets.
             charged = getattr(self, "offsets_charged", None)
-            charge_key = (source_id, transition.from_property)
+            charge_key = (source_id, target_id, edge.relation_type, position,
+                          transition.from_property, transition.to_property)
             spent = charged is not None and charge_key in charged
             offset = 0.0 if spent else transition.offset
             if delta_source == 0.0:
@@ -1340,23 +1374,36 @@ class TopologyTraverser:
 
             # UNCERTAINTY PROPAGATED BESIDE THE VALUE, first order.
             # The contribution is `g * d * f`, so a declared spread on `g`
-            # scales it by `|d| * f`, and any spread already on `d` -- an
-            # upstream edge's -- scales by `g * f`. Independent declarations
-            # add in variance, which is the same superposition rule the value
-            # itself follows one line above.
+            # scales it by `d * f`, and any spread already on `d` -- an
+            # upstream edge's -- scales by `g * f`. That is the same
+            # superposition rule the value itself follows one line above.
             #
             # FIRST ORDER, and stamped as such: the product of two uncertain
             # gains along a chain is not Gaussian, and this is the delta
             # method, exact for one hop and an approximation beyond it. The
             # engine already tells a reader its response is first order; this
             # is the same statement about the spread.
-            contribution_variance = (
-                (transition.gain_sigma * abs(delta_source) * fraction) ** 2
-                + (transition.gain * fraction) ** 2 * source_variance)
-            if contribution_variance:
-                bucket = imagined_variance.setdefault(target_id, {})
-                bucket[transition.to_property] = bucket.get(
-                    transition.to_property, 0.0) + contribution_variance
+            #
+            # CARRIED SIGNED AND PER SOURCE. Squaring here and
+            # summing pooled the contributions, which is the rule for
+            # INDEPENDENT ones and silently applied it to a single declared
+            # number arriving twice: once per movement group in a rollout,
+            # and once per path in a walk where two routes meet again. The
+            # sign matters as much as the pooling -- a source moved out and
+            # back leaves its target where it started FOR ANY GAIN, so the
+            # contributions must be able to cancel. Squares are taken in
+            # `_finalise_simulation`, once, after everything has landed.
+            bucket = imagined_spread.setdefault(target_id, {}).setdefault(
+                transition.to_property, {})
+            if transition.gain_sigma:
+                own = ("gain",) + charge_key
+                bucket[own] = bucket.get(own, 0.0) + (
+                    transition.gain_sigma * delta_source * fraction)
+            carried = transition.gain * fraction
+            if carried:
+                for source_key, contribution in source_spread.items():
+                    bucket[source_key] = bucket.get(source_key, 0.0) + (
+                        carried * contribution)
             imagined_via.setdefault(target_id, {})[
                 transition.to_property] = transition.source
             result.transitions_applied.append(TransitionApplied(
@@ -1373,7 +1420,7 @@ class TopologyTraverser:
         self, result: TraversalResult, request: TraversalRequest,
         imagined: Dict[str, Dict[str, float]],
         imagined_via: Dict[str, Dict[str, str]],
-        imagined_variance: Dict[str, Dict[str, float]],
+        imagined_spread: Dict[str, Dict[str, Dict[Any, float]]],
         visited: Set[str], edges_without_dynamics: Set[str],
     ) -> None:
         """Turn the delta map into absolute values and stamp the assumptions.
@@ -1396,8 +1443,17 @@ class TopologyTraverser:
                 result.imagined_sources.setdefault(entity_id, {})[
                     prop_name] = imagined_via.get(entity_id, {}).get(
                         prop_name, "")
-                variance = imagined_variance.get(entity_id, {}).get(
-                    prop_name, 0.0)
+                # THE SQUARES ARE TAKEN HERE, once, over the
+                # per-source contributions the walk accumulated signed. A
+                # caller that has to combine several walks (the rollout does,
+                # one per movement instant) needs the contributions rather
+                # than this number, so both are reported.
+                contributions = imagined_spread.get(entity_id, {}).get(
+                    prop_name, {})
+                if contributions:
+                    result.imagined_spread.setdefault(entity_id, {})[
+                        prop_name] = dict(contributions)
+                variance = sum(c * c for c in contributions.values())
                 if variance > 0.0:
                     result.imagined_sigma.setdefault(entity_id, {})[
                         prop_name] = math.sqrt(variance)
@@ -1419,6 +1475,15 @@ class TopologyTraverser:
         if result.imagined_sigma:
             # Said out loud, because an interval is the thing a reader is most
             # likely to take as exact.
+            #
+            # `independent_declared_spreads` is now only what it
+            # says. It used to cover two different things at once: the
+            # genuine assumption that two authors' `gain_sigma:` lines are
+            # unrelated -- which this engine cannot check and a reader should
+            # know it is making -- and the arithmetic mistake of treating ONE
+            # declared number as independent of itself when it reached a
+            # property twice. The second is gone, so the stamp is a claim
+            # about the model rather than an excuse for the walk.
             result.assumptions.append("first_order_uncertainty")
             result.assumptions.append("independent_declared_spreads")
         if result.transitions_applied:

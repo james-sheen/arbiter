@@ -63,7 +63,6 @@ domain:
     Tank:
       - name: level_pct
         type: NUMERIC
-        role: percentage
         axioms: [BOUNDEDNESS, HOMEOSTASIS]
         warning: 85
         critical: 95

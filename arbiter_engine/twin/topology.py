@@ -552,6 +552,16 @@ class TraversalResult:
     #: printed 0.0 for both would be making the weaker one look like the
     #: stronger.
     imagined_sigma: Dict[str, Dict[str, float]] = field(default_factory=dict)
+    #: entity_id -> {property -> {uncertainty source -> that
+    #: source's SIGNED contribution to this property}}. `imagined_sigma` is
+    #: the root of the sum of the squares of one of these mappings; this is
+    #: the breakdown it was taken from. A caller combining several walks --
+    #: a rollout runs one per movement instant -- must add the contributions
+    #: of ONE source across them before squaring, because they are the same
+    #: declared number and not independent draws from it. The keys are opaque
+    #: and only ever compared for equality.
+    imagined_spread: Dict[str, Dict[str, Dict[Any, float]]] = field(
+        default_factory=dict)
     #: Engine-made assumptions the imagined values rest on.
     assumptions: List[str] = field(default_factory=list)
     transitions_attempted: int = 0

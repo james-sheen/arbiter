@@ -514,9 +514,9 @@ class DomainModel:
                 out.append(row)
 
         # READ WITH `getattr`, NOT AS ATTRIBUTES. A `DomainModel` can reach
-        # here carrying ONLY `indicators`: `test_unknown_value_cd1760` builds
-        # one with `__new__` and sets that single field, which is a fair
-        # fixture for a method whose indicator half is what it is exercising.
+        # here carrying ONLY `indicators`: a caller can build one with
+        # `__new__` and set that single field, which is a fair fixture for a
+        # method whose indicator half is what it is exercising.
         # Assuming the other three fields exist raised `AttributeError` on
         # thirty of its cases -- none of them in the engine lane, all of them
         # in the net.

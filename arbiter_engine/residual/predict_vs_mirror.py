@@ -107,6 +107,11 @@ class PredictionRecord:
     # callers have the entity in hand when they file, so the fact is free at
     # the one moment it is known and unrecoverable afterwards.
     entity_type: Optional[str] = None
+    #:. The couplings that drove this value, each `relation:from->to`.
+    #: A rollout supplies them; anything else filing a value leaves them
+    #: empty, and an empty tuple means UNATTRIBUTED rather than *belongs to
+    #: everyone* -- which is what a per-coupling confirm rate used to assume.
+    couplings: Tuple[str, ...] = ()
     # WHO ISSUED IT. Supplied by the caller on the same argument as
     # `entity_type` above: they know it when they file and nothing can recover
     # it afterwards.
@@ -323,6 +328,7 @@ class PredictionLedger:
         confidence: float = 0.5,
         traversal_id: Optional[str] = None,
         predicted_at: Optional[datetime] = None,
+        couplings: Tuple[str, ...] = (),
     ) -> str:
         """ (value-kind v1): file a value prediction — entity E's
         property P will read ~V (+/- tolerance) at horizon H. Tolerance is
@@ -341,6 +347,7 @@ class PredictionLedger:
             indicator=str(property_name),
             value=float(predicted_value),
             tolerance=float(tolerance),
+            couplings=tuple(couplings),
         )
         self._note_eviction()
         self._append(record)
@@ -747,6 +754,24 @@ class PredictionLedger:
             "falsified": len(falsified),
             "ungradeable": len(ungradeable),
             "confirm_rate": (len(confirmed) / len(graded)) if graded else None,
+            # HOW MANY EPISODES THOSE GRADED RECORDS CAME FROM.
+            #
+            # `confirm_rate` and `brier` read as one figure per trial, and a
+            # rollout files one record per step of ONE trajectory: twelve
+            # steps driven by one declared gain, confirmed or falsified
+            # together. Measured, 12 confirmed and 0 falsified against a
+            # mirror that never moved, and 0 and 12 against one that drifted.
+            # A reader given `1.0 over 12 records` reads twelve successes.
+            #
+            # This is an UPPER BOUND on independence and not a claim of it:
+            # two rollouts of one entity over overlapping horizons are two
+            # episodes and still correlated. What it rules out is the case
+            # that is purely an artefact of how the engine files -- one
+            # trajectory counted as many. `None` rather than 0 when nothing
+            # has been graded, on the same rule every other aggregate here
+            # follows: a zero would read as a measurement.
+            "episodes_n": (len({r.traversal_id for r in graded})
+                           if graded else None),
             "mean_predicted_probability": (
                 sum(r.probability for r in graded) / len(graded)) if graded else None,
             "brier": brier,

@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import itertools
 from dataclasses import dataclass, field
+from fractions import Fraction
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from ..types import Severity
@@ -77,6 +78,31 @@ class PlanCandidate:
     interval: Optional[Tuple[float, float]] = None
     findings: List[str] = field(default_factory=list)
     declines: List[str] = field(default_factory=list)
+    #:. The assumptions THIS candidate's number rests on. `score`
+    #: has always returned them per candidate; they were merged into the
+    #: plan-level list and the per-candidate fact dropped, so one plan
+    #: carrying both `deterministic_transitions` and
+    #: `declared_gain_spread_sampled` left a reader unable to say which row
+    #: was which -- and `interval` does not settle it, because `[0.0, 0.0]`
+    #: is what a deterministic candidate reports AND what a sampled one
+    #: reports when no sample cleared.
+    assumptions: List[str] = field(default_factory=list)
+    #:. How close the nearest threshold decision was, in units of the
+    #: value's OWN declared spread -- the closest any imagined value came to
+    #: a line it was judged against, divided by the spread the model declared
+    #: for it. `None` when nothing declared a spread that reached the
+    #: trajectory: a distance measured in units nobody declared is not a
+    #: measurement.
+    #:
+    #: WHY IT IS WORTH REPORTING. `expected_findings` is a step function of
+    #: the values it compares, so a candidate that settles a whisker below a
+    #: line scores as though it cleared it comfortably. Measured on the
+    #: shipped example: settling at 84.912 scored 14.333 and settling at
+    #: 85.012 scored 16.000 -- a tenth of a point moving the ranking by 12 %,
+    #: while the declared spread on that value at that step was 0.3988. This
+    #: number is what tells a reader which of those two they are looking at.
+    #: It changes no ranking.
+    margin_sigmas: Optional[float] = None
     checked: Dict[str, Any] = field(default_factory=dict)
     rollouts: int = 0
 
@@ -190,8 +216,41 @@ def score(candidate: PlanCandidate, objective: str, min_severity: str,
     """The objective value for one rolled-forward candidate."""
     assumptions: List[str] = []
     if objective == "expected_findings":
-        return (sum(severity_weight(getattr(f, "severity", None))
-                    for f in findings), None, assumptions)
+        # SUMMED EXACTLY, then rounded once.
+        #
+        # `severity_weight` is `1.0 / priority_score`, so this is a sum of
+        # reciprocals of small integers -- and 1/3 and 1/5 have no binary
+        # representation, so adding them as floats made the total depend on
+        # how many findings of which severity arrived in what order. Two
+        # consequences, and the second changes an answer:
+        #
+        #   - the reported number was wrong in its last bits, on this
+        #     package's own published example: 24 findings of priorities 1
+        #     and 3, exact cost 16, reported `16.000000000000004`;
+        #   - TWO PLANS THAT COST THE SAME STOPPED COMPARING EQUAL. The sort
+        #     below is `(objective, len(actions))` and its comment says fewer
+        #     actions wins an EXACT tie, so a tie lost to rounding is not a
+        #     tie: `[2,3,3,3,5,5,5,5]` and `[1,2,5,5,5,5]` are both 23/10 and
+        #     came out `2.3` and `2.3000000000000003`, handing the win to the
+        #     plan with two more actions in it.
+        #
+        # NO TOLERANCE, deliberately. Comparing within an epsilon would be
+        # the engine deciding how close two costs must be before it calls
+        # them equal, which is a domain question nobody declared. The exact
+        # rational total needs no such decision: equal costs become equal
+        # floats by construction, and the value reported is the same `float`
+        # as before, correctly rounded.
+        total = Fraction(0)
+        for finding in findings:
+            priority = getattr(
+                getattr(finding, "severity", None), "priority_score", None)
+            if not isinstance(priority, (int, float)) or priority <= 0:
+                # The same refusal `severity_weight` makes, and for the same
+                # reason: a finding with no place on the scale contributes
+                # nothing rather than a guessed cost.
+                continue
+            total += Fraction(1) / Fraction(priority)
+        return (float(total), None, assumptions)
 
     # clearance_probability: did the horizon stay clear of `min_severity`?
     from .monte_carlo_predictor import (MonteCarloPredictionRequest,
@@ -245,6 +304,40 @@ def score(candidate: PlanCandidate, objective: str, min_severity: str,
         return None, None, assumptions
     return (outcome.estimated_probability,
             outcome.confidence_interval_95, assumptions)
+
+
+def _closest_call(envelope: Any) -> Optional[float]:
+    """The nearest a value came to a line it was judged against, in units of
+    its own declared spread.
+
+    NOT `_worst_margin`, which answers the neighbouring question and was the
+    first thing tried here. That one minimises the SIGNED distance, so it
+    finds the deepest breach over the horizon -- the binding constraint for
+    `clearance_probability`, and the opposite end of the range from what this
+    needs. Reusing it reported a knife-edge candidate as sitting 27.6 spreads
+    clear of its warning line when the settled value was 0.22 spreads under
+    it.
+
+    This minimises the ABSOLUTE distance instead: how close did the decision
+    that produced this objective actually come. `None` when nothing declared
+    a spread that reached the trajectory.
+    """
+    if envelope is None or not getattr(envelope, "has_declared_spread", False):
+        return None
+    closest: Optional[float] = None
+    for step in getattr(envelope, "steps", []) or []:
+        for entity_id, spreads in (getattr(step, "sigma", {}) or {}).items():
+            for prop, spread in spreads.items():
+                if spread <= 0.0:
+                    continue
+                value = (step.values.get(entity_id, {}) or {}).get(prop)
+                if value is None:
+                    continue
+                for limit, _upper in _bounds_for(envelope, entity_id, prop):
+                    sigmas = abs(float(limit) - float(value)) / float(spread)
+                    if closest is None or sigmas < closest:
+                        closest = sigmas
+    return closest
 
 
 def _worst_margin(envelope: Any, findings: Sequence[Any],
@@ -425,12 +518,30 @@ def search(session: Any, topology: Any, *,
         # however many axioms ran over it -- and made the denominator move
         # with the numerator it is supposed to give meaning to.
         result.invariants += envelope.invariants
-        if result.objective:
+        # DID ANY OF THIS PLAN'S ACTIONS ACTUALLY HAPPEN.
+        #
+        # A candidate whose actions were all refused ran the do-nothing
+        # trajectory, so scoring it reported do_nothing's cost under a label
+        # naming two actions: measured on the shipped example at `max_depth:
+        # 2`, three candidates came back with `transitions_applied: 0` and
+        # `objective: 16.0`, tying with the row that really did nothing.
+        # Naming the refusal in `declines` made that attributable, which is
+        # not the same as making it true -- the number still claimed a
+        # measurement of a plan nobody simulated.
+        #
+        # `do_nothing` is the one candidate for which an empty set is the
+        # whole point rather than a failure, so it is asked about its actions
+        # rather than its results.
+        anything_ran = any(step.actions_applied for step in envelope.steps)
+        if result.objective and (not actions or anything_ran):
             value, interval, stamps = score(
                 candidate, result.objective, result.min_severity,
                 findings, monte_carlo_samples, seed, envelope)
             candidate.objective = value
             candidate.interval = interval
+            candidate.assumptions = list(stamps)
+            # and HOW CLOSE the call was.
+            candidate.margin_sigmas = _closest_call(envelope)
             for stamp in stamps:
                 if stamp not in result.assumptions:
                     result.assumptions.append(stamp)
@@ -482,6 +593,13 @@ def search(session: Any, topology: Any, *,
 
     if result.ranked or result.objective:
         result.assumptions.append("ties_break_toward_fewer_actions")
+    if result.objective == "expected_findings":
+        # SAID ON THE ENVELOPE, not only in the guide. The figure
+        # is the weighted finding count of the MEDIAN trajectory; it is not
+        # an average over the declared spread, and the name invites the
+        # other reading. Stamped for this objective alone, because
+        # `clearance_probability` genuinely does sample.
+        result.assumptions.append("objective_evaluated_at_median")
 
     if result.plans_untested:
         result.declines.append(SimulationDecline(

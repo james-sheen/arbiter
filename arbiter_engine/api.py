@@ -768,7 +768,7 @@ def _proposed_transitions(session: EngineSession) -> Dict[str, Any]:
 
 
 def _projection_record(session: EngineSession, target_type: str,
-                       to_property: str) -> Dict[str, Any]:
+                       to_property: str, coupling: str) -> Dict[str, Any]:
     """How the projections THIS coupling drove have actually fared.
 
     THE LOOP RAN ONE WAY. Rollouts file value predictions and
@@ -790,7 +790,8 @@ def _projection_record(session: EngineSession, target_type: str,
     """
     ledger = getattr(session, "ledger", None)
     empty = {"graded": 0, "confirmed": 0, "falsified": 0,
-             "confirm_rate": None, "pending": 0}
+             "confirm_rate": None, "episodes": None, "pending": 0,
+             "unattributed": 0}
     if ledger is None or not to_property:
         return empty
     # Records are per ENTITY; a coupling is declared per TYPE. Resolve the
@@ -804,13 +805,29 @@ def _projection_record(session: EngineSession, target_type: str,
     }
     if not of_type:
         return empty
-    confirmed = falsified = pending = 0
+    confirmed = falsified = pending = unattributed = 0
+    episodes = set()
     for record in getattr(ledger, "_records", []) or []:
         if getattr(record, "kind", "") != "value":
             continue
         if getattr(record, "entity_id", "") not in of_type:
             continue
         if str(getattr(record, "indicator", "") or "") != str(to_property):
+            continue
+        # ONLY THE RECORDS THIS COUPLING ACTUALLY DROVE. Matching
+        # on the target type and property alone made two rules into one
+        # property each claim every record: measured, four records produced
+        # eight attributions and neither coupling could say whether it was
+        # responsible. A value driven by BOTH does belong to both, which is
+        # why this is a membership test rather than an equality one.
+        drove = tuple(getattr(record, "couplings", ()) or ())
+        if not drove:
+            # UNATTRIBUTED, and counted rather than claimed or dropped. The
+            # same shape `entity_type_unattributed_n` uses in the ledger: a
+            # rate over an unstated subset is worse than no rate.
+            unattributed += 1
+            continue
+        if coupling not in drove:
             continue
         verdict = getattr(record, "verdict", None)
         if verdict == "confirmed":
@@ -819,13 +836,22 @@ def _projection_record(session: EngineSession, target_type: str,
             falsified += 1
         elif verdict is None:
             pending += 1
+            continue
+        episodes.add(getattr(record, "traversal_id", None))
     graded = confirmed + falsified
     return {
         "graded": graded,
         "confirmed": confirmed,
         "falsified": falsified,
         "confirm_rate": (confirmed / graded) if graded else None,
+        # HOW MANY TRAJECTORIES those records came from. A rollout
+        # files one per step, so twelve steps of one trajectory confirmed or
+        # falsified together and `0 of 12` read as twelve contradictions of a
+        # datasheet number. `None` not 0 when nothing is graded, on the rule
+        # every other aggregate here follows.
+        "episodes": (len(episodes) if graded else None),
         "pending": pending,
+        "unattributed": unattributed,
     }
 
 
@@ -875,14 +901,27 @@ def _transition_coverage(model, session: Optional[EngineSession] = None
             if session is not None:
                 record = _projection_record(
                     session, rule.get('target_type', ''),
-                    transition.to_property)
+                    transition.to_property,
+                    f"{rule.get('type', '')}:{transition.from_property}"
+                    f"->{transition.to_property}")
                 entry["projections"] = record
                 if record["graded"] and record["confirm_rate"] is not None \
                         and record["confirm_rate"] < 0.5:
+                    # THE REMEDY SAYS WHAT IT RESTS ON. It invites
+                    # an author to doubt a number off a datasheet, and `0 of
+                    # 12` read as twelve contradictions when it was one
+                    # trajectory sampled twelve times. The TRIGGER is
+                    # unchanged on purpose: deciding how much evidence is
+                    # enough before doubting a declaration is a domain
+                    # question, so the engine reports the evidence and the
+                    # author weighs it.
+                    episodes = record["episodes"] or 0
                     entry["remedy"] = (
                         f"{record['confirmed']} of {record['graded']} "
-                        f"projections this coupling drove were confirmed. "
-                        f"Nothing has been changed: the gain may be wrong, "
+                        f"projections this coupling drove were confirmed, "
+                        f"from {episodes} "
+                        f"{'trajectory' if episodes == 1 else 'trajectories'}"
+                        f". Nothing has been changed: the gain may be wrong, "
                         f"the declared spread may be too narrow, or the "
                         f"coupling may not hold in the regime these readings "
                         f"came from.")
@@ -1800,6 +1839,8 @@ def plan(session: EngineSession,
             "interval": list(c.interval) if c.interval else None,
             "findings": list(c.findings),
             "declines": list(c.declines),
+            "assumptions": list(c.assumptions),
+            "margin_sigmas": c.margin_sigmas,
             "checked": dict(c.checked),
         }
         for c in result.candidates

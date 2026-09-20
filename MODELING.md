@@ -515,9 +515,18 @@ indicator's `window:` are used.
 forecast can assume and still be one. `q` is the variance the level gains per SECOND and `r` is the
 variance of a single reading; declare both from a datasheet, or omit both and they are estimated
 from the series, in which case the forecast says so by carrying `source: estimated_parameters`
-rather than `declared_model`. `trend` fits a straight line and extrapolates it. It is available by
-name and is deliberately not the default: extrapolating a fitted line states a direction for a
-series that may have none.
+rather than `declared_model`. `trend` fits a straight line and carries its SLOPE AS PROCESS NOISE.
+It is available by name and is deliberately not the default: extrapolating a fitted line states a
+direction for a series that may have none.
+
+**`trend` widens; it does not point.** An earlier draft of this paragraph described the model as
+extrapolating its fitted line, which is what the name suggests and not what the model does. The fitted line supplies the level
+AT THE LAST SAMPLE, and the slope becomes the variance the level gains per second — so the median of
+a `trend` forecast is FLAT across every horizon, and a steeper fitted slope makes the band wider
+rather than the forecast higher. That is the demotion in the paragraph above, carried through to the
+arithmetic: a series that has been climbing is reported as more uncertain, not as certain to keep
+climbing. An author who wants a declared direction declares a coupling with a `gain:`, which is a
+statement about cause that somebody signed for, rather than asking a curve fit to supply one.
 
 **A forecast that does not fit is refused, not delivered.** The filter tests its own innovations
 against what the declared model predicts, and parameters that do not describe the series are
@@ -767,6 +776,18 @@ declared spread reports NO interval, rather than an interval of zero width --
 a value nobody measured the spread of and a value known to be exact are
 different claims, and the second is much the stronger.
 
+**One declared spread is one uncertainty, however many ways it reaches a value.** The rule is worth
+stating because both halves of it are load-bearing. Contributions that come from the SAME declared
+number add LINEARLY and with their signs: one coupling walked at two movement instants because its
+source was acted on twice, or one spread arriving at a target by two different paths through the
+graph. Contributions from DIFFERENT declarations add in quadrature, which is what the
+`independent_declared_spreads` stamp on the envelope has always meant. Two pumps feeding one tank
+under the same rule are two couplings and two gains -- the datasheet's tolerance describes a
+population, and each pump is its own draw from it -- so their spreads combine in quadrature. The
+same pump throttled twice is one gain, so its contributions add. The signs matter as much as the
+pooling: move a source out and back and its target ends where it started FOR ANY GAIN, so the
+gain's spread cannot reach it and the reported interval is correctly nothing at all.
+
 **`gain_sigma: estimate` asks for one instead of stating it.** It says a
 spread exists and that you have not measured it, which is a third thing again
 from declaring a number and from declaring nothing at all. `model_describe`
@@ -887,6 +908,25 @@ action_templates:
         entity_property: speed_rpm
         candidates: [1000, 2000, 3000]   # what a planner may try
 ```
+
+**`expected_findings` is the MEDIAN trajectory's count, and the name invites the other
+reading.** It sums a cost per finding the rollout produced — `1.0 / priority_score`, so critical
+costs 1 and info 1/5 — over the single trajectory the engine simulated. It is not an average over
+the declared spread. That matters because a finding is a comparison against a declared line, so the
+objective is a STEP FUNCTION of values the engine often knows only to within a `gain_sigma:`.
+Measured on the example above, throttling a tank to settle at 84.912 against a `warning: 85` scores
+14.333, and settling at 85.012 scores 16.000 — a tenth of a point moving the ranking by 12 %, while
+the declared spread on that value at that step is 0.3988, four times the gap that flipped it.
+
+So a ranked plan stamps `objective_evaluated_at_median` on the envelope, and every candidate carries
+`margin_sigmas`: how close the nearest decision came, measured as the smallest distance from an
+imagined value to a line it was judged against, in units of that value's own declared spread. A
+candidate scoring 14.333 with `margin_sigmas: 0.027` and one scoring 16.000 are not two findings
+apart; they are one coin flip apart, and the engine now says which it is. It is a MEASUREMENT and
+changes no ranking — `None` when nothing declared a spread that reached the trajectory, because a
+distance in units nobody declared is not a measurement. Rank on `clearance_probability` instead when
+the question is *how likely is this to stay clear*: that one samples the declared spread and returns
+an interval.
 
 **Without `planning.objective` every candidate is still evaluated and none is
 ranked.** The rollouts run, each candidate reports what it does, and the
