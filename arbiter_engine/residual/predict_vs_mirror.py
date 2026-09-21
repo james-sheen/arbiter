@@ -49,6 +49,10 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from ..clock import as_naive_utc, now_utc
+# the id the yardstick is filed under, read from the module that
+# owns it rather than re-spelled here. Two spellings of one literal is how
+# the exclusion below would silently stop excluding anything.
+from ..projection.projector import BASELINE_MODEL_ID
 
 from typing import Any, Deque, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
@@ -325,6 +329,87 @@ def _score_quantiles(quantiles: Dict[str, float], observed: float,
         "interval": [lo, hi],
         "model_id": model_id,
     }
+
+
+def _target_key(record: 'PredictionRecord') -> str:
+    """``entity · property · horizon`` — the triple two forecasters share.
+
+    The strata either calibration leg already carried describe the
+    FORECASTER (`by_model`, `by_coupling`) or a class of thing (`by_entity_type`).
+    Neither names the series, so two populations forecasting the same series
+    had no key in common. This one is deliberately built from the three
+    fields both record kinds are required to carry, so it cannot be present
+    on one side and absent on the other.
+    """
+    return (f"{record.entity_id}·{record.indicator or ''}"
+            f"·{record.horizon_s:g}s")
+
+
+#:. The shape of `baseline` before anything has been raced. Every
+#: figure `None` rather than zero, on the rule the rest of this ledger
+#: follows: a zero loss reads as a perfect forecast for a model that has
+#: never been graded.
+_EMPTY_RACE: Dict[str, Any] = {
+    "n": 0, "pinball": None, "crps_approx": None, "coverage_90": None,
+    "compared_n": 0, "beats_baseline": None,
+}
+
+
+def _race(scored: List['PredictionRecord'],
+          reference: List['PredictionRecord']) -> Dict[str, Any]:
+    """Score the yardstick, and say whether the engine's own forecasts beat it.
+
+    **The verdict is computed over the MATCHED targets only.** A
+    mean over every baseline row against a mean over every own row would be
+    two numbers that happen to sit in one table -- the phrase `ingest.py`
+    uses for exactly this mistake -- because the two populations need not
+    cover the same series, and a baseline filed for a pair the engine did not
+    project would move the comparison without anything having been raced.
+    So the intersection of `_target_key` is taken first, and `compared_n`
+    says how many targets it held.
+
+    `beats_baseline` is `None`, never `False`, when nothing was comparable.
+    The difference is the one this whole engine exists to keep: *it lost* and
+    *no race was run* are not the same report.
+
+    CRPS is the instrument rather than coverage, for the reason that an internal ruling
+    recorded: a hit rate rewards declaring a wider interval, and the point of
+    racing a random walk is to catch a forecast that is well calibrated and
+    carries no information.
+    """
+    if not reference:
+        return dict(_EMPTY_RACE)
+
+    def _mean_crps(records: List['PredictionRecord']) -> float:
+        return sum(r.scores["crps_approx"] for r in records) / len(records)
+
+    n = len(reference)
+    summary: Dict[str, Any] = {
+        "n": n,
+        "pinball": round(
+            sum(r.scores["pinball_mean"] for r in reference) / n, 9),
+        "crps_approx": round(_mean_crps(reference), 9),
+        "coverage_90": round(
+            sum(1 for r in reference if r.scores["covered_90"]) / n, 6),
+    }
+
+    own_by_target: Dict[str, List['PredictionRecord']] = {}
+    for record in scored:
+        own_by_target.setdefault(_target_key(record), []).append(record)
+    ref_by_target: Dict[str, List['PredictionRecord']] = {}
+    for record in reference:
+        ref_by_target.setdefault(_target_key(record), []).append(record)
+
+    shared = sorted(set(own_by_target) & set(ref_by_target))
+    summary["compared_n"] = len(shared)
+    if not shared:
+        summary["beats_baseline"] = None
+        return summary
+
+    mine = [r for key in shared for r in own_by_target[key]]
+    theirs = [r for key in shared for r in ref_by_target[key]]
+    summary["beats_baseline"] = _mean_crps(mine) < _mean_crps(theirs)
+    return summary
 
 
 class PredictionLedger:
@@ -978,13 +1063,24 @@ class PredictionLedger:
         Every rate carries its denominator and every one is `None` rather than
         zero before anything is scored, on the rule the whole ledger follows.
         """
-        scored = [r for r in self._records
+        graded = [r for r in self._records
                   if r.kind == "value" and r.scores is not None]
+        # THE YARDSTICK IS NOT ONE OF THE RUNNERS. A rollout now
+        # files a random walk beside each of its own projections, and those
+        # rows are `kind == "value"` like everything else here. Pouring them
+        # into this aggregate would average the engine's score together with
+        # the score it is being measured against, which moves the headline
+        # figure toward the baseline by however many companions happened to
+        # be filed -- a defect strictly worse than the gap it was added to
+        # close. They are split out here and reported under `baseline`.
+        scored = [r for r in graded if r.model_id != BASELINE_MODEL_ID]
+        reference = [r for r in graded if r.model_id == BASELINE_MODEL_ID]
         if not scored:
             return {"n": 0, "pinball": None, "crps_approx": None,
                     "coverage_90": None, "expected_coverage_90": 0.9,
-                    "by_coupling": {}, "by_horizon": {},
-                    "unattributed_n": 0}
+                    "by_coupling": {}, "by_horizon": {}, "by_target": {},
+                    "unattributed_n": 0,
+                    "baseline": _EMPTY_RACE}
 
         def _aggregate(records: List[PredictionRecord]) -> Dict[str, Any]:
             n = len(records)
@@ -1018,6 +1114,10 @@ class PredictionLedger:
         for record in scored:
             by_horizon.setdefault(str(record.horizon_s), []).append(record)
 
+        by_target: Dict[str, List[PredictionRecord]] = {}
+        for record in scored:
+            by_target.setdefault(_target_key(record), []).append(record)
+
         return {
             **_aggregate(scored),
             # WHAT THE COVERAGE SHOULD BE. `_REQUIRED_LEVELS` is the central
@@ -1028,7 +1128,26 @@ class PredictionLedger:
             "expected_coverage_90": 0.9,
             "by_coupling": {k: _aggregate(v) for k, v in by_coupling.items()},
             "by_horizon": {k: _aggregate(v) for k, v in by_horizon.items()},
+            # THE ONE STRATUM BOTH TABLES CARRY, and the reason it
+            # exists. This leg and `_distribution_calibration` are kept apart
+            # on purpose and that argument stands; but the two populations
+            # forecast the SAME `(entity, property, horizon)` triples, and
+            # before this key there was no axis on which *did my declared
+            # coupling beat the learned producer on THIS series* could be
+            # asked. `by_horizon` was the only shared one and it resolves
+            # neither entity nor property, so it answers the question for
+            # nobody in particular. Keeping the tables separate and giving
+            # them a join key are not in conflict.
+            "by_target": {k: _aggregate(v) for k, v in by_target.items()},
             "unattributed_n": unattributed,
+            # WHAT THESE FORECASTS WERE RACED AGAINST. Every other
+            # forecaster this ledger holds is compared with a parameter-free
+            # random walk, and until now the engine's own projections were
+            # the one population with no yardstick: a `gain_sigma:` wide
+            # enough covers its interval whatever the declared `gain:` does,
+            # so a coupling could be calibrated and carry no information at
+            # all. That is the sentence `RandomWalk`'s own docstring uses.
+            "baseline": _race(scored, reference),
         }
 
     def _distribution_calibration(self) -> Dict[str, Any]:
@@ -1064,6 +1183,7 @@ class PredictionLedger:
                 "crps_approx": None, "crps_approx_n": 0,
                 "coverage_90": None, "coverage_90_n": 0,
                 "by_model": {}, "by_horizon": {}, "by_entity_type": {},
+                "by_target": {},
                 "entity_type_unattributed_n": 0,
             }
 
@@ -1092,6 +1212,9 @@ class PredictionLedger:
                 by_entity_type.setdefault(str(record.entity_type), []).append(record)
             else:
                 unattributed += 1
+        by_target: Dict[str, List[PredictionRecord]] = {}
+        for record in scored:
+            by_target.setdefault(_target_key(record), []).append(record)
 
         overall = _aggregate(scored)
         return {
@@ -1105,6 +1228,10 @@ class PredictionLedger:
             "by_horizon": {k: _aggregate(v) for k, v in by_horizon.items()},
             "by_entity_type": {k: _aggregate(v)
                                for k, v in by_entity_type.items()},
+            # the join key, in the same spelling the engine's own
+            # leg uses. See `_own_projection_calibration` for why it exists;
+            # it is present on BOTH tables or it answers nothing.
+            "by_target": {k: _aggregate(v) for k, v in by_target.items()},
             # NOT folded into the stratum as a bucket. A key named for the
             # absence would collide the first time somebody declares an entity
             # type with that name, and the count belongs beside the figure it

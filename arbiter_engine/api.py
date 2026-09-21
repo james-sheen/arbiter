@@ -1830,6 +1830,16 @@ def rollout(session: EngineSession,
     simulation["checked"]["values_without_tolerance"] = (
         result.values_without_tolerance)
     simulation["checked"]["values_driven"] = result.values_driven
+    if file_predictions:
+        # WHICH ONES GOT A YARDSTICK, in the same shape and the
+        # same closed vocabulary `ingest_forecasts` reports for a producer.
+        # Emitted whenever filing was ASKED FOR, including when the answer is
+        # an empty list: a rollout that filed nothing and a rollout whose
+        # projections were all raced must not read alike, and the count that
+        # separates them is `checked.predictions_filed` beside this leg.
+        simulation["raced"] = list(result.raced)
+        simulation["checked"]["baselines_filed"] = sum(
+            1 for row in result.raced if row.get("baseline") == "filed")
     if file_predictions and getattr(session, "ledger", None) is not None:
         # The figure the loop exists to produce, read off the ledger rather
         # than recomputed here. It covers every record the ledger holds, not
@@ -1867,7 +1877,9 @@ def plan(session: EngineSession,
          candidates: Optional[Sequence[Any]] = None,
          horizon_s: float = 1800.0,
          step_s: float = 60.0,
-         max_transitions: int = 100_000) -> Envelope:
+         max_transitions: int = 100_000,
+         seed_mode: str = "current",
+         file_predictions: bool = False) -> Envelope:
     """Rank candidate actions by rolling each one forward — if told how.
 
     `rollout` answers *what happens if I do this*; this answers
@@ -1903,15 +1915,49 @@ def plan(session: EngineSession,
     if not session.entities:
         return unavailable_envelope("no entities supplied")
 
+    # VALIDATED HERE TOO, in the same words `rollout` uses. The
+    # argument reaches every candidate's rollout, so an unsupported value
+    # would otherwise be folded five times inside the search and reported as
+    # five identical per-candidate faults instead of one malformed request.
+    seed = _fold(seed_mode, ("current", "projected"))
+    if seed is None:
+        return unavailable_envelope(
+            f"seed_mode {seed_mode!r} is not supported; this build accepts "
+            f"current, projected.")
+
     try:
         topology = _build_topology(session)
         if topology is None:
             return unavailable_envelope(
                 "no topology available: supply entities before planning")
+
+        # THE SEED HAS TO BE FITTED BEFORE THE WALK, and this is
+        # the step `rollout` does and this verb did not. Without it every
+        # candidate declined `insufficient_samples` and completed zero steps
+        # -- a shortage reported for a projection nobody had fitted, which is
+        # the wrong refusal for the right reason. Measured: the same model
+        # and the same inputs gave `steps_requested: 6` through `rollout` and
+        # `0` through `plan`.
+        #
+        # ONCE, and shared by every candidate. Fitting per candidate would
+        # re-read the history five times and let two rows start from two
+        # different seeds, which is the comparability the whole ranking rests
+        # on.
+        if seed == "projected":
+            from arbiter_engine.twin.traverser import (
+                TopologyTraverser,
+            )
+            projector = TopologyTraverser(
+                topology, observation_history=_history_for(session))
+            projector.project_values(horizon_s=horizon_s, model=session.model)
+            topology._last_projector = projector
+
         result = _planner.search(
             session, topology, candidates=list(candidates or ()),
             horizon_s=horizon_s, step_s=step_s,
-            max_transitions=max_transitions)
+            max_transitions=max_transitions,
+            seed_mode=seed,
+            file_predictions=file_predictions)
     except Exception as exc:  # noqa: BLE001 - see `_raised`
         sub = _raised("simulation", exc,
                       {"rollouts_run": 0, "candidates_evaluated": 0})
@@ -1948,6 +1994,13 @@ def plan(session: EngineSession,
             "ranked": int(bool(result.ranked)),
             "couplings_declared": couplings_declared,
             "couplings_instantiated": couplings_instantiated,
+            # the no-action row's filing, and the count of rows
+            # that are counterfactuals by design. Reported whether or not
+            # filing was asked for, so `0` means *nothing was filed* and not
+            # *this verb cannot file*.
+            "predictions_filed": result.predictions_filed,
+            "values_without_tolerance": result.values_without_tolerance,
+            "counterfactuals_not_filed": result.counterfactuals_not_filed,
         },
         findings=[],
         not_checked=declines,
@@ -1987,6 +2040,15 @@ def plan(session: EngineSession,
     ]
     if best is not None:
         plan_payload["best"] = best.label
+    if file_predictions:
+        # the same two legs a rollout carries when it files, in the
+        # same spelling. A caller comparing the plan's no-action trajectory
+        # with a rollout of the same model should not need two readers.
+        plan_payload["raced"] = list(result.raced)
+        plan_payload["checked"]["baselines_filed"] = sum(
+            1 for row in result.raced if row.get("baseline") == "filed")
+        if getattr(session, "ledger", None) is not None:
+            plan_payload["calibration"] = session.ledger.calibration()
     payload["plan"] = plan_payload
     return _WithPayload(envelope, payload)
 
@@ -2187,8 +2249,9 @@ def project(session: EngineSession, horizon_s: float = 3600.0) -> Envelope:
     if not session.entities:
         return unavailable_envelope("no entities supplied")
 
+    raced: List[Dict[str, Any]] = []
     try:
-        sub = run_projection(session, horizon_s)
+        sub = run_projection(session, horizon_s, raced)
     except Exception as exc:  # noqa: BLE001 - see `_raised`
         sub = _raised("projection", exc,
                       {"entities": len(session.entities), "projected": 0})
@@ -2199,6 +2262,11 @@ def project(session: EngineSession, horizon_s: float = 3600.0) -> Envelope:
     )
     payload = envelope.to_dict()
     payload["projection"] = sub.to_dict()
+    # in the same spelling and the same closed vocabulary the
+    # simulation leg and `ingest_forecasts` use. Three surfaces file
+    # forecasts; a reader branching on whether one was raced should need one
+    # vocabulary, not three.
+    payload["projection"]["raced"] = raced
     return _WithPayload(envelope, payload)
 
 

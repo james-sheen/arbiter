@@ -35,8 +35,10 @@ from datetime import timedelta
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 from ..fire_frequency import counting_aside
-from ..projection.projector import SOURCE_ENGINE
+from ..projection.projector import (BASELINE_MODEL_ID, PROJECTORS,
+                                    RandomWalk, SOURCE_ENGINE)
 from ..residual.predict_vs_mirror import normal_quantiles
+from ..subenvelope import Decline
 from .actions import (ActionInstance, ActionRefused, ActionTemplate,
                       deltas_for, load_templates, resolve)
 from .topology import (SimulationDecline, TraversalDirection,
@@ -119,6 +121,13 @@ class RolloutResult:
     #: counts as right.
     predictions_filed: int = 0
     values_without_tolerance: int = 0
+    #:. One row per filed prediction saying whether a random walk was
+    #: fitted beside it and, when it was not, WHICH of the reasons applied --
+    #: the same vocabulary `ingest_forecasts` reports for a producer. A bare
+    #: count would leave *this projection did not beat a random walk* and
+    #: *nothing ran a random walk* reading identically, which is the pair
+    #: this engine exists to keep apart.
+    raced: List[Dict[str, Any]] = field(default_factory=list)
     #:. Values this rollout did not predict because it was TOLD them:
     #: a projected seed (whose forecast `project` files itself) and anything
     #: an action set. Counted rather than skipped so the three numbers
@@ -352,6 +361,13 @@ def run(session: Any, topology: Any, *,
     #: impact record, and what a calibration needs in order to say whether
     #: `confirm_rate: 1.0` came from twelve trials or from one.
     episode_id = str(uuid.uuid4())
+
+    # One random-walk fit per `(entity, property)` for the whole
+    # walk, reused across every step. The fit depends only on the readings
+    # held at `predicted_at`, which do not change as the walk advances; only
+    # the horizon does. Refitting per step would read the same series twelve
+    # times and, worse, invite the series to differ between steps.
+    baseline_fits: Dict[Tuple[str, str], Any] = {}
 
     # The imagined state, as absolute values per entity. Seeded from the
     # present, or from the projections if the caller asked for them.
@@ -1133,7 +1149,7 @@ def run(session: Any, topology: Any, *,
         #    reporting nothing missing, because there was nothing to miss.
         if filing:
             _file_step(session, result, step, at_s, movements,
-                       episode_id, now)
+                       episode_id, now, baseline_fits)
 
     if filing and result.values_without_tolerance:
         # ONE decline carrying the count, which is the rule every other
@@ -1262,7 +1278,8 @@ def _assume(result: 'RolloutResult', assumption: str) -> None:
 def _file_step(session: Any, result: 'RolloutResult',
                step: 'RolloutStep', at_s: float,
                driven: Dict[Tuple[str, str], Dict[float, float]],
-               episode_id: str, predicted_at: Any) -> None:
+               episode_id: str, predicted_at: Any,
+               fits: Optional[Dict[Tuple[str, str], Any]] = None) -> None:
     """File one imagined instant as a falsifiable value prediction.
 
     TOLERANCE IS NOT INVENTED HERE. `PredictionLedger.record_value_prediction`
@@ -1351,6 +1368,114 @@ def _file_step(session: Any, result: 'RolloutResult',
                 result.predictions_filed += 1
             except Exception:  # noqa: BLE001 - a ledger refusal is not a crash
                 result.values_without_tolerance += 1
+                continue
+            # AND FILE THE YARDSTICK BESIDE IT. Inside the same
+            # loop rather than a pass afterwards, so a projection and its
+            # reference cannot come to disagree about which horizon and
+            # instant they are about: both read the same locals.
+            result.raced.append({
+                "entity_id": entity_id,
+                "indicator": prop,
+                "horizon_s": float(at_s),
+                "model_id": _SELF_MODEL_ID,
+                "baseline": _file_rollout_baseline(
+                    session, entity_id, prop, float(at_s), predicted_at,
+                    episode_id, fits if fits is not None else {}),
+            })
+
+
+def _file_rollout_baseline(session: Any, entity_id: str, prop: str,
+                           horizon_s: float, predicted_at: Any,
+                           episode_id: str,
+                           fits: Dict[Tuple[str, str], Any]) -> str:
+    """Fit a random walk beside one filed projection. Returns the `raced` reason.
+
+    **The engine's own rollout was the one forecaster in this ledger
+    with nothing to beat.** `ingest_forecasts` files a yardstick beside every
+    producer record and `project` files one beside its own; a rollout filed
+    six projections and no reference, so `own_projections` reported a
+    calibration that could not distinguish a declared `gain:` carrying real
+    information from one whose `gain_sigma:` was merely generous. That is the
+    failure `RandomWalk`'s docstring names: *a forecaster can be beautifully
+    calibrated and still carry no information at all.*
+
+    WHY THIS IS A THIRD FILER AND NOT A CALL INTO `ingest._file_baseline`.
+    That one files a DISTRIBUTION record, graded by `_grade_distribution_record`
+    against its own maturity and matching rules. A rollout's projections are
+    VALUE records. Racing across the two kinds would compare a figure graded
+    one way with a figure graded another and call the difference skill. The
+    reason vocabulary is deliberately the SAME closed set, so a reader
+    branching on `raced[].baseline` needs one vocabulary and not two.
+
+    THE NULL IS *THIS VALUE DID NOT MOVE*, fitted on the driven property's own
+    readings as of the instant the rollout was run for -- so the reference sees
+    what the engine could have seen and not one reading more. A declared
+    coupling that cannot beat it is not earning its declaration, which is the
+    question `transition_learner` answers only where there is enough history
+    for an OLS fit.
+
+    NOTHING RAISES. A rollout must not fail because a reference could not be
+    fitted; the reason is reported and the walk continues.
+    """
+    from ..clock import as_of
+    from ..forecast.ingest import _indicator_for, _reading_history
+
+    ledger = getattr(session, "ledger", None)
+    if ledger is None:
+        return "no_entity_or_model"
+    entity = getattr(session, "entities", {}).get(entity_id)
+    if entity is None or getattr(session, "model", None) is None:
+        return "no_entity_or_model"
+
+    cached = fits.get((entity_id, prop))
+    if cached is None:
+        spec = _indicator_for(session, entity, prop)
+        if spec is None:
+            cached = "no_such_indicator"
+        else:
+            lookback = (getattr(spec, "lookback", None)
+                        or getattr(spec, "time_window", None))
+            if lookback is None:
+                cached = "no_lookback_or_window"
+            else:
+                try:
+                    with as_of(predicted_at):
+                        series = _reading_history(session).get_values(
+                            entity_id, prop, lookback)
+                    fitted = PROJECTORS[RandomWalk.name].fit(
+                        series, {}, {"entity_id": entity_id, "property": prop})
+                    cached = ("too_little_history"
+                              if isinstance(fitted, Decline) else fitted)
+                except (ValueError, KeyError, ArithmeticError, TypeError):
+                    cached = "fit_failed"
+        fits[(entity_id, prop)] = cached
+    if isinstance(cached, str):
+        return cached
+
+    try:
+        forecast = cached.forecast(float(horizon_s))
+        ledger.record_value_prediction(
+            entity_id=entity_id,
+            property_name=prop,
+            predicted_value=float(forecast.mean),
+            tolerance=1.96 * float(forecast.sigma),
+            horizon_s=float(horizon_s),
+            confidence=0.95,
+            # THE SAME EPISODE as the projection it races, on purpose. The
+            # sibling rule in `_grade_value_record` keys on `traversal_id`
+            # and the horizon, so sharing one puts both records on the SAME
+            # reading -- which is what a race is. Filing under a separate
+            # episode would grade them against two observations and compare
+            # the results.
+            traversal_id=episode_id,
+            predicted_at=predicted_at,
+            quantiles=forecast.quantiles,
+            model_id=BASELINE_MODEL_ID,
+            source=SOURCE_ENGINE,
+        )
+    except Exception:  # noqa: BLE001 - a ledger refusal is not a crash
+        return "fit_failed"
+    return "filed"
 
 
 def _now(session: Any):

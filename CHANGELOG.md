@@ -147,7 +147,89 @@ useful-looking document and the less trustworthy one.
   relationship in both directions and was proved live by reintroducing the
   sentence.
 
+- **The engine's own rollout forecasts were the one population with nothing
+  to beat.** Three surfaces file forecasts into the ledger. `ingest_forecasts`
+  fits a parameter-free random walk beside every producer record and reports
+  the outcome per record; `project` fits one beside its own forecast;
+  `rollout(file_predictions=True)` filed neither, and no leg of the envelope
+  said so. Measured, one session, one series, one horizon, the engine's own
+  two verbs:
+
+  | verb | ledger after one call |
+  |---|---|
+  | `project` | `{'local_level:estimated_parameters': 1, 'baseline_rw': 1}` |
+  | `rollout` | `{'arbiter_engine:rollout': 6}` |
+
+  So `calibration.own_projections` reported a well-formed score that could not
+  separate a declared `gain:` carrying real information from one whose
+  `gain_sigma:` was merely generous — which is the failure `RandomWalk`'s own
+  docstring names: *a forecaster can be beautifully calibrated and still carry
+  no information at all*. A rollout now files the reference beside each of its
+  projections, fitted on the driven property's own readings as of the instant
+  the walk was run for, and reports it under `own_projections.baseline` with
+  `beats_baseline` decided on CRPS over the **matched** targets only.
+
+  **The yardstick is excluded from the figure it is the yardstick for.** Both
+  are `kind == "value"` records; pouring the reference into the headline would
+  have moved the engine's own score toward the baseline by however many
+  companions were filed — a defect worse than the gap.
+
+  **This is a class reopening.** `ingest._file_baseline` records the same gap
+  in the mirror direction, when the reference ran for `project` and not for a
+  producer: *it was filed beside one of the two kinds.* That fix covered the
+  two kinds that existed; `rollout` arrived in 0.2.3 as a third.
+
+- **`plan` ranked by a forecast that nothing could ever grade.** The verb
+  states an objective per candidate — *throttling to 800 rpm produces 4.33
+  expected findings, doing nothing produces 0.0* — and filed nothing: the
+  ledger was empty after a call and the plan leg carried no calibration. Most
+  rows must stay ungradeable, and `rollout` already says why: a candidate
+  carrying actions describes a world nobody brought about, and grading it
+  against a world where nobody acted would fill the ledger with falsified
+  records that say nothing about the model.
+
+  **`do_nothing` is not a counterfactual.** It is the trajectory that obtains
+  if nobody acts and the row every other row is measured against, so it is the
+  one whose projections are filable. `plan(file_predictions=True)` now files
+  it — default OFF, like `rollout`'s own flag, because a verb that reads as a
+  query should not write to a durable ledger unasked — and what it files is
+  raced against a random walk like any other forecast. The rows that do not
+  file say so ONCE with a count at plan level, never on the per-candidate
+  `declines`, where a by-design exclusion would sit beside real faults and
+  make four healthy rows look damaged.
+
+  `seed_mode` reaches `plan` for the first time and reaches **every candidate
+  or none**: under the default `current` nothing moves, so the no-action row
+  correctly files nothing. Applying `projected` to the filing row alone would
+  score one row on a trajectory the others never saw — the defect that an internal ruling
+  recorded, a number claiming a measurement of a plan nobody simulated.
+
+- **`plan` never fitted the projected seed, so every candidate declined.** The
+  projector step `rollout` performs before walking was absent here. Measured,
+  same model and same inputs: `steps_requested: 6` through `rollout` and `0`
+  through `plan`, with every candidate reporting `insufficient_samples` — a
+  sample shortage reported for a projection nobody had fitted. Fitted once and
+  shared by every candidate, which is also what keeps the rows comparable.
+
+- **`project` filed a reference and reported nothing about it.** A refused fit
+  was dropped on the floor — the forecast was still filed and later graded,
+  raced against nothing, with no leg carrying the fact. That is the shape
+  `BRIDGES.md` names in its own words, *nothing declines, because a race with
+  one runner still has a winner*, sitting on the verb whose own reference
+  exists to prevent it. `project` now reports `raced`, one row per issued
+  forecast, in the same closed vocabulary `ingest_forecasts` uses, and counts
+  `baselines_filed` beside `forecasts_issued`.
+
 ### Added
+
+- **Both calibration tables carry `by_target`.** The producer table strata by
+  `by_model` / `by_entity_type` and the engine's own by `by_coupling`; the only
+  axis they shared was `by_horizon`, which resolves neither entity nor
+  property. So *did my declared coupling beat the learned producer on THIS
+  series* had no surface to be asked on, although both populations forecast the
+  same `(entity, property, horizon)` triples. The two tables stay separate —
+  pooling them would make `coverage_90` a number about nobody — and now share
+  one join key.
 
 - **The README answers whether this is a world model.** The term appeared once
   on the published surface, in `ROADMAP.md`, and nowhere in the README — so

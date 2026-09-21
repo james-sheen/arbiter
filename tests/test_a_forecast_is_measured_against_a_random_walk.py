@@ -227,16 +227,24 @@ def test_the_decline_arm_is_defence_and_not_a_live_path():
     runner already enforces, and a positive mean step, which every model also
     needs. Measured: a series with all readings at one instant declines for
     the reference AND for `local_level` with declared parameters, so the
-    runner never gets past the model to the reference at all.
+    runner never gets past the model to reference at all.
 
     The guard stays, because a future projector with weaker preconditions
     would reach it and `Decline.forecast` does not exist. What does not stay
     is a test pretending to cover it: the version here asserted a count that
     was true either way, and a mutation deleting the guard passed it.
+
+    AND THE ARM NOW REPORTS INSTEAD OF DROPPING. Unreachable through
+    this verb is not the same as harmless: the arm used to skip the reference
+    silently, so a forecast filed, graded and raced against nothing would have
+    looked identical to one that beat a random walk. It now yields the
+    reference's own reason into `raced`. The claim this test defends is
+    unchanged — no series reaches the arm — and the sense is inverted, so the
+    literal below moved with it.
     """
     from arbiter_engine.projection import runner
     import inspect
-    assert "if not isinstance(reference, Decline):" in inspect.getsource(runner)
+    assert "if isinstance(reference, Decline):" in inspect.getsource(runner)
     stacked = [(T0, 100.0 + n) for n in range(MINIMUM_SAMPLES + 3)]
     assert isinstance(RandomWalk().fit(stacked, {}, {"entity": "e"}), Decline)
     assert isinstance(

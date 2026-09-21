@@ -87,10 +87,19 @@ def _breach_probabilities(forecast, thresholds: Dict[str, float]) -> Dict[str, f
     return out
 
 
-def run_projection(session, horizon_s: float = 3600.0) -> SubEnvelope:
-    """Forecast every declared numeric indicator on every entity."""
+def run_projection(session, horizon_s: float = 3600.0,
+                   raced: Optional[List[Dict[str, Any]]] = None) -> SubEnvelope:
+    """Forecast every declared numeric indicator on every entity.
+
+    `raced` is an OUT-PARAMETER: one row per issued forecast saying
+    whether a random walk was fitted beside it. It is not returned on the
+    sub-envelope because `SubEnvelope` is shared by four disciplines and only
+    the two that file forecasts have anything to say here; widening the shape
+    for all four would put an empty leg on `entail` and `infer` forever.
+    """
+    raced = raced if raced is not None else []
     checked = {"series_seen": 0, "forecasts_issued": 0,
-               "observations_assimilated": 0}
+               "observations_assimilated": 0, "baselines_filed": 0}
     findings: List[Any] = []
     declines: List[Decline] = []
     questions: List[Any] = []
@@ -203,14 +212,42 @@ def run_projection(session, horizon_s: float = 3600.0) -> SubEnvelope:
             # SKIPPED when the declared model IS the reference, which would
             # otherwise file the same forecast twice under two ids and make it
             # beat itself.
+            #
+            # AND SAY WHICH WAY IT WENT. The `if not isinstance(
+            # reference, Decline)` below used to drop a refused fit on the
+            # floor: the forecast was filed, later graded, and raced against
+            # nothing, with no leg of the envelope carrying the fact. That is
+            # the shape `bridge-guide.md` names in its own words -- *nothing
+            # declines, because a race with one runner still has a winner* --
+            # sitting on the verb whose own reference exists to prevent it.
+            # `ingest_forecasts` has reported this per record since it gained
+            # a baseline; this verb never did.
             if PROJECTORS[model_name].name != RandomWalk.name:
                 reference = PROJECTORS[RandomWalk.name].fit(series, {}, scope)
-                if not isinstance(reference, Decline):
+                if isinstance(reference, Decline):
+                    # The reference's OWN reason, not a reason invented here.
+                    # `too_little_history` and `fit_failed` are different
+                    # repairs -- feed more history, or look at the series --
+                    # and collapsing them would cost the reader the
+                    # distinction the baseline vocabulary was split to keep.
+                    outcome = ("too_little_history"
+                               if reference.reason == "insufficient_samples"
+                               else "fit_failed")
+                else:
                     session.ledger.record_distribution(
                         entity_id=entity.id, property_name=spec.property_name,
                         quantiles=reference.forecast(horizon).quantiles,
                         horizon_s=horizon, model_id=BASELINE_MODEL_ID,
                         entity_type=entity.type, source=SOURCE_ENGINE)
+                    checked["baselines_filed"] += 1
+                    outcome = "filed"
+            else:
+                outcome = "is_the_reference"
+            raced.append({"entity_id": entity.id,
+                          "indicator": spec.property_name,
+                          "horizon_s": horizon,
+                          "model_id": f"{forecast.model}:{forecast.source}",
+                          "baseline": outcome})
 
             thresholds, threshold_detail = _thresholds(entity, spec)
             # ONE DECLARATION, ONE ANSWER. BOUNDEDNESS and the shadow breach

@@ -131,6 +131,14 @@ class PlanResult:
     rollouts_run: int = 0
     plans_untested: int = 0
     invariants: int = 0
+    #:. The no-action row's filing, and only its own. Every other
+    #: candidate is a counterfactual and is never asked to file, so these
+    #: figures describe one trajectory rather than the field -- which is what
+    #: makes them comparable with a `rollout`'s.
+    predictions_filed: int = 0
+    values_without_tolerance: int = 0
+    counterfactuals_not_filed: int = 0
+    raced: List[Dict[str, Any]] = field(default_factory=list)
 
 
 def declared_candidates(model: Any) -> Tuple[List[ActionInstance],
@@ -442,13 +450,40 @@ def search(session: Any, topology: Any, *,
            step_s: float = 60.0,
            max_transitions: int = 100_000,
            monte_carlo_samples: int = 100,
-           seed: int = 0) -> PlanResult:
+           seed: int = 0,
+           seed_mode: str = "current",
+           file_predictions: bool = False) -> PlanResult:
     """Greedy receding-horizon search over candidate actions.
 
     Each round rolls every remaining candidate forward ON TOP of the plan
     chosen so far, keeps the best by the declared objective, and advances. The
     do-nothing plan is always a candidate, because *leave it alone* is an
     answer and a planner that cannot return it will always recommend acting.
+
+    AND EXACTLY ONE CANDIDATE IS A FORECAST. `plan` states an
+    objective per row -- *throttling to 800 rpm produces 4.33 expected
+    findings* -- and filed nothing, so its arithmetic was the one claim in
+    this engine that nothing could ever grade. Most rows cannot be graded and
+    should not be: a candidate carrying actions describes a world nobody has
+    brought about, which `rollout` already refuses by name.
+
+    **`do_nothing` is not a counterfactual.** It is the trajectory that
+    obtains if nobody acts, and it is the row every other row is measured
+    against -- so it is the one whose projections are filable, and it is
+    rolled exactly once (below, before the depth loop) rather than per round.
+    Default OFF, like `rollout`'s own flag: filing writes into a durable
+    ledger, and a verb that reads as a query should not do that unasked.
+
+    `seed_mode` REACHES EVERY CANDIDATE OR NONE, and that is why it is an
+    argument here rather than a setting on the row that files. Under the
+    default `current` the world is held still, so a do-nothing trajectory
+    moves no value, no declared `gain_sigma:` reaches one, and the filable
+    row correctly files nothing -- which is honest and nearly useless.
+    `projected` lets each source drift under its own declared `dynamics:`,
+    which is what gives the no-action row something to be graded on. Applying
+    it to the baseline alone would score one row on a trajectory the others
+    never saw, which is the defect that an internal ruling recorded: a number claiming a
+    measurement of a plan nobody simulated.
     """
     from . import rollout as _rollout
 
@@ -479,11 +514,21 @@ def search(session: Any, topology: Any, *,
             "supplied and no action template declares `candidates:`"))
         return result
 
-    def roll(actions: Sequence[ActionInstance]) -> Optional[PlanCandidate]:
+    def roll(actions: Sequence[ActionInstance],
+             filing: bool = False) -> Optional[PlanCandidate]:
         envelope = _rollout.run(
             session, topology, actions=list(actions),
-            horizon_s=horizon_s, step_s=step_s, seed_mode="current",
+            horizon_s=horizon_s, step_s=step_s, seed_mode=seed_mode,
+            file_predictions=filing,
             max_transitions=max_transitions)
+        if filing:
+            # read off the rollout that actually filed, not summed
+            # across the field. Every other candidate is asked with
+            # `filing=False`, so these are the no-action row's figures and
+            # nothing else's.
+            result.predictions_filed += envelope.predictions_filed
+            result.values_without_tolerance += envelope.values_without_tolerance
+            result.raced.extend(envelope.raced)
         findings = [f for step in envelope.steps for f in step.findings]
         candidate = PlanCandidate(
             actions=list(actions),
@@ -560,7 +605,11 @@ def search(session: Any, topology: Any, *,
 
     # `do nothing` is scored first and stays in the field.
     if budget > 0:
-        baseline = roll(())
+        # AND IT IS THE ONE ROW THAT FILES. Here rather than inside
+        # the depth loop, which never builds an empty action list, so the
+        # filable trajectory is rolled exactly once and one episode reaches
+        # the ledger however deep the search goes.
+        baseline = roll((), filing=file_predictions)
         budget -= 1
         result.rollouts_run += 1
         if baseline is not None:
@@ -600,6 +649,24 @@ def search(session: Any, topology: Any, *,
         # other reading. Stamped for this objective alone, because
         # `clearance_probability` genuinely does sample.
         result.assumptions.append("objective_evaluated_at_median")
+
+    # SAID WHETHER OR NOT IT MATTERS, like the rollout's own
+    # counterfactual refusal. A caller who asked to file and got one episode
+    # out of five candidates is entitled to the reason the other four are
+    # missing; without it, *four plans were not filed* and *four plans failed
+    # to file* read identically. ONE decline carrying the count, which is the
+    # idiom every other counted refusal in this module follows -- and kept
+    # off the per-candidate `declines`, where a by-design exclusion would sit
+    # beside real faults and make four healthy rows look damaged.
+    result.counterfactuals_not_filed = sum(
+        1 for candidate in evaluated if candidate.actions)
+    if file_predictions and result.counterfactuals_not_filed:
+        result.declines.append(SimulationDecline(
+            "counterfactual_not_a_prediction", "file_predictions",
+            f"{result.counterfactuals_not_filed} candidate plan(s) carry "
+            f"actions, so they describe worlds nobody has brought about and "
+            f"nothing was filed for them. Only the no-action row is a "
+            f"forecast this engine can later be graded on."))
 
     if result.plans_untested:
         result.declines.append(SimulationDecline(

@@ -349,6 +349,9 @@ TOOL_SPECS: List[Dict[str, Any]] = [
                 "horizon_s": {"type": "number"},
                 "step_s": {"type": "number"},
                 "max_transitions": {"type": "integer"},
+                "seed_mode": {"type": "string",
+                              "enum": ["current", "projected"]},
+                "file_predictions": {"type": "boolean"},
             },
         },
     },
@@ -424,6 +427,12 @@ def _plan(session: EngineSession, arguments: Dict[str, Any]) -> Envelope:
         horizon_s=float(arguments.get("horizon_s", 1800.0)),
         step_s=float(arguments.get("step_s", 60.0)),
         max_transitions=int(arguments.get("max_transitions", 100_000)),
+        # reachable over the transport, on the same argument that
+        # put them on `rollout`: an agent that can ask what a plan predicts
+        # and cannot ask it to be graded has the half of the loop that
+        # produces claims and not the half that checks them.
+        seed_mode=str(arguments.get("seed_mode", "current")),
+        file_predictions=bool(arguments.get("file_predictions", False)),
     )
 
 
