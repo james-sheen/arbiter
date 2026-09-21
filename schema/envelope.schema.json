@@ -273,7 +273,7 @@
     },
     "projection": {
       "description": "The `projection` sub-envelope. Present only on the verb that produces it; NOT required, so an envelope from an engine predating it still validates.",
-      "$ref": "#/$defs/sub_envelope"
+      "$ref": "#/$defs/projection_envelope"
     },
     "entailment": {
       "description": "The `entailment` sub-envelope. Present only on the verb that produces it; NOT required, so an envelope from an engine predating it still validates.",
@@ -289,15 +289,15 @@
     },
     "simulation": {
       "description": "The `simulation` sub-envelope, carried by `rollout` and by `plan`'s per-candidate rollouts. Present only on the verbs that produce it; NOT required, so an envelope from an engine predating it still validates.",
-      "$ref": "#/$defs/sub_envelope"
+      "$ref": "#/$defs/simulation_envelope"
     },
     "plan": {
       "description": "The `plan` sub-envelope, carried by `plan`. Present only on the verb that produces it; NOT required, so an envelope from an engine predating it still validates.",
-      "$ref": "#/$defs/sub_envelope"
+      "$ref": "#/$defs/plan_envelope"
     }
   },
   "additionalProperties": {
-    "description": "Tool-specific payloads ride ALONGSIDE the five legs rather than inside them: `model` and `unconsumed_observations` and `unread_threshold_overrides` from model_describe, `evidence` from attest, `unread_properties` from check and gaps, `dropped_declarations` from check AND from model_describe since 0.1.16 (the report was unreachable from the tool an author actually calls to read their model back) -- that last one carried by check because removing a name-derived rule withdrew a check whose cell has no indicator and no axiom to decline on, and a withdrawn check that leaves the envelope identical to a clean pass is the one thing the compatibility policy forbids a patch release from doing. Additive by design -- the four legs plus meta are what every tool satisfies identically, and a tool-specific key is not a change to that contract. `dropped_declarations` carries the values the loader read and did not recognise, so the declaration was not applied: a misspelled axiom name produced an envelope identical to declaring none, and a decline could not express it because `not_checked[].axiom` is a closed enum of the eight names. Same reason as the key beside it, one field further in.  \u2014 `simulation` and `plan` are NOT in this list: they are named in `properties` above and shaped like every other sub-envelope. They rode here unnamed for three releases while this sentence enumerated six smaller keys beside them, so the schema's own inventory was stale by exactly the surface the 0.2.3 release was about."
+    "description": "Tool-specific payloads ride ALONGSIDE the five legs rather than inside them: `model` and `unconsumed_observations` and `unread_threshold_overrides` from model_describe, `evidence` from attest, `unread_properties` from check and gaps, `dropped_declarations` from check AND from model_describe since 0.1.16 (the report was unreachable from the tool an author actually calls to read their model back) -- that last one carried by check because removing a name-derived rule withdrew a check whose cell has no indicator and no axiom to decline on, and a withdrawn check that leaves the envelope identical to a clean pass is the one thing the compatibility policy forbids a patch release from doing. Additive by design -- the four legs plus meta are what every tool satisfies identically, and a tool-specific key is not a change to that contract. `dropped_declarations` carries the values the loader read and did not recognise, so the declaration was not applied: a misspelled axiom name produced an envelope identical to declaring none, and a decline could not express it because `not_checked[].axiom` is a closed enum of the eight names. Same reason as the key beside it, one field further in. `simulation` and `plan` are NOT in this list: they are named in `properties` above. They are NOT shaped like every other sub-envelope, and an earlier revision of this sentence said they were: `simulation` carries six keys beside the legs and `plan` eight, where `forecasts`, `shadow`, `discovery` and `entailment` carry none and `projection` carries one. Each of the three now has its own definition naming what it carries, so the sentence that closed the last gap no longer asserts the sameness that hid the next one. They rode here unnamed for three releases while this sentence enumerated six smaller keys beside them, so the schema's own inventory was stale by exactly the surface the 0.2.3 release was about."
   },
   "$defs": {
     "sub_envelope": {
@@ -378,6 +378,226 @@
         }
       },
       "additionalProperties": true
+    },
+    "assumptions_leg": {
+      "title": "Assumptions",
+      "description": "THE APPROXIMATIONS THE NUMBERS BESIDE THIS LEG REST ON, each named by a stamp. Not warnings and not findings: the engine saying which of its OWN choices a value depends on, so that a reader who disagrees with a choice knows which number to distrust. An empty list means the engine made none of them, which is a different claim from the key being absent. DELIBERATELY NOT AN `enum`, for two reasons. `COMPATIBILITY.md` allows a patch release to ADD a stamp, and an enum here would make every such addition a schema change; and one stamp is PARAMETERISED -- `action_property_from_parameter_name:<property>` carries a property name drawn from the domain model rather than from any vocabulary this schema could hold. The baseline is published instead: `MODELING.md` carries the full list, derived from the engine's own `assumptions` module by a test rather than transcribed. There was no such list anywhere until 0.2.6, and an outside review that reproduced all three of this engine's enumerated vocabularies exactly reported this one at nine of twenty.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "simulation_step": {
+      "title": "One step of a rollout",
+      "description": "WHAT THE WORLD LOOKED LIKE AT ONE INSTANT of the imagined horizon. `values` is keyed by entity id and then by property name; `sigma` is keyed the same way and carries the propagated spread where a spread was declared.",
+      "type": "object",
+      "properties": {
+        "step": {
+          "description": "1-based index of this step within the horizon.",
+          "type": "integer"
+        },
+        "at_s": {
+          "description": "Seconds from the start of the rollout.",
+          "type": "number"
+        },
+        "actions_applied": {
+          "description": "`template@entity_id` for each action that took effect at or before this step.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "transitions_applied": {
+          "description": "How many declared couplings moved a value at this step.",
+          "type": "integer"
+        },
+        "response_fractions": {
+          "description": "How far through its declared time course each applied coupling had travelled, one per transition.",
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "sigma": {
+          "description": "Propagated spread, by entity id then property name. Absent properties declared no spread.",
+          "type": "object"
+        },
+        "invariants": {
+          "description": "Axiom evaluations ATTEMPTED at this step -- this step's denominator.",
+          "type": "integer"
+        },
+        "findings": {
+          "description": "Findings raised at this step, each `problem_type` prefixed `imagined_`.",
+          "type": "array"
+        },
+        "declines": {
+          "description": "What could not be evaluated at this step, and why.",
+          "type": "array"
+        },
+        "values": {
+          "description": "Every value at this step, by entity id then property name.",
+          "type": "object"
+        }
+      }
+    },
+    "plan_candidate": {
+      "title": "One candidate plan",
+      "description": "ONE DECLARED COURSE OF ACTION AND WHAT ROLLING IT FORWARD PRODUCED. Present whether or not the plan ranked: without `planning.objective` every candidate is still evaluated and `objective` is null on each.",
+      "type": "object",
+      "properties": {
+        "plan": {
+          "description": "Identifier for this candidate. `do_nothing` is the counterfactual row the planner always adds.",
+          "type": "string"
+        },
+        "actions": {
+          "description": "The action instances this candidate applies. Empty for the do-nothing row.",
+          "type": "array"
+        },
+        "objective": {
+          "description": "This candidate's score under the declared objective, or null when none was declared.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "interval": {
+          "description": "95 per cent interval on the objective where it was sampled; null where the score is deterministic.",
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "findings": {
+          "description": "Findings this candidate's trajectory raised.",
+          "type": "array"
+        },
+        "declines": {
+          "description": "What could not be evaluated for this candidate, and why.",
+          "type": "array"
+        },
+        "assumptions": {
+          "description": "The approximations THIS candidate's score rests on, where they differ between candidates. The plan-level list is the union and cannot say which row is which.",
+          "$ref": "#/$defs/assumptions_leg"
+        },
+        "margin_sigmas": {
+          "description": "Closest approach to any line over the horizon, in declared spreads, ABSOLUTE. Reported, never ranked on: it cannot say which side of the line the value sat.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "clearance_sigmas": {
+          "description": "Worst headroom over the horizon, in declared spreads, SIGNED -- positive is clear, negative is how far the worst excursion went past a line. Null when no declared spread reached the trajectory.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "checked": {
+          "description": "This candidate's own denominator.",
+          "type": "object"
+        }
+      }
+    },
+    "simulation_envelope": {
+      "title": "Simulation sub-envelope",
+      "description": "THE `simulation` SUB-ENVELOPE, carried by `rollout` and by `plan`'s per-candidate rollouts. A sub-envelope in the shape above, PLUS the payload below. The payload is declared here because for three releases it was not: this key and `plan` were named in `properties` and both pointed at the generic definition, which declares the five legs and allows anything beside them, so the trajectory, the tier and the approximation disclosures all rode undeclared one level below the fix that named them.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/sub_envelope"
+        }
+      ],
+      "properties": {
+        "assumptions": {
+          "$ref": "#/$defs/assumptions_leg"
+        },
+        "per_step": {
+          "description": "The imagined trajectory, one entry per step of the horizon.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/simulation_step"
+          }
+        },
+        "tier": {
+          "description": "3 when the rollout carried actions, classifying the result as hypothetical. A CLASSIFICATION OF THE IMAGINED, never an approval path: this engine does not dispatch.",
+          "type": "integer"
+        },
+        "tier_reason": {
+          "description": "Why that tier, for example `actions_present`.",
+          "type": "string"
+        },
+        "raced": {
+          "description": "One row per projection offered to the prediction ledger, naming whether it was filed and, when it was not, why. Present only when `file_predictions` was asked for.",
+          "type": "array"
+        },
+        "calibration": {
+          "description": "How this engine's own filed projections have scored so far. Present only when `file_predictions` was asked for.",
+          "type": "object"
+        }
+      }
+    },
+    "plan_envelope": {
+      "title": "Plan sub-envelope",
+      "description": "THE `plan` SUB-ENVELOPE, carried by `plan`. A sub-envelope in the shape above, PLUS the payload below. Declared for the reason given on `simulation_envelope`.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/sub_envelope"
+        }
+      ],
+      "properties": {
+        "objective": {
+          "description": "The declared objective ranked on, or the empty string when `planning.objective` was not declared.",
+          "type": "string"
+        },
+        "direction": {
+          "description": "`minimise` or `maximise`, fixed by the objective rather than by the caller.",
+          "type": "string"
+        },
+        "ranked": {
+          "description": "False when no objective was declared. The candidates are still evaluated: this engine will not decide what BETTER means on a model's behalf.",
+          "type": "boolean"
+        },
+        "assumptions": {
+          "$ref": "#/$defs/assumptions_leg"
+        },
+        "candidates": {
+          "description": "Every declared candidate plus the do-nothing row, in rank order when `ranked` is true.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/plan_candidate"
+          }
+        },
+        "best": {
+          "description": "Identifier of the first candidate, or null when nothing was ranked.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "raced": {
+          "description": "One row per projection offered to the prediction ledger, naming whether it was filed and, when it was not, why. Present only when `file_predictions` was asked for.",
+          "type": "array"
+        },
+        "calibration": {
+          "description": "How this engine's own filed projections have scored so far. Present only when `file_predictions` was asked for.",
+          "type": "object"
+        }
+      }
+    },
+    "projection_envelope": {
+      "title": "Projection sub-envelope",
+      "description": "THE `projection` SUB-ENVELOPE, carried by `project`. A sub-envelope in the shape above, plus the one payload key below.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/sub_envelope"
+        }
+      ],
+      "properties": {
+        "raced": {
+          "description": "One row per projection offered to the prediction ledger, naming whether it was filed and, when it was not, why. Present only when `file_predictions` was asked for.",
+          "type": "array"
+        }
+      }
     }
   }
 }

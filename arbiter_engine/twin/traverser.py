@@ -19,6 +19,18 @@ from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, FrozenSet, List, Optional, Set, Tuple
 
 from ..clock import now_utc
+from ..assumptions import (
+    DECLARED_COUPLING_NOT_PROBABILITY_PRUNED,
+    EXOGENOUS_INPUTS_HELD,
+    FIRST_ORDER_RESPONSE,
+    FIRST_ORDER_UNCERTAINTY,
+    INDEPENDENT_DECLARED_SPREADS,
+    LINEAR_SUPERPOSITION,
+    SERIES_EDGES_COMPOSED_EXACTLY,
+    SERIES_EDGES_COMPOSE_BY_PRODUCT,
+    STEADY_STATE_REACHED,
+    TIME_COURSE_NOT_DECLARED,
+)
 from ..interfaces import Entity, Problem, ObservationHistory
 from ..types import Axiom, Severity, DetectionLayer, AxiomParameters
 from ..temporal.trend_projection import TrendProjection
@@ -1569,9 +1581,9 @@ class TopologyTraverser:
                         # could not solve is still composed by product and
                         # still says so. A rollout crossing both kinds
                         # carries both stamps, which is the honest report.
-                        stamp = ("series_edges_composed_exactly"
+                        stamp = (SERIES_EDGES_COMPOSED_EXACTLY
                                  if composed_exactly
-                                 else "series_edges_compose_by_product")
+                                 else SERIES_EDGES_COMPOSE_BY_PRODUCT)
                         if stamp not in result.assumptions:
                             result.assumptions.append(stamp)
                         # /WHAT THE APPROXIMATION WOULD HAVE
@@ -1696,15 +1708,15 @@ class TopologyTraverser:
             # declared number as independent of itself when it reached a
             # property twice. The second is gone, so the stamp is a claim
             # about the model rather than an excuse for the walk.
-            result.assumptions.append("first_order_uncertainty")
-            result.assumptions.append("independent_declared_spreads")
+            result.assumptions.append(FIRST_ORDER_UNCERTAINTY)
+            result.assumptions.append(INDEPENDENT_DECLARED_SPREADS)
         if result.transitions_applied:
-            result.assumptions.append("linear_superposition")
-            result.assumptions.append("first_order_response")
-            result.assumptions.append("exogenous_inputs_held")
+            result.assumptions.append(LINEAR_SUPERPOSITION)
+            result.assumptions.append(FIRST_ORDER_RESPONSE)
+            result.assumptions.append(EXOGENOUS_INPUTS_HELD)
             if any(t.fraction >= 1.0 for t in result.transitions_applied):
-                result.assumptions.append("steady_state_reached")
-            result.assumptions.append("declared_coupling_not_probability_pruned")
+                result.assumptions.append(STEADY_STATE_REACHED)
+            result.assumptions.append(DECLARED_COUPLING_NOT_PROBABILITY_PRUNED)
             # THE TRANSIENT IS NOT ALWAYS THE AUTHOR'S. A
             # `temporal:` block that is absent, or present and short of a
             # key, leaves `TwinEdge`'s own 60 s standing in for a number
@@ -1715,7 +1727,7 @@ class TopologyTraverser:
             # that names something a reader can remove by editing the file.
             if any(not t.time_course_declared
                    for t in result.transitions_applied):
-                result.assumptions.append("time_course_not_declared")
+                result.assumptions.append(TIME_COURSE_NOT_DECLARED)
 
     def _evaluate_axioms(
         self, node: TwinNode, values: Dict[str, Any],

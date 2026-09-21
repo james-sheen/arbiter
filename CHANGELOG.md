@@ -22,6 +22,64 @@ useful-looking document and the less trustworthy one.
 
 ### Fixed
 
+- **The assumption stamps were a vocabulary nobody could read.** Every number
+  this engine projects rests on approximations it made rather than an author
+  declared, and an `assumptions` stamp names one of them -- the list this
+  project offers as its trust surface. The stamps existed only as bare string
+  literals at twenty sites across four modules, with no definition anywhere.
+  `envelope.schema.json`, which `meta.schema_version` advertises as the wire
+  contract, did not contain the word `assumptions`; the published guides
+  between them named six of the twenty; and `COMPATIBILITY.md` granted a patch
+  release permission to ADD a stamp, so the project published a rule for
+  changing a vocabulary it had never published. Reported from outside, in the
+  only way it could be: a review that reproduced this engine's fourteen decline
+  reasons, six gap types and eight raced outcomes by exact membership listed
+  this one at nine of twenty, under a heading saying *seen*, because nine is
+  what running the shipped example shows you. The stamps now have one
+  definition, every emitting site imports the name instead of repeating the
+  literal, and `MODELING.md` publishes the table derived from that definition.
+  No stamp changed its spelling and no envelope changed.
+
+- **The schema named its two largest sub-envelopes and nothing they carry.**
+  The previous release added `simulation` and `plan` to the schema's
+  `properties`, both pointing at the one generic sub-envelope definition, which
+  declares the five legs and allows anything beside them. So the trajectory,
+  the tier, the candidate ranking and the assumption stamps stayed undeclared
+  one level below the fix -- `simulation` carries six keys beside the legs and
+  `plan` eight, where four of the other sub-envelopes carry none and
+  `projection` carries one. Worse, the fix asserted otherwise: the sentence it
+  added said the two were *shaped like every other sub-envelope*, and a claim
+  of sameness is worse than silence because it removes the reason to look. The
+  three that deviate now have their own definitions, each composing the shared
+  shape and adding only its own payload, and the coverage is derived from what
+  the verbs emit rather than from a list written beside them.
+
+- **Two different things undeclared in one place were reported as one.**
+  `gaps` deduplicated on `(gap_type, location)`, which assumes each type asks a
+  single question at a given place. `missing_declaration` stopped being one
+  claim when a refused `transition:` block started using it, and a second
+  arrived with the time-course report: an edge whose delay or time constant
+  this engine supplied. The question TEMPLATE was fixed for exactly this reason
+  one release earlier; the key beside it kept the old assumption. Where both
+  claims land on one edge, one question was reported and the other silently
+  dropped -- and the survivor was the refusal, so what went missing was the
+  question naming the number the engine substituted. The claim is now part of
+  the key. Identical claims about one place still collapse, which is what the
+  deduplication was for.
+
+- **The verb that used an undeclared number was the one that did not name it.**
+  An edge whose time course this engine supplied is reported twice: a
+  `missing_declaration` question naming the absent key and the number used, and
+  a `time_course_not_declared` stamp on every envelope computed across that
+  edge. Only the stamp reached `rollout`, `plan` and `traverse`. The question
+  was raised by `gaps` alone -- a verb that computes no values -- so a caller
+  who rolled a trajectory forward, every value of which rested on a 60 s
+  constant standing in for a declared 600 s, and then read the leg whose stated
+  purpose is what the model never declared, was told nothing. Those three verbs
+  now file the question beside the stamp, scoped to the edges their walk
+  actually CROSSED: an edge nothing traversed raises nothing, and a fully
+  declared model stays silent. No value and no ranking changes.
+
 - **A plan's tie-break read a figure that cannot say which side of a line a
   value sat on.** The tie between two equally-scored candidates broke toward
   the wider `margin_sigmas`, which is the minimum ABSOLUTE distance to any

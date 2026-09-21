@@ -755,10 +755,13 @@ moves the first reported level from 61.01 to 69.99 and reports a tank as
 settled that is halfway there, because 60 s stands in for a declared 600 s.
 
 So an edge that carries a `transition:` and does not carry the pair reports it
-twice. `gaps` raises a `missing_declaration` question naming the key that is
-absent and the number this engine used in its place, and any envelope whose
-values were computed across that edge carries `time_course_not_declared` in its
-`assumptions`. The values are unchanged -- this is a reporting rule, not a
+twice. A `missing_declaration` question names the key that is absent and the
+number this engine used in its place, and any envelope whose values were
+computed across that edge carries `time_course_not_declared` in its
+`assumptions`. -- the question is raised by `gaps` and by every verb
+that actually CROSSED the edge: `rollout`, `plan` and `traverse`. Until then
+only `gaps` raised it, so the bare fact reached the verb that used the number
+and the key and the value reached only a verb that computed nothing. The values are unchanged -- this is a reporting rule, not a
 refusal, and it is the one stamp in that list naming something a reader can
 remove by editing the file rather than an assumption about the model itself.
 
@@ -985,7 +988,7 @@ down onto it, the partial fraction holds to 2e-14 at a separation of 1 s, reads
 `0.625` against a true `0.442174599629` at a separation of `1e-13`, and divides
 by zero at equality. The divided-difference form
 
-    h(t) = 1 - e^{-at} (1 - a t phi(-(b-a) t)),   phi(x) = (e^x - 1)/x
+    h(t) = 1 - e^{-at} (1 - a t phi(-(b-a) t)), phi(x) = (e^x - 1)/x
 
 holds every digit across the same sweep and meets the equal-tau closed form
 `1 - (1 + t/tau)exp(-t/tau)` exactly, because `expm1` is built for it and the
@@ -1123,6 +1126,54 @@ of -4.985, and only the second says which of those a reader is looking at.
 **The cost of a finding is derived from `Severity.priority_score`, not declared
 again.** A second severity table is how two parts of one engine come to
 disagree about which finding is worse.
+
+## The assumption stamps
+
+Every number this engine projects rests on approximations the engine made
+rather than an author declared. A stamp names one of them. It is not a warning
+and not a finding: it is the engine saying which of its OWN choices the value in
+front of you depends on, so that a reader who disagrees with a choice knows
+which number to distrust.
+
+They arrive in an `assumptions` list on the `simulation` and `plan`
+sub-envelopes, and on each `plan` candidate where the candidates differ. An
+EMPTY list means the engine made none of them, which is a different claim from
+the key being absent.
+
+| stamp | what it discloses |
+|---|---|
+| `first_order_response` | the coupling was developed as dead time then an exponential approach -- the ordinary shape, and still a shape this engine chose |
+| `time_course_not_declared` | the time course crossed was not declared; this engine supplied a delay or a time constant, or both |
+| `steady_state_reached` | the horizon outlasted the transient, so the value reported is the settled one |
+| `series_edges_composed_exactly` | two couplings in series were composed by the exact cascade response |
+| `series_edges_compose_by_product` | two couplings in series were composed by multiplying response fractions, which is an approximation |
+| `first_order_uncertainty` | the spread was propagated to first order; exact for a declared constant gain, approximate once two uncertain factors multiply |
+| `independent_declared_spreads` | declared spreads were combined in quadrature, which is correct only if they are independent -- nothing in a model states that they are |
+| `gaussian_from_mean_sigma` | a forecast arrived as a mean and a sigma and was expanded to quantiles under a normal assumption the producer did not state |
+| `exogenous_inputs_held` | everything outside the traversed subgraph was held still for the whole horizon |
+| `no_action_scheduled` | no action was scheduled, so what is reported is the world left alone |
+| `linear_superposition` | contributions from several sources onto one target were summed; real couplings saturate and interact |
+| `declared_coupling_not_probability_pruned` | a declared coupling was followed regardless of how likely it is to carry the effect |
+| `seeded_from_projection` | the rollout was seeded from a projection rather than the last observed value, so the starting point is itself a model output |
+| `deterministic_transitions` | the candidate was scored on one trajectory because no declared spread reached it; a `clearance_probability` under this stamp is a 0 or a 1 |
+| `declared_gain_spread_sampled` | the candidate was scored over trajectories sampled from the declared gain spreads |
+| `worst_step_binds_the_horizon` | a trajectory counts as breaching if it breaches at any step, so one bad minute scores as breaching |
+| `objective_evaluated_at_median` | `expected_findings` was evaluated on the median trajectory, and it is a step function -- rank on `clearance_probability` when the question is how likely the candidate is to stay clear |
+| `ties_break_toward_fewer_actions` | candidates equal on the objective were ordered by acting less |
+| `ties_break_toward_the_wider_margin` | candidates still equal were ordered by the wider signed headroom, and only where a declared spread reached a trajectory |
+
+One stamp carries a value rather than standing alone:
+`action_property_from_parameter_name:<property>` says that an action template
+named a parameter no `entity_property:` bound, so the engine matched the
+parameter name to a property of the same name.
+
+**This list is a baseline, not a closed set on the wire.** A patch release may
+add a stamp -- an engine that starts disclosing an approximation it had been
+making silently is a fix, and holding it back for a major version would be the
+wrong trade. So `schema/envelope.schema.json` types `assumptions` as an array
+of string with no `enum`, and this table is derived from the engine's own
+vocabulary rather than transcribed beside it. Read a stamp you do not
+recognise as an approximation newer than your copy of this document.
 
 ## When the world is open: `calendar`
 

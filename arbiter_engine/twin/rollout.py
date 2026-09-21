@@ -35,6 +35,8 @@ from datetime import timedelta
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 from ..fire_frequency import counting_aside
+from ..assumptions import (EXOGENOUS_INPUTS_HELD, NO_ACTION_SCHEDULED,
+                           SEEDED_FROM_PROJECTION)
 from ..projection.projector import (BASELINE_MODEL_ID, PROJECTORS,
                                     RandomWalk, SOURCE_ENGINE)
 from ..residual.predict_vs_mirror import normal_quantiles
@@ -110,6 +112,12 @@ class RolloutResult:
     assumptions: List[str] = field(default_factory=list)
     transitions_attempted: int = 0
     transitions_applied: int = 0
+    #:. Which declared couplings this rollout actually crossed,
+    #: as `source->target`. Recorded so that the verb which USED an
+    #: undeclared number can name it: a `missing_declaration` question
+    #: about an edge nothing traversed would be asking an author to
+    #: declare a number this result does not rest on.
+    edges_traversed: Set[str] = field(default_factory=set)
     #:. Sum of the per-step `invariants`, for `CheckedSummary`.
     invariants: int = 0
     #:. True when any declared `gain_sigma:` reached any imagined
@@ -418,7 +426,7 @@ def run(session: Any, topology: Any, *,
                     "projection, so there is nothing to seed a rollout from; "
                     "use seed_mode='current'"))
             return result
-        result.assumptions.append("seeded_from_projection")
+        result.assumptions.append(SEEDED_FROM_PROJECTION)
 
     # THE REAL BASELINE, kept apart from the imagined state.
     # `_apply_transitions` measures every delta from the entity's real
@@ -1064,6 +1072,7 @@ def run(session: Any, topology: Any, *,
             step.transitions_applied += len(walk.transitions_applied)
             for applied in walk.transitions_applied:
                 fractions.add(round(float(applied.fraction), 6))
+                result.edges_traversed.add(applied.edge)
             for decline in walk.simulation_declines:
                 if decline not in result.declines:
                     result.declines.append(decline)
@@ -1177,8 +1186,8 @@ def run(session: Any, topology: Any, *,
 
     # De-duplicated: the per-step walk stamps its own, and a stamp repeated
     # reads as two separate assumptions rather than one made twice.
-    for assumption in ("exogenous_inputs_held",
-                       "no_action_scheduled" if not schedule else ""):
+    for assumption in (EXOGENOUS_INPUTS_HELD,
+                       NO_ACTION_SCHEDULED if not schedule else ""):
         if assumption and assumption not in result.assumptions:
             result.assumptions.append(assumption)
     return result

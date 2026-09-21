@@ -30,6 +30,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Mapping
 
+from ..assumptions import ACTION_PROPERTY_FROM_PARAMETER_NAME_PREFIX
 from .action_clears_problem import resolve_effect_property
 
 #: How an action's parameter value reaches the property it writes.
@@ -235,7 +236,8 @@ def deltas_for(instance: ActionInstance, template: ActionTemplate,
             # the fallback: the parameter name IS the property. Kept, and
             # stamped, because a mapping nobody declared is a guess and the
             # reader is entitled to know one was made.
-            assumptions.append(f"action_property_from_parameter_name:{prop}")
+            assumptions.append(
+                f"{ACTION_PROPERTY_FROM_PARAMETER_NAME_PREFIX}{prop}")
         try:
             value = float(raw_value)
         except (TypeError, ValueError):

@@ -39,6 +39,28 @@ def schema():
     return json.loads(SCHEMA.read_text(encoding="utf-8"))
 
 
+def _composes_sub_envelope(schema, spec) -> bool:
+    """Does this property reach `#/$defs/sub_envelope`, directly or through one
+    definition that composes it?
+
+    One level of indirection is allowed and no more: a specialised
+    definition may say *the shared shape, plus my payload*, which is what
+    `simulation`, `plan` and `projection` do. Anything deeper would be a second
+    description of the five legs, which is what this test exists to prevent.
+    """
+    ref = spec.get("$ref")
+    if ref == "#/$defs/sub_envelope":
+        return True
+    if not ref or not ref.startswith("#/$defs/"):
+        return False
+    target = schema["$defs"].get(ref.rsplit("/", 1)[-1])
+    if not isinstance(target, dict):
+        return False
+    return any(member.get("$ref") == "#/$defs/sub_envelope"
+               for member in target.get("allOf", [])
+               if isinstance(member, dict))
+
+
 class TestTheTwoSimulationVerbsAreNamed:
 
     @pytest.mark.parametrize("name", ["simulation", "plan"])
@@ -47,8 +69,18 @@ class TestTheTwoSimulationVerbsAreNamed:
             f"{name} is produced by a verb and absent from the wire contract")
 
     @pytest.mark.parametrize("name", ["simulation", "plan"])
-    def test_it_is_shaped_like_every_other_sub_envelope(self, schema, name):
-        assert schema["properties"][name].get("$ref") == "#/$defs/sub_envelope"
+    def test_it_is_built_on_the_shared_sub_envelope_shape(self, schema, name):
+        """ AMENDED THIS TEST, because it pinned a false claim.
+
+        It asserted `$ref == sub_envelope` under the name *is shaped like
+        every other sub-envelope*, which is the sentence also wrote
+        into the schema and which is not true: `simulation` carries six keys
+        beside the legs and `plan` eight, where four of the others carry none.
+        The INTENT was that no sub-envelope be declared inline, so that the
+        shared shape cannot drift. That intent survives -- each of these now
+        composes `sub_envelope` through `allOf` and adds only its own payload.
+        """
+        assert _composes_sub_envelope(schema, schema["properties"][name])
 
     @pytest.mark.parametrize("name", ["simulation", "plan"])
     def test_it_is_not_required(self, schema, name):
@@ -60,11 +92,17 @@ class TestTheTwoSimulationVerbsAreNamed:
 class TestEverySubEnvelopeSharesOneShape:
 
     def test_no_sub_envelope_is_declared_inline(self, schema):
-        """A second inline shape is how the two contracts drift apart."""
+        """A second inline shape is how the two contracts drift apart.
+
+        - the check is now *reaches the shared shape*, not *is the
+        shared shape*. Three sub-envelopes carry payload the others do not and
+        have their own definitions; all three still compose this one, so there
+        is exactly one description of the five legs in the document.
+        """
         for name, spec in schema["properties"].items():
             if name in LEGS:
                 continue
-            assert spec.get("$ref") == "#/$defs/sub_envelope", name
+            assert _composes_sub_envelope(schema, spec), name
 
     def test_the_known_set_is_accounted_for(self, schema):
         declared = set(schema["properties"]) - LEGS

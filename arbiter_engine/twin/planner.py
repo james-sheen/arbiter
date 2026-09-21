@@ -35,9 +35,17 @@ from __future__ import annotations
 import itertools
 from dataclasses import dataclass, field
 from fractions import Fraction
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 from ..types import Severity
+from ..assumptions import (
+    DECLARED_GAIN_SPREAD_SAMPLED,
+    DETERMINISTIC_TRANSITIONS,
+    OBJECTIVE_EVALUATED_AT_MEDIAN,
+    TIES_BREAK_TOWARD_FEWER_ACTIONS,
+    TIES_BREAK_TOWARD_THE_WIDER_MARGIN,
+    WORST_STEP_BINDS_THE_HORIZON,
+)
 from .actions import ActionInstance, ActionRefused, load_templates
 from .topology import SimulationDecline
 
@@ -148,6 +156,10 @@ class PlanResult:
     values_without_tolerance: int = 0
     counterfactuals_not_filed: int = 0
     raced: List[Dict[str, Any]] = field(default_factory=list)
+    #:. The union of every candidate rollout's crossed edges.
+    #: A plan rests on all of them, so it owes a question about any of
+    #: them whose declaration this engine had to supply.
+    edges_traversed: Set[str] = field(default_factory=set)
 
 
 def declared_candidates(model: Any) -> Tuple[List[ActionInstance],
@@ -297,18 +309,18 @@ def score(candidate: PlanCandidate, objective: str, min_severity: str,
     # Sampling the margin needs only what the author declared.
     margin = _worst_margin(envelope, findings, threshold)
     if margin is None:
-        assumptions.append("deterministic_transitions")
+        assumptions.append(DETERMINISTIC_TRANSITIONS)
         def step(_snapshot, _rng):
             return {"clear": not breached}
     else:
         centre, spread = margin
-        assumptions.append("declared_gain_spread_sampled")
+        assumptions.append(DECLARED_GAIN_SPREAD_SAMPLED)
         # The SAME declared gain drives every step of one rollout, so the
         # steps of a trajectory move together rather than independently. The
         # margin sampled here is the tightest one over the horizon, which is
         # what that correlation makes the binding constraint. Stamped, because
         # it is the engine's assumption and not the author's.
-        assumptions.append("worst_step_binds_the_horizon")
+        assumptions.append(WORST_STEP_BINDS_THE_HORIZON)
         def step(_snapshot, rng):
             return {"clear": rng.gauss(centre, spread) > 0.0}
 
@@ -614,6 +626,7 @@ def search(session: Any, topology: Any, *,
             rollouts=1,
         )
         result.refused_actions.extend(envelope.refused_actions)
+        result.edges_traversed |= envelope.edges_traversed
         for assumption in envelope.assumptions:
             if assumption not in result.assumptions:
                 result.assumptions.append(assumption)
@@ -707,20 +720,20 @@ def search(session: Any, topology: Any, *,
             break
 
     if result.ranked or result.objective:
-        result.assumptions.append("ties_break_toward_fewer_actions")
+        result.assumptions.append(TIES_BREAK_TOWARD_FEWER_ACTIONS)
     if any(c.clearance_sigmas is not None for c in evaluated):
         # stamped only when a spread actually reached a
         # trajectory. Claiming this rule on a model that declared no
         # `gain_sigma:` would describe a tie-break that cannot fire.
         # keyed on the quantity the sort actually reads.
-        result.assumptions.append("ties_break_toward_the_wider_margin")
+        result.assumptions.append(TIES_BREAK_TOWARD_THE_WIDER_MARGIN)
     if result.objective == "expected_findings":
         # SAID ON THE ENVELOPE, not only in the guide. The figure
         # is the weighted finding count of the MEDIAN trajectory; it is not
         # an average over the declared spread, and the name invites the
         # other reading. Stamped for this objective alone, because
         # `clearance_probability` genuinely does sample.
-        result.assumptions.append("objective_evaluated_at_median")
+        result.assumptions.append(OBJECTIVE_EVALUATED_AT_MEDIAN)
 
     # SAID WHETHER OR NOT IT MATTERS, like the rollout's own
     # counterfactual refusal. A caller who asked to file and got one episode

@@ -1576,7 +1576,11 @@ def traverse(session: EngineSession, start_nodes: Sequence[str],
             entities=result.total_nodes_visited,
         ),
         findings=list(result.problems_detected),
-        questions=[_q(q) for q in result.questions_generated],
+        # beside the walk's own questions, the declarations this
+        # engine supplied for the edges it crossed to produce the values above.
+        questions=[_q(q) for q in result.questions_generated]
+        + [_q(q) for q in _questions_for_traversed_edges(
+            topology, {t.edge for t in result.transitions_applied})],
     )
     if value_mode == "current":
         # A CURRENT walk asks for no values, so it simulates nothing and
@@ -1862,7 +1866,10 @@ def rollout(session: EngineSession,
             entities=len(session.entities),
         ),
         findings=list(findings),
-        questions=[],
+        # the declarations this engine supplied for the edges this
+        # rollout crossed. Every value above may rest on one of them.
+        questions=[_q(q) for q in _questions_for_traversed_edges(
+            topology, result.edges_traversed)],
     )
     payload = envelope.to_dict()
     simulation = sub.to_dict()
@@ -2076,7 +2083,9 @@ def plan(session: EngineSession,
             entities=len(session.entities),
         ),
         findings=[],
-        questions=[],
+        # as `rollout`, unioned over every candidate's walk.
+        questions=[_q(q) for q in _questions_for_traversed_edges(
+            topology, result.edges_traversed)],
     )
     payload = envelope.to_dict()
     plan_payload = sub.to_dict()
@@ -2137,10 +2146,7 @@ def gaps(session: EngineSession,
     seen: Dict[Any, Any] = {}
     for node_id in starts:
         for question in traverser.discover_gaps(node_id):
-            gap = getattr(question, "gap", None)
-            key = (getattr(getattr(gap, "gap_type", None), "value", None),
-                   getattr(gap, "location", None))
-            seen.setdefault(key, question)
+            seen.setdefault(_gap_key(getattr(question, "gap", None)), question)
 
     # the topology's STRUCTURAL gaps, which are a separate
     # population from the traversal-time ones above and were reaching no
@@ -2179,8 +2185,7 @@ def gaps(session: EngineSession,
     # the path was never exercised.
     from arbiter_engine.twin.topology import TopologyQuestion
     for gap in topology.get_unresolved_gaps():
-        key = (getattr(getattr(gap, "gap_type", None), "value", None),
-               getattr(gap, "location", None))
+        key = _gap_key(gap)
         if key in seen:
             continue
         seen[key] = TopologyQuestion(
@@ -2599,6 +2604,80 @@ def _as_timestamp(when: Any) -> datetime:
 def _q(question: Any) -> Dict[str, Any]:
     from arbiter_engine.envelope import _question_to_dict
     return _question_to_dict(question)
+
+
+def _gap_key(gap: Any) -> Tuple[Any, Any, Any]:
+    """The identity of a gap, for deduplication.
+
+    THE CLAIM IS PART OF THE KEY, not just the type and the place.
+    The key was `(gap_type, location)`, which assumes each type asks a single
+    question at a given location. `MISSING_DECLARATION` stopped being one
+    claim when a refused `transition:` block started using it, and a second
+    arrived that an internal ruling added: an edge whose time course this engine
+    supplied. already recorded that the type no longer determines the
+    question and fixed the TEMPLATE; the key beside it kept the old assumption.
+
+    Measured on the shipped pump-and-tank model with both `temporal:` and
+    `transition.source` removed: two distinct gaps, one question reported, and
+    the one dropped was the time course -- the disclosure that names the number
+    the engine substituted. A reader saw a model missing one declaration when
+    it was missing two.
+
+    `question` rather than a synthetic discriminator, because two gaps making
+    the same claim about the same place render the same sentence and SHOULD
+    collapse, which is the behaviour the old key was reaching for.
+    """
+    gap_type = getattr(gap, "gap_type", None)
+    return (getattr(gap_type, "value", None),
+            getattr(gap, "location", None),
+            getattr(gap, "question", None))
+
+
+def _questions_for_traversed_edges(topology: Any,
+                                   edges: Iterable[str]) -> List[Any]:
+    """The declarations this engine supplied for edges a walk actually CROSSED.
+
+    `rollout`, `plan` and `traverse` carry a
+    `time_course_not_declared` stamp when a value was computed across an edge
+    whose time course nobody wrote, and filed no question -- so the bare fact
+    was reported by the verb that used the number and the KEY and the NUMBER
+    only by `gaps`, which computed nothing. Their `questions` leg, whose stated
+    purpose is what the model never declared, came back empty on a trajectory
+    every value of which rested on an undeclared constant.
+
+    SCOPED TO EDGES ACTUALLY CROSSED, deliberately. Reporting every unresolved
+    gap in the topology would make these verbs a second `gaps` and would ask an
+    author to declare numbers the result in front of them does not rest on.
+    """
+    crossed = {edge for edge in (edges or ()) if edge}
+    if not crossed or topology is None:
+        return []
+    from arbiter_engine.twin.topology import (
+        GapType, TopologyQuestion,
+    )
+    from arbiter_engine.twin.traverser import TopologyTraverser
+    traverser = TopologyTraverser(topology)
+    seen: Dict[Any, Any] = {}
+    for gap in topology.get_unresolved_gaps():
+        if getattr(gap, "location", None) not in crossed:
+            continue
+        if getattr(gap, "gap_type", None) is not GapType.MISSING_DECLARATION:
+            continue
+        key = _gap_key(gap)
+        if key in seen:
+            continue
+        seen[key] = TopologyQuestion(
+            gap=gap,
+            question_text=gap.question,
+            # The same scoring `gaps` gives a structural gap, which the
+            # builder found AT the edge rather than some hops from it.
+            priority=traverser._compute_priority(gap, 0),
+            context_path=[],
+            suggested_resolvers=[gap.suggested_strategy],
+        )
+    return sorted(seen.values(),
+                  key=lambda q: getattr(q, "priority", 0.0) or 0.0,
+                  reverse=True)
 
 
 def _build_topology(session: EngineSession):

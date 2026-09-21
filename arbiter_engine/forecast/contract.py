@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
+from ..assumptions import GAUSSIAN_FROM_MEAN_SIGMA
 from ..clock import as_naive_utc, now_utc
 
 #: The two levels a distributional record cannot be scored without. Stated here
@@ -39,7 +40,7 @@ REQUIRED_QUANTILES: Tuple[str, str] = ("q05", "q95")
 #: Stamped onto a record the engine expanded from a mean and a sigma. Named as
 #: a fact about how the numbers were MADE, not about the producer's method,
 #: because the producer did not make them -- this module did.
-GAUSSIAN_STAMP = "gaussian_from_mean_sigma"
+GAUSSIAN_STAMP = GAUSSIAN_FROM_MEAN_SIGMA
 
 #: Levels produced when expanding a mean and sigma, or reducing samples. The
 #: two required ones plus the median, which is what the shadow check reads and

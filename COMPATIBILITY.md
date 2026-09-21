@@ -86,6 +86,19 @@ Three things about it are promises and not accidents:
   60 s dead time and time constant, standing in wherever a `temporal:` block
   was absent or short of a key.
 
+  - **and the list this rule permits growing is now published.**
+  `MODELING.md` carries every stamp the engine emits and what each one
+  discloses, derived from the engine's own vocabulary rather than transcribed
+  beside it. Until then this rule stood alone: a consumer told the list may
+  grow in a patch release had no baseline to diff the growth against, and the
+  stamps existed only as bare literals at twenty sites in four modules. An
+  outside review reproduced all three of this engine's ENUMERATED vocabularies
+  exactly and reported this one at nine of twenty. `envelope.schema.json` now
+  declares `assumptions` as an array of string and deliberately WITHOUT an
+  `enum`, so that this permission stays real -- an enum would make every
+  addition a schema change, and could not express the one stamp that carries a
+  property name.
+
 - **Add an axiom, an indicator field, or a nested config block.** A model
   written before the field keeps its behaviour; that is a rule this project
   enforces on itself, not a courtesy.
