@@ -101,8 +101,17 @@ class PlanCandidate:
     #: 85.012 scored 16.000 -- a tenth of a point moving the ranking by 12 %,
     #: while the declared spread on that value at that step was 0.3988. This
     #: number is what tells a reader which of those two they are looking at.
-    #: It changes no ranking.
+    #: It changes no ranking — briefly made it break ties, which
+    #: contradicted this line and was wrong for the reason that an internal ruling records;
+    #: `clearance_sigmas` below carries that job.
     margin_sigmas: Optional[float] = None
+    #: the SIGNED worst headroom over the horizon, in declared
+    #: spreads: positive when the trajectory stayed clear of every line it
+    #: was judged against, negative by how far the deepest excursion went
+    #: past one. `margin_sigmas` beside it is an ABSOLUTE closest approach
+    #: and cannot say WHICH SIDE of a line a value sat on, which is the one
+    #: thing a tie-break has to know.
+    clearance_sigmas: Optional[float] = None
     checked: Dict[str, Any] = field(default_factory=dict)
     rollouts: int = 0
 
@@ -346,6 +355,39 @@ def _closest_call(envelope: Any) -> Optional[float]:
                     if closest is None or sigmas < closest:
                         closest = sigmas
     return closest
+
+
+def _signed_clearance(envelope: Any, findings: Sequence[Any],
+                      threshold: Optional[int]) -> Optional[float]:
+    """The worst headroom over the horizon, SIGNED, in declared spreads.
+
+    `_closest_call` IS THE WRONG QUANTITY TO RANK ON, and
+    ranked on it. That one minimises the ABSOLUTE distance to a line, which
+    is right for the figure it feeds: a reader asking how close the decision
+    came does not care which side. A tie-break does.
+
+    Two consequences, both measured on the shipped model. Among candidates
+    that BREACH, the absolute closest approach is not a measure of the breach
+    at all -- it is wherever a discrete step happened to fall as the
+    trajectory crossed the line. Two candidates tied at objective 1.667, one
+    settling 4 points past the band edge and one 8 points past, reported 1.443
+    and 0.089; and at `step_s=450` the order REVERSED and the engine preferred
+    the deeper breach. The ranking moved with the step size and not with the
+    risk.
+
+    The signed worst margin is right in both regimes at once: larger is
+    further from the line when clear, and a shallower excursion when not.
+    `_worst_margin` already computes exactly it for
+    `clearance_probability`'s distribution centre, so this divides by the
+    same declared spread rather than deriving a second one.
+    """
+    margin = _worst_margin(envelope, findings, threshold)
+    if margin is None:
+        return None
+    distance, spread = margin
+    if not spread:
+        return None
+    return float(distance) / float(spread)
 
 
 def _worst_margin(envelope: Any, findings: Sequence[Any],
@@ -604,6 +646,13 @@ def search(session: Any, topology: Any, *,
             candidate.assumptions = list(stamps)
             # and HOW CLOSE the call was.
             candidate.margin_sigmas = _closest_call(envelope)
+            # and WHICH SIDE, which is a different question.
+            # `min_severity` is empty for `expected_findings`, and then
+            # `_severity_at_least` is None and `_worst_margin` reports the
+            # geometry alone — which is what a tie-break wants.
+            candidate.clearance_sigmas = _signed_clearance(
+                envelope, findings,
+                _severity_at_least(result.min_severity))
             for stamp in stamps:
                 if stamp not in result.assumptions:
                     result.assumptions.append(stamp)
@@ -659,6 +708,12 @@ def search(session: Any, topology: Any, *,
 
     if result.ranked or result.objective:
         result.assumptions.append("ties_break_toward_fewer_actions")
+    if any(c.clearance_sigmas is not None for c in evaluated):
+        # stamped only when a spread actually reached a
+        # trajectory. Claiming this rule on a model that declared no
+        # `gain_sigma:` would describe a tie-break that cannot fire.
+        # keyed on the quantity the sort actually reads.
+        result.assumptions.append("ties_break_toward_the_wider_margin")
     if result.objective == "expected_findings":
         # SAID ON THE ENVELOPE, not only in the guide. The figure
         # is the weighted finding count of the MEDIAN trajectory; it is not
@@ -706,6 +761,26 @@ def search(session: Any, topology: Any, *,
         # operator: when acting buys nothing the model can measure, recommending
         # action is worse than recommending none, and it is the recommendation a
         # person has to carry out.
+        #
+        # AND THE SAME ARGUMENT ONE STEP FURTHER. Two candidates
+        # with the same objective AND the same action count still fell to
+        # insertion order, which is the order the author listed them in
+        # `candidates:`. Measured on the shipped pump-and-tank model: two
+        # candidates tie at `expected_findings` 0.000, one settling 0.03
+        # declared spreads from the line that decides whether it files a
+        # finding and the other 15.08 clear of it -- and swapping the two
+        # entries in the YAML swapped their rank. The engine had already
+        # measured the difference and reported it as `margin_sigmas`; it
+        # simply did not use it.
+        #
+        # THE SPREAD IS THE AUTHOR'S, so this is not the engine inventing a
+        # preference: `gain_sigma:` was declared, `margin_sigmas` is the
+        # distance to the nearest line in units of it, and further from a
+        # decision is the same direction `clearance_probability` already
+        # optimises. A candidate with no measured margin sorts LAST among its
+        # ties -- one this engine could not measure should not displace one it
+        # measured as clear -- so a model declaring no spread keeps exactly
+        # the order it has today.
         def key(candidate: PlanCandidate):
             value = candidate.objective
             if value is None:
@@ -713,7 +788,15 @@ def search(session: Any, topology: Any, *,
                          else float("-inf"))
             if result.direction == "maximise":
                 value = -value
-            return (value, len(candidate.actions))
+            # the SIGNED headroom, not `margin_sigmas`. See
+            # `_signed_clearance`: the absolute closest approach reversed
+            # this order when the step size changed, because among breaching
+            # candidates it measures where a step fell and not how bad the
+            # breach is.
+            room = candidate.clearance_sigmas
+            widest = (-float(room) if isinstance(room, (int, float))
+                      and not isinstance(room, bool) else float("inf"))
+            return (value, len(candidate.actions), widest)
 
         evaluated.sort(key=key)
     result.candidates = evaluated

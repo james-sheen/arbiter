@@ -22,6 +22,33 @@ useful-looking document and the less trustworthy one.
 
 ### Fixed
 
+- **A plan's tie-break read a figure that cannot say which side of a line a
+  value sat on.** The tie between two equally-scored candidates broke toward
+  the wider `margin_sigmas`, which is the minimum ABSOLUTE distance to any
+  line over the horizon. Among candidates that breach, that is not a measure
+  of the breach — it is wherever a discrete step fell as the trajectory
+  crossed the line. Two candidates tied at 1.667 while settling about 4 and
+  about 8 points past a band edge reported 1.443 and 0.089, and at
+  `step_s=450` the order reversed and the deeper breach was preferred: the
+  ranking moved with the step size rather than the risk. Ties now break on
+  `clearance_sigmas`, the SIGNED worst headroom in declared spreads, taken
+  from the same margin `clearance_probability` centres its distribution on.
+  `margin_sigmas` is unchanged and, as its own description has always said,
+  changes no ranking.
+
+- **An exact tie between two candidate plans was broken by the order they were
+  written in.** The ranking sorted on the objective and then the action count;
+  two candidates equal on both fell to insertion order. On the shipped
+  pump-and-tank model two candidates tie at `expected_findings` 0.000 while
+  settling 0.03 and 15.08 declared spreads from the line that decides whether
+  they file a finding — and the engine's own sampler scores the same two
+  rollouts at 0.43 and 1.00 clear. Swapping their entries in the YAML swapped
+  their rank. The tie now breaks toward the wider `margin_sigmas`, stamped
+  `ties_break_toward_the_wider_margin` and only when a declared spread actually
+  reached a trajectory. A candidate with no measured margin sorts last among
+  its ties, so a model that declares no `gain_sigma:` keeps the order it had.
+  No reported number changes; this reorders exact ties only.
+
 - **A time course nobody declared was invented in silence.** `temporal:` is
   optional, and an edge without it — or with it and short of a key — kept this
   engine's own 60 s dead time and 60 s time constant, reported by nothing.
@@ -43,7 +70,11 @@ useful-looking document and the less trustworthy one.
   reported 45.1 spreads clear; candidates already breaching reported
   comfortable positive margins. Which lines an axiom declares is now the
   axiom's own business, and the planner asks every axiom state that judges the
-  property. Reported from outside.
+  property. Reported from outside. **Measured afterwards against the pre-fix
+  tree, and larger than first described: `clearance_probability` had been
+  returning 1.00 for EVERY candidate, including the two that already file
+  findings. It was not a wrong number but a vacuous objective, ranking
+  nothing.**
 
 - **Gain fitting was unreachable from the documented shape.** Bare
   `add_observations` spaced readings ending at `now`, read once per call, so
@@ -67,6 +98,13 @@ useful-looking document and the less trustworthy one.
   type that is neither raises at the boundary. Reported from outside.
 
 ### Added
+
+- `plan` candidates carry `clearance_sigmas`: the signed worst headroom over
+  the horizon in declared spreads — positive when the trajectory stayed clear
+  of every line it was judged against, negative by how far the deepest
+  excursion went past one. On the shipped example a candidate reports a
+  `margin_sigmas` of 0.920 while sitting 4.985 spreads the wrong side of a
+  line, and an absolute distance cannot express the difference.
 
 - `twin.topology.TIME_COURSE_KEYS` — the two `temporal:` keys that decide
   whose number a transient is, alongside `REQUIRED_TRANSITION_KEYS` for the

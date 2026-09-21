@@ -1093,6 +1093,33 @@ planner that cannot return *leave it alone* will always recommend acting; and
 where acting buys nothing the model can measure, recommending it is worse than
 recommending none, because a person has to carry it out.
 
+**A tie that survives both then breaks toward the wider margin.** Two
+candidates can share an objective AND an action count, and before this rule the
+one listed first in `candidates:` won -- so where the author wrote a setting
+decided which setting was recommended. On the shipped `pump_tank_dynamics`
+model two candidates tie at `expected_findings` 0.000 while settling 0.03 and
+15.08 declared spreads from the line that decides whether they file a finding.
+The tighter one is a coin flip; the engine had already measured both and
+reported them as `margin_sigmas`.
+
+The spread is the author's, so this decides nothing on the model's behalf:
+further from a decision is the direction `clearance_probability` already
+optimises, in units the model declared. **A candidate carrying no measured
+headroom sorts last among its ties**, so a model with no `gain_sigma:` keeps
+the order it had, and the rule is stamped `ties_break_toward_the_wider_margin`
+only where a declared spread actually reached a trajectory.
+
+**The figure it ranks on is `clearance_sigmas`, not `margin_sigmas`,** and the
+difference is the whole of the rule. `margin_sigmas` is the closest a value
+came to any line, as an ABSOLUTE distance; among candidates that breach it
+measures wherever a discrete step happened to fall as the trajectory crossed
+the line, so ranking on it moved the recommendation when the step size changed.
+`clearance_sigmas` is SIGNED — positive is headroom, negative is how far the
+worst excursion went past a line — so larger is safer whether or not a line was
+ever crossed. Both are reported. A clear candidate shows the same number twice;
+a breaching one can report a `margin_sigmas` of 0.920 and a `clearance_sigmas`
+of -4.985, and only the second says which of those a reader is looking at.
+
 **The cost of a finding is derived from `Severity.priority_score`, not declared
 again.** A second severity table is how two parts of one engine come to
 disagree about which finding is worse.

@@ -2097,6 +2097,7 @@ def plan(session: EngineSession,
             "declines": list(c.declines),
             "assumptions": list(c.assumptions),
             "margin_sigmas": c.margin_sigmas,
+            "clearance_sigmas": c.clearance_sigmas,
             "checked": dict(c.checked),
         }
         for c in result.candidates
