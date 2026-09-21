@@ -13,7 +13,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 from ..clock import now_utc
 from ..interfaces import Entity, Problem
@@ -457,6 +457,74 @@ class TwinEdge:
         return 1.0
 
     @property
+    def exponential_stage(self) -> Optional[Tuple[float, float]]:
+        """``(tau, delay)`` when this edge is an exponential lag, else ``None``.
+
+        The chain carried by the walk needs each stage's declared
+        numbers, and `None` is how a stage says *no closed cascade form
+        covers me*. A `linear` or `logarithmic` edge shapes the transient and
+        is stamped like any other, and a chain containing one keeps the bare
+        stamp rather than acquiring an exactness claim this cannot support.
+        """
+        if self.response_model != ResponseModel.EXPONENTIAL:
+            return None
+        return (max(self.time_constant_s, 0.001),
+                float(self.propagation_delay_s))
+
+    @staticmethod
+    def cascade_fraction(stages: Sequence[Tuple[float, float]],
+                         elapsed_s: float) -> Optional[float]:
+        """The EXACT step response of exponential lags in series, or ``None``.
+
+        The walk charges each edge's own fraction against a source
+        that is already lagged, so two hops develop as the PRODUCT of two step
+        responses where the exact answer is their CONVOLUTION. `MODELING.md`
+        records why that stood: the partial-fraction form for distinct time
+        constants **cancels catastrophically** as two of them approach each
+        other, so a robust version would need a near-equality tolerance --
+        a number nobody declared, and therefore not this engine's to pick.
+
+        **That argument is about the FORMULATION, not the convolution.**
+        Measured at `t=900` with `tau1=600`: the partial-fraction form is
+        accurate to 2e-14 at `tau2=601` and has lost everything by
+        `tau2-tau1=1e-13`, reading 0.625 against a true 0.442174599629, then
+        dividing by zero at equality. The divided-difference form below holds
+        all twelve digits across the same sweep and meets the equal-tau
+        closed form exactly, because `expm1` is built for this and the only
+        branch is `x != 0.0` -- an exact float comparison, not a tolerance.
+
+        Derivation, for stages `a = 1/tau1`, `b = 1/tau2`, `d = b - a`:
+
+            h(t) = 1 - e^{-at} *(1 - a*t*phi(-d*t)), phi(x) = (e^x - 1)/x
+
+        `phi(-d*t)` is `expm1(-x)/x`, which tends to -1 as `x -> 0` and
+        recovers `1 - (1 + a*t)e^{-at}`, the equal-tau series response.
+
+        Returns ``None`` when no exact form applies -- a chain that is not
+        exactly two exponential stages. The caller keeps the product and its
+        stamp in that case rather than getting a number this cannot justify.
+        """
+        # A `None` stage is a shaping model with no closed cascade form --
+        # `linear` or `logarithmic`. One of them anywhere in the chain makes
+        # the whole cascade unsolvable here, and refusing is the answer: a
+        # figure derived from the two exponential stages beside it would
+        # describe a chain nobody declared.
+        if len(stages) != 2 or any(stage is None for stage in stages):
+            return None
+        (tau1, delay1), (tau2, delay2) = stages
+        t = elapsed_s - (delay1 + delay2)
+        if t <= 0.0:
+            return 0.0
+        tau1 = max(tau1, 0.001)
+        tau2 = max(tau2, 0.001)
+        a, b = 1.0 / tau1, 1.0 / tau2
+        x = (b - a) * t
+        # `phi` is the divided difference of `exp`, evaluated where it is
+        # stable. The equality branch is the exact limit, not a tolerance.
+        phi = math.expm1(-x) / x if x != 0.0 else -1.0
+        return 1.0 - math.exp(-a * t) * (1.0 - a * t * phi)
+
+    @property
     def shapes_the_transient(self) -> bool:
         """Does this edge's declaration bend the response, or only delay it?
 
@@ -571,6 +639,14 @@ class TraversalResult:
     #: asks for no values and therefore projects none.
     transitions_applied: List['TransitionApplied'] = field(
         default_factory=list)
+    #:. One row per chain of shaping edges whose composition the walk
+    #: APPROXIMATED and could also solve exactly -- the product it used, the
+    #: convolution the declared dynamics imply, and the signed gap. Empty
+    #: when no chain formed AND when a chain formed that has no closed form,
+    #: which is why the `series_edges_compose_by_product` stamp stays: the
+    #: stamp says an approximation happened, these rows say how much it cost
+    #: where that is knowable.
+    series_errors: List[Dict[str, Any]] = field(default_factory=list)
     simulation_declines: List['SimulationDecline'] = field(
         default_factory=list)
     #: entity_id -> {property -> imagined absolute value}

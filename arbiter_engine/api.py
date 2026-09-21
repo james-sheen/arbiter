@@ -1830,6 +1830,16 @@ def rollout(session: EngineSession,
     simulation["checked"]["values_without_tolerance"] = (
         result.values_without_tolerance)
     simulation["checked"]["values_driven"] = result.values_driven
+    if result.series_errors:
+        # BESIDE THE STAMP, NOT INSTEAD OF IT. The assumption says
+        # a chain was composed by multiplying step responses; this says how
+        # far that is from the convolution the declaration implies, per step,
+        # for the chains where a closed form exists. A chain with no closed
+        # form contributes no row and keeps the bare stamp, so an empty leg
+        # under the stamp means *not quantifiable*, never *no error*.
+        simulation["series_errors"] = list(result.series_errors)
+        simulation["checked"]["series_chains_quantified"] = len(
+            {(r["entity_id"], r["indicator"]) for r in result.series_errors})
     if file_predictions:
         # WHICH ONES GOT A YARDSTICK, in the same shape and the
         # same closed vocabulary `ingest_forecasts` reports for a producer.

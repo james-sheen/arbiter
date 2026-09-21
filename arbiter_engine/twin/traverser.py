@@ -11,6 +11,7 @@ value modes (CURRENT, PROJECTED, HYPOTHETICAL).
 
 import logging
 import math
+import sys
 import time
 from collections import deque
 from dataclasses import dataclass, field
@@ -58,6 +59,15 @@ _SEVERITY_DECAY = {
 # substrings.
 _FLOW_IN_TOKENS: FrozenSet[str] = frozenset({'in', 'input', 'received'})
 _FLOW_OUT_TOKENS: FrozenSet[str] = frozenset({'out', 'output', 'sent'})
+
+
+
+#:. Below this the exact cascade response carries no significant
+#: digit: it is computed as `1 - (a value near 1)`, so when the product of the
+#: stage responses is at the ULP of 1.0 the ratio between them is rounding
+#: noise -- measured, 39.97 where the true correction is 0.5. A property of
+#: float64, not a number any author declared.
+_CASCADE_CONDITION_FLOOR: float = sys.float_info.epsilon
 
 
 def suggest_flow_direction(prop_name: str) -> Optional[str]:
@@ -351,7 +361,16 @@ class TopologyTraverser:
         #: the walk composes chains by MULTIPLYING the two step responses --
         #: which is not their convolution, and is the one assumption this
         #: walk makes without saying so.
-        shaped: Set[Tuple[str, str]] = set()
+        #:
+        #: AND IT NOW CARRIES THE CHAIN, not just membership. The
+        #: stamp said an approximation had been used and never how much it
+        #: cost, which is the shape `checked.invariants` exists to refuse one
+        #: level out: a number published without its predicate. Holding each
+        #: stage's `(tau, delay)` lets the walk report the size of its own
+        #: error where a closed form exists. `None` marks a shaping stage
+        #: whose model has no closed cascade form, so a chain containing one
+        #: is stamped and not quantified.
+        shaped: Dict[Tuple[str, str], Tuple[Optional[Tuple[float, float]], ...]] = {}
         edges_without_dynamics: Set[str] = set()
         #:. (node, sink) pairs whose axioms are evaluated after
         #: the walk, once every contribution has landed. Simulating
@@ -1051,7 +1070,7 @@ class TopologyTraverser:
         self, pending, *, request, result,
         imagined, imagined_via, imagined_spread,
         budget_left: int, edges_without_dynamics,
-        shaped: Optional[Set[Tuple[str, str]]] = None) -> int:
+        shaped: Optional[Dict[Tuple[str, str], Tuple[Any, ...]]] = None) -> int:
         """Apply every recorded transition with its source already resolved.
 
         THE WALK ORDER AND THE DEPENDENCY ORDER ARE NOT THE SAME
@@ -1175,6 +1194,60 @@ class TopologyTraverser:
         if decline not in result.simulation_declines:
             result.simulation_declines.append(decline)
 
+    @staticmethod
+    def _record_series_error(result: Any,
+                             chain: Tuple[Any, ...],
+                             elapsed_s: float,
+                             target_id: str,
+                             prop: str) -> None:
+        """Say how far the product composition is from the convolution.
+
+        `series_edges_compose_by_product` told a reader an
+        approximation had been used and never what it cost. The engine's own
+        rule is that a number travels with its predicate; a trajectory
+        produced by an approximation is a number, and the size of the
+        approximation is its predicate.
+
+        **Quantified only where a closed form exists**, which today is a
+        chain of exactly two exponential stages. `cascade_fraction` returns
+        `None` for anything else and this records nothing, so an
+        unquantifiable chain keeps the bare stamp. Reporting a zero there
+        would read as *no error*.
+
+        The figures are FRACTIONS of the final impact, not units of the
+        target property: the same chain drives every value that crosses it,
+        so the fractional error is the fact about the model and a reader
+        multiplies by the movement they care about. `product` is what the
+        walk actually used and `exact` is what the declared dynamics imply.
+        """
+        exact = TwinEdge.cascade_fraction(chain, elapsed_s)
+        if exact is None:
+            return
+        # MIRRORS THE WALK EXACTLY, dead time included. Each edge is charged
+        # at `horizon - cum_delay_at_source`, and `response_fraction` then
+        # subtracts its own delay -- so the k-th stage sees the horizon less
+        # every delay up to and including its own. Recomputing it any other
+        # way would report the error of a composition nobody performed.
+        product, cum = 1.0, 0.0
+        for tau, delay in chain:
+            t = elapsed_s - cum - delay
+            product *= 0.0 if t <= 0.0 else (1.0 - math.exp(-t / tau))
+            cum += delay
+        rows = getattr(result, "series_errors", None)
+        if rows is None:
+            return
+        rows.append({
+            "entity_id": target_id,
+            "indicator": prop,
+            "at_s": float(elapsed_s),
+            "stages": [[float(tau), float(delay)] for tau, delay in chain],
+            "product": round(product, 9),
+            "exact": round(exact, 9),
+            # SIGNED, and the sign is the point: the product leads the
+            # convolution, so a breach two hops out is predicted EARLY.
+            "error": round(product - exact, 9),
+        })
+
     def _apply_transitions(
         self, *, edge, source_id: str, target_id: str,
         source_values: Dict[str, Any], node: TwinNode,
@@ -1185,7 +1258,7 @@ class TopologyTraverser:
         imagined_spread: Dict[str, Dict[str, Dict[Any, float]]],
         budget_left: int,
         edges_without_dynamics: Set[str],
-        shaped: Optional[Set[Tuple[str, str]]] = None,
+        shaped: Optional[Dict[Tuple[str, str], Tuple[Any, ...]]] = None,
     ) -> int:
         """Push one edge's declared transitions onto the target's deltas.
 
@@ -1318,6 +1391,60 @@ class TopologyTraverser:
             # `already evaluated` while the walk is still running.
 
             fraction = edge.response_fraction(elapsed)
+
+            # AND IF THIS IS THE SECOND LAG OF A CHAIN, COMPOSE IT
+            # EXACTLY. The walk charges this edge's own response against a
+            # source already lagged, so two hops develop as the PRODUCT of two
+            # step responses where the declaration implies their CONVOLUTION.
+            # An internal ruling measured that gap; this closes it, for the chains where
+            # a closed form exists.
+            #
+            # A MULTIPLICATIVE CORRECTION rather than a rewrite of the
+            # propagation. The product this edge is about to form is
+            # `f1 * f2`, and the exact cascade is `H`, so scaling the
+            # fraction by `H / (f1 * f2)` lands the contribution on `H`
+            # without the walk ever needing the un-lagged delta or the
+            # upstream gain -- both of which would have to be threaded
+            # through every contribution, in the one routine every axiom
+            # evaluation in a rollout depends on.
+            #
+            # APPLIED TO THE FRACTION, so the value and its spread cannot
+            # come apart: everything below charges the same `fraction`, and
+            # correcting the value alone would leave an interval belonging to
+            # a trajectory nobody walked.
+            #
+            # PER CONTRIBUTION, not per property, which is what makes
+            # converging paths safe: each charge is corrected by its own
+            # chain, and superposition is linear, so a target fed by a
+            # two-stage chain and a direct edge gets each contribution right.
+            composed_exactly = False
+            chain: Tuple[Any, ...] = ()
+            source_chain = (None if shaped is None
+                            else shaped.get((source_id,
+                                             transition.from_property)))
+            if shaped is not None and edge.shapes_the_transient:
+                chain = (source_chain or ()) + (edge.exponential_stage,)
+                exact = TwinEdge.cascade_fraction(chain,
+                                                  float(request.horizon_s))
+                if exact is not None:
+                    product, cum = 1.0, 0.0
+                    for stage_tau, stage_delay in chain:
+                        span = float(request.horizon_s) - cum - stage_delay
+                        product *= (0.0 if span <= 0.0
+                                    else 1.0 - math.exp(-span / stage_tau))
+                        cum += stage_delay
+                    # CONDITIONED ON THE ARITHMETIC, not on a declared
+                    # tolerance. `H` is computed as `1 - (something near 1)`,
+                    # so once it falls to the ULP of 1.0 it carries no
+                    # significant digit -- measured, a product of 2.8e-18
+                    # yields a ratio of 39.97 where the true one is 0.5. Both
+                    # curves are zero to representable precision there and the
+                    # contribution is negligible either way, so the walk keeps
+                    # the product. This bound is a property of float64 and of
+                    # nothing an author declared.
+                    if product > _CASCADE_CONDITION_FLOOR:
+                        fraction *= exact / product
+                        composed_exactly = True
             # THE OFFSET IS PART OF THE PROPAGATION, so it is
             # charged the same response fraction as the gain term. It used to
             # be added in full the moment the source moved, which put a value
@@ -1435,16 +1562,33 @@ class TopologyTraverser:
             # every other assumption on this walk already follows.
             if shaped is not None:
                 if edge.shapes_the_transient:
-                    if (source_id, transition.from_property) in shaped:
-                        if ("series_edges_compose_by_product"
-                                not in result.assumptions):
-                            result.assumptions.append(
-                                "series_edges_compose_by_product")
-                    shaped.add((target_id, transition.to_property))
-                elif (source_id, transition.from_property) in shaped:
+                    if source_chain is not None:
+                        # TWO STAMPS, BECAUSE THEY ARE TWO CLAIMS.
+                        # A chain the walk solved carries no approximation
+                        # and must not be stamped as though it did; one it
+                        # could not solve is still composed by product and
+                        # still says so. A rollout crossing both kinds
+                        # carries both stamps, which is the honest report.
+                        stamp = ("series_edges_composed_exactly"
+                                 if composed_exactly
+                                 else "series_edges_compose_by_product")
+                        if stamp not in result.assumptions:
+                            result.assumptions.append(stamp)
+                        # /WHAT THE APPROXIMATION WOULD HAVE
+                        # COST. Recorded for the solved chains only, where it
+                        # is now the size of the error AVOIDED rather than
+                        # the size of one carried: an author reading a
+                        # multi-hop transient learns how much of it depends
+                        # on the composition being exact.
+                        if composed_exactly:
+                            self._record_series_error(
+                                result, chain, float(request.horizon_s),
+                                target_id, transition.to_property)
+                    shaped[(target_id, transition.to_property)] = chain
+                elif source_chain is not None:
                     # A pure step passes the chain along without lengthening
                     # it: whatever reached the source is what leaves here.
-                    shaped.add((target_id, transition.to_property))
+                    shaped[(target_id, transition.to_property)] = source_chain
             imagined_via.setdefault(target_id, {})[
                 transition.to_property] = transition.source
             result.transitions_applied.append(TransitionApplied(

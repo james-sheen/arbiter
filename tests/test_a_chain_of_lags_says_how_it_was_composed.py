@@ -115,13 +115,25 @@ def test_the_second_hop_is_either_the_series_response_or_says_it_is_not(
 
 
 def test_what_the_second_hop_currently_is(simulation):
-    """Pinned so the number cannot move without somebody noticing. If the
-    composition changes to a series response this test is the one to
-    retire, and the one above stops needing the stamp."""
+    """RETIRED AS PINNED, ON ITS OWN INSTRUCTION, AT.
+
+    This held the product composition in place and said so: *if the
+    composition changes to a series response this test is the one to retire*.
+    An internal ruling made that change, so the pin is inverted rather than deleted --
+    the number still cannot move without somebody noticing, and what it is
+    held to is now the series response the declaration always implied.
+
+    `_product` is kept beside `_series` because the disjunction above needs
+    both curves to tell them apart.
+    """
     for step in simulation["per_step"]:
         t = step["at_s"]
         assert step["values"]["c"]["x"] == pytest.approx(
-            100.0 * _product(t), abs=1e-6), f"at t={t}"
+            100.0 * _series(t), abs=1e-6), f"at t={t}"
+        if t > 0:
+            assert step["values"]["c"]["x"] != pytest.approx(
+                100.0 * _product(t), abs=1e-3), (
+                f"the product composition is back at t={t}")
 
 
 # ---------------------------------------------------------------------------
@@ -160,8 +172,15 @@ def _assumptions(tmp_path, text, entities="abc", edges=(("a", "ab", "b"),
 
 class TestTheStampSaysSomethingByBeingAbsent:
 
-    def test_a_chain_of_two_lags_carries_it(self, tmp_path):
-        assert STAMP in _assumptions(tmp_path, MODEL)
+    def test_a_chain_of_two_lags_no_longer_carries_it(self, tmp_path):
+        """INVERTED AT. Two exponential stages are now composed to
+        their convolution, so the claim this stamp makes is false of them and
+        `series_edges_composed_exactly` is what they carry. The stamp still
+        earns its keep on the chains that remain approximate -- a `linear`
+        stage, or a third hop -- which is what the cases below are about."""
+        assumptions = _assumptions(tmp_path, MODEL)
+        assert STAMP not in assumptions
+        assert "series_edges_composed_exactly" in assumptions
 
     def test_one_hop_does_not(self, tmp_path):
         """One edge IS its declared curve; `first_order_response` already

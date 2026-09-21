@@ -930,12 +930,51 @@ predicted sooner than the declared dynamics imply.
 `series_edges_compose_by_product` is stamped on any result that relied on it,
 which means a chain of edges that actually shape a transient: one hop does not
 carry the stamp, and neither does a chain of `step` edges, whose product IS
-their convolution. Composing the cascade exactly is tractable only for the
-linear time-invariant models, and the partial-fraction form for distinct time
-constants cancels catastrophically as two of them approach each other -- so a
-robust version of it needs a near-equality tolerance, which is a number nobody
-declared and therefore not this engine's to pick. The approximation stands,
-and it is named.
+their convolution.
+
+**Two exponential stages in series are composed EXACTLY**, and carry
+`series_edges_composed_exactly`. The walk charges each edge's response against
+a source already lagged, so the contribution it forms is `f1 * f2`; scaling
+that by `H / (f1 * f2)` lands it on the convolution without the propagation
+needing the un-lagged movement or the upstream gain. The correction rides the
+FRACTION, so a value and its declared spread cannot come apart, and it is
+applied PER CONTRIBUTION -- a target fed by a chain and by a direct edge gets
+each one right, because superposition is linear.
+
+**What has no closed form still composes by product and still says so.** A
+chain containing a `linear` or `logarithmic` stage keeps
+`series_edges_compose_by_product`. A third hop gets the exact two-stage
+composition for its solvable head and the product beyond it: measured on three
+equal 600 s lags at `t = 1800 s`, that moves the answer from 28.11 units of
+error to 18.42, and it is still stamped, because closer is not exact. A
+rollout crossing both kinds carries BOTH stamps.
+
+**A `series_errors` row per step records what the approximation would have
+cost** -- the `product` that was avoided, the `exact` value used, and the
+signed gap, as fractions of the final impact. On two equal 600 s lags the
+product leads by up to 0.161 per unit at `t = 900 s`, closing to 0.012 by an
+hour. An author reading a multi-hop transient learns from it how much of that
+transient depends on the composition being exact.
+
+This section used to end by saying the exact composition was not available:
+the partial-fraction form for distinct time constants cancels catastrophically
+as two of them approach each other, so a robust version would need a
+near-equality tolerance -- a number nobody declared and therefore not this
+engine's to pick. **That argument is about the formulation and not about the
+convolution.** Measured at `t = 900 s` with `tau1 = 600 s`, sweeping `tau2`
+down onto it, the partial fraction holds to 2e-14 at a separation of 1 s, reads
+`0.625` against a true `0.442174599629` at a separation of `1e-13`, and divides
+by zero at equality. The divided-difference form
+
+    h(t) = 1 - e^{-at} (1 - a t phi(-(b-a) t)),   phi(x) = (e^x - 1)/x
+
+holds every digit across the same sweep and meets the equal-tau closed form
+`1 - (1 + t/tau)exp(-t/tau)` exactly, because `expm1` is built for it and the
+only branch is `x != 0`, an exact comparison rather than a tolerance. The one
+bound the correction carries is a property of float64 and not of any model:
+below the ULP of 1.0 the exact response has no significant digit, so the walk
+keeps the product there, where both curves are zero to representable precision
+anyway.
 
 ## Acting on the model: `action_templates`
 

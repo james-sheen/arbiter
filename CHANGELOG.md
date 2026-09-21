@@ -222,6 +222,57 @@ useful-looking document and the less trustworthy one.
 
 ### Added
 
+- **Two exponential lags in series now compose to their convolution.** The
+  walk charged each edge's response against a source already lagged, so two
+  hops developed as the PRODUCT of two curves. They are now composed exactly
+  and stamped `series_edges_composed_exactly`. Measured on two equal 600 s
+  lags with a 100-unit step, the answer moves from 60.35 to **44.22 at
+  `t = 900 s`** — the product led by 16.1 units, so a breach two hops out was
+  predicted early, and `plan` ranks on transients.
+
+  Done as a multiplicative correction on the response FRACTION, so a value and
+  its declared spread cannot come apart, and applied PER CONTRIBUTION — a
+  target fed by a chain and by a direct edge gets each one right, because
+  superposition is linear.
+
+  **What has no closed form still composes by product and still says so.** A
+  `linear` or `logarithmic` stage anywhere in the chain keeps
+  `series_edges_compose_by_product`. A third hop gets the exact two-stage head
+  and the product beyond it: measured on three equal 600 s lags, error falls
+  from 28.11 units to 18.42, and it is still stamped, because closer is not
+  exact. A rollout crossing both kinds carries BOTH stamps.
+
+  `series_errors` rows now record what the approximation would have COST
+  rather than what it did: the `product` avoided, the `exact` value used, and
+  the signed gap.
+
+- **The engine now says how much its one approximation costs.** A value two
+  hops out is charged each edge's own step response against a source already
+  lagged, so it develops as the PRODUCT of two curves where the declared
+  dynamics imply their CONVOLUTION. That has been stamped
+  `series_edges_compose_by_product` since 0.2.5 — which names the assumption
+  and stops there, while the trajectory it produced went out as a bare number.
+  A `series_errors` row per step now carries the `product` used, the `exact`
+  convolution, and the signed gap, as fractions of the final impact. Measured
+  on two equal 600 s lags: the product leads by up to **0.161 per unit** at
+  `t = 900 s`, and the gap closes to 0.012 by an hour.
+
+  **Quantified only where a closed form exists** — a chain of exactly two
+  exponential stages. Anything else keeps the bare stamp and contributes no
+  row, so an empty leg under the stamp reads *not quantifiable*, never *no
+  error*. **The trajectory is unchanged**: this measures the walk, it does not
+  correct it.
+
+  The documented reason the exact form was unavailable — that the
+  partial-fraction expression cancels catastrophically as two time constants
+  approach each other, needing a near-equality tolerance nobody declared —
+  is true of that FORMULATION and not of the convolution. Measured at
+  `t = 900 s`, `tau1 = 600 s`: the partial fraction holds to 2e-14 at a 1 s
+  separation, reads 0.625 against a true 0.442174599629 at 1e-13, and divides
+  by zero at equality; the divided-difference form holds every digit across
+  the same sweep and meets the equal-tau closed form exactly. `expm1` is built
+  for it and the only branch is an exact comparison against zero.
+
 - **Both calibration tables carry `by_target`.** The producer table strata by
   `by_model` / `by_entity_type` and the engine's own by `by_coupling`; the only
   axis they shared was `by_horizon`, which resolves neither entity nor

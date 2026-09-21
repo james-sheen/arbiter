@@ -121,6 +121,11 @@ class RolloutResult:
     #: counts as right.
     predictions_filed: int = 0
     values_without_tolerance: int = 0
+    #:. Per step, the product the walk composed against the exact
+    #: convolution the declared dynamics imply, for every chain where a
+    #: closed form exists. The `series_edges_compose_by_product` stamp says
+    #: an approximation was used; these say what it cost.
+    series_errors: List[Dict[str, Any]] = field(default_factory=list)
     #:. One row per filed prediction saying whether a random walk was
     #: fitted beside it and, when it was not, WHICH of the reasons applied --
     #: the same vocabulary `ingest_forecasts` reports for a producer. A bare
@@ -1065,6 +1070,13 @@ def run(session: Any, topology: Any, *,
             for assumption in walk.assumptions:
                 if assumption not in result.assumptions:
                     result.assumptions.append(assumption)
+            # the cost of the composition this step relied on.
+            # Collected per step rather than pooled, because the divergence
+            # between the product and the convolution PEAKS mid-transient and
+            # vanishes at both ends: a single figure for the walk would
+            # describe neither the instant a breach was predicted nor the
+            # steady state that is exact.
+            result.series_errors.extend(walk.series_errors)
 
         step.response_fractions = sorted(fractions)
         # a seeded property's OWN spread is what it still carries
