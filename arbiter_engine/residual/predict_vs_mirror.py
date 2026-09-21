@@ -30,8 +30,15 @@ record/grade paths are no-ops with zero memory accumulation; the
 (``ProjectedValue`` vs observed property) SHIPPED and are no longer a
 follow-up: ``record_value_prediction`` and ``record_projected_values`` file
 them and ``grade_matured`` scores ``kind == "value"`` against the mirror
-reading. What is still open is the LOOP -- no rollout files its per-step
-values here, and the transition learner reads nothing back.
+reading.
+
+THE LOOP CLOSED ONE WAY at -- a rollout files its per-step values
+here and ``check`` grades them -- and what it files became scoreable rather
+than only judgeable at a value carrying a declared spread states that
+spread as quantiles, so ``own_projections`` can ask whether the engine's own
+intervals are honest and not merely whether the world landed inside them. What
+is still open is the OTHER direction: the transition learner reads nothing
+back.
 """
 
 from __future__ import annotations
@@ -215,6 +222,111 @@ def pinball_loss(level: float, predicted: float, observed: float) -> float:
     return delta * level if delta >= 0 else -delta * (1.0 - level)
 
 
+#: Half-width of the central 90% interval of a normal, in standard deviations.
+#: The level is fixed by `_REQUIRED_LEVELS` -- q05 and q95 ARE the central 90%
+#: -- so this is derived from that pair rather than chosen beside it. It is
+#: NOT 1.96: that is the 95% half-width and it is what a value record's
+#: `tolerance` carries. Both describe one declared spread at two levels, and a
+#: record filed from that spread carries both.
+NORMAL_90_HALF_WIDTH: float = 1.6448536269514722
+
+
+def _validated_quantiles(quantiles: Dict[str, float]) -> Dict[str, float]:
+    """Every rule a set of quantiles must satisfy to be scoreable, once.
+
+    These checks were written for `record_distribution`, and the
+    engine's own projections now file quantiles too. Two copies of a
+    validation rule is how two callers come to disagree about what a valid
+    forecast is, so there is one.
+    """
+    if not quantiles:
+        raise ValueError("a distribution prediction requires quantiles")
+    levels = {}
+    for key, value in quantiles.items():
+        levels[key] = quantile_level(key)          # raises on a malformed key
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            raise ValueError(
+                f"quantile {key!r} is {value!r}, which is not a number")
+    # `q10` and `q100` both read as 0.1 under the rule above, and so do
+    # `q1` and `q10`. Two keys at one level are not a crash -- they are two
+    # scores for one quantile, silently double-weighting it in the mean
+    # that becomes CRPS. Refused, naming both spellings, because the caller
+    # meant one of them and the ledger cannot tell which.
+    collisions: Dict[float, List[str]] = {}
+    for key, level in levels.items():
+        collisions.setdefault(level, []).append(key)
+    duplicated = {lvl: sorted(keys) for lvl, keys in collisions.items()
+                  if len(keys) > 1}
+    if duplicated:
+        raise ValueError(
+            f"two quantile keys name one level: {duplicated}. The digits "
+            f"after `q` are the fractional part, so `q1`, `q10` and `q100` "
+            f"are all 0.1")
+    missing = [k for k in _REQUIRED_LEVELS if k not in quantiles]
+    if missing:
+        raise ValueError(
+            f"a distribution prediction requires {list(_REQUIRED_LEVELS)}; "
+            f"missing {missing}. A forecast with no stated interval cannot "
+            f"be scored for coverage, and an unscoreable record would be "
+            f"counted in a calibration figure it never contributed to"
+        )
+    # Monotonicity is a property of quantiles, not a convention: if the
+    # 95th percentile sits below the 5th, the producer has mislabelled its
+    # own output and every score computed from it would be meaningless.
+    ordered = sorted(levels.items(), key=lambda kv: kv[1])
+    for (lo_key, _), (hi_key, _) in zip(ordered, ordered[1:]):
+        if quantiles[hi_key] < quantiles[lo_key]:
+            raise ValueError(
+                f"quantiles are not monotone: {hi_key}={quantiles[hi_key]} "
+                f"< {lo_key}={quantiles[lo_key]}")
+    return {str(k): float(v) for k, v in quantiles.items()}
+
+
+def normal_quantiles(value: float, sigma: float) -> Dict[str, float]:
+    """The central 90% of a declared normal, as the levels a score needs.
+
+    NOTHING IS ASSUMED HERE THAT WAS NOT ASSUMED ALREADY. A declared
+    `gain_sigma:` is a standard deviation, and a value record's tolerance has
+    been read off it as `1.96 *sigma` since; this states the same
+    spread at the level `coverage_90` scores. The normality is the author's,
+    carried forward -- not a distribution the ledger invented, which is what
+    `forecast/contract.py` refuses to do on a producer's behalf.
+    """
+    half = NORMAL_90_HALF_WIDTH * float(sigma)
+    return {"q05": float(value) - half,
+            "q50": float(value),
+            "q95": float(value) + half}
+
+
+def _score_quantiles(quantiles: Dict[str, float], observed: float,
+                     observed_at: datetime,
+                     model_id: Optional[str]) -> Dict[str, Any]:
+    """Pinball, the CRPS approximation and the 90% hit, for one graded record.
+
+    Shared by the producer aperture and the engine's own, because a
+    score the engine computes about itself under a second implementation is
+    not comparable with the one it computes about a producer -- and being
+    comparable is the whole reason to compute it.
+    """
+    losses = {key: pinball_loss(quantile_level(key), value, observed)
+              for key, value in quantiles.items()}
+    lo, hi = quantiles[_REQUIRED_LEVELS[0]], quantiles[_REQUIRED_LEVELS[1]]
+    return {
+        "observed": observed,
+        "observed_at": observed_at.isoformat(),
+        "pinball": {k: round(v, 9) for k, v in losses.items()},
+        "pinball_mean": round(sum(losses.values()) / len(losses), 9),
+        # CRPS for a distribution given by quantiles is approximated by
+        # twice the mean pinball loss over its levels. It is named
+        # `_approx` because the equality is exact only in the limit of
+        # densely and evenly spaced levels, and three levels are neither.
+        "crps_approx": round(2.0 * sum(losses.values()) / len(losses), 9),
+        "covered_90": lo <= observed <= hi,
+        "interval": [lo, hi],
+        "model_id": model_id,
+    }
+
+
 class PredictionLedger:
     """Ring-buffered PREDICT-vs-MIRROR ledger. Pure library — gating and
     singleton lifecycle live in the module-level helpers below."""
@@ -329,10 +441,34 @@ class PredictionLedger:
         traversal_id: Optional[str] = None,
         predicted_at: Optional[datetime] = None,
         couplings: Tuple[str, ...] = (),
+        quantiles: Optional[Dict[str, float]] = None,
+        model_id: Optional[str] = None,
+        source: Optional[str] = None,
     ) -> str:
         """ (value-kind v1): file a value prediction — entity E's
         property P will read ~V (+/- tolerance) at horizon H. Tolerance is
-        caller-owned and mandatory: the ledger never guesses resolution."""
+        caller-owned and mandatory: the ledger never guesses resolution.
+
+        AND THE SPREAD IT CAME FROM, WHERE THE CALLER HAS ONE.
+        `tolerance` answers *did the world land inside the band we chose*, and
+        that question rewards choosing a wider one: measured on one reality,
+        a `gain_sigma:` ten times too wide scored `confirm_rate` 1.0 against
+        an honest declaration's 0.95, and `brier` ranked them the same way
+        because every record here is filed at ONE stated confidence, which
+        makes `brier` a monotone restatement of the hit rate rather than a
+        second opinion.
+
+        Quantiles are what the proper scores need. They do not change the
+        verdict -- that is still the point against its tolerance -- and they
+        do not enter the producer figures. They make `own_projections`
+        computable, and pinball loss grows with the width of an interval
+        whether or not it contained the answer, so a band bought by declaring
+        ignorance finally costs something.
+
+        Optional on the same rule as everything else here: a caller with no
+        spread supplies none and is scored on the hit rate alone. Nothing is
+        invented to fill the gap.
+        """
         if not tolerance or float(tolerance) <= 0:
             raise ValueError("value predictions require a positive tolerance")
         record = PredictionRecord(
@@ -348,6 +484,14 @@ class PredictionLedger:
             value=float(predicted_value),
             tolerance=float(tolerance),
             couplings=tuple(couplings),
+            quantiles=(_validated_quantiles(quantiles)
+                       if quantiles is not None else None),
+            model_id=str(model_id) if model_id is not None else None,
+            # `is not None`, NOT truthiness -- the same guard the distribution
+            # filer carries, and for the same reason: `None` is the producer
+            # predicate, so folding `""` to `None` silently reclassifies a
+            # caller who supplied an empty source as somebody outside.
+            source=str(source) if source is not None else None,
         )
         self._note_eviction()
         self._append(record)
@@ -379,46 +523,7 @@ class PredictionLedger:
         Extra levels are kept and scored. They widen the CRPS approximation
         without changing what ``coverage_90`` means.
         """
-        if not quantiles:
-            raise ValueError("a distribution prediction requires quantiles")
-        levels = {}
-        for key, value in quantiles.items():
-            levels[key] = quantile_level(key)          # raises on a malformed key
-            if not isinstance(value, (int, float)) or isinstance(value, bool):
-                raise ValueError(
-                    f"quantile {key!r} is {value!r}, which is not a number")
-        # `q10` and `q100` both read as 0.1 under the rule above, and so do
-        # `q1` and `q10`. Two keys at one level are not a crash -- they are two
-        # scores for one quantile, silently double-weighting it in the mean
-        # that becomes CRPS. Refused, naming both spellings, because the caller
-        # meant one of them and the ledger cannot tell which.
-        collisions = {}
-        for key, level in levels.items():
-            collisions.setdefault(level, []).append(key)
-        duplicated = {lvl: sorted(keys) for lvl, keys in collisions.items()
-                      if len(keys) > 1}
-        if duplicated:
-            raise ValueError(
-                f"two quantile keys name one level: {duplicated}. The digits "
-                f"after `q` are the fractional part, so `q1`, `q10` and `q100` "
-                f"are all 0.1")
-        missing = [k for k in _REQUIRED_LEVELS if k not in quantiles]
-        if missing:
-            raise ValueError(
-                f"a distribution prediction requires {list(_REQUIRED_LEVELS)}; "
-                f"missing {missing}. A forecast with no stated interval cannot "
-                f"be scored for coverage, and an unscoreable record would be "
-                f"counted in a calibration figure it never contributed to"
-            )
-        # Monotonicity is a property of quantiles, not a convention: if the
-        # 95th percentile sits below the 5th, the producer has mislabelled its
-        # own output and every score computed from it would be meaningless.
-        ordered = sorted(levels.items(), key=lambda kv: kv[1])
-        for (lo_key, _), (hi_key, _) in zip(ordered, ordered[1:]):
-            if quantiles[hi_key] < quantiles[lo_key]:
-                raise ValueError(
-                    f"quantiles are not monotone: {hi_key}={quantiles[hi_key]} "
-                    f"< {lo_key}={quantiles[lo_key]}")
+        quantiles = _validated_quantiles(quantiles)
         record = PredictionRecord(
             prediction_id=str(uuid.uuid4()),
             traversal_id=traversal_id or str(uuid.uuid4()),
@@ -430,7 +535,7 @@ class PredictionLedger:
             predicted_at=as_naive_utc(predicted_at) if predicted_at else now_utc(),
             indicator=str(property_name),
             value=float(quantiles.get("q50", quantiles[_REQUIRED_LEVELS[0]])),
-            quantiles={str(k): float(v) for k, v in quantiles.items()},
+            quantiles=dict(quantiles),
             model_id=str(model_id),
             entity_type=str(entity_type) if entity_type else None,
             # `is not None`, NOT truthiness. `if source` folded `""` to `None`,
@@ -453,11 +558,20 @@ class PredictionLedger:
         traversal_id: Optional[str] = None,
         predicted_at: Optional[datetime] = None,
     ) -> Tuple[List[str], int]:
-        """Callsite-ready bridge for `TwinNode.projected_values` — a dark
-        schema field today (no producer constructs ProjectedValue yet);
-        this files whatever appears there the day a producer lands.
-        Properties without a caller-owned tolerance are SKIPPED and
-        counted, never guessed. Returns (recorded_ids, skipped_count)."""
+        """Callsite-ready bridge for `TwinNode.projected_values`.
+
+        Properties without a caller-owned tolerance are SKIPPED and counted,
+        never guessed. Returns (recorded_ids, skipped_count).
+
+        THIS SAID `projected_values` WAS A DARK SCHEMA FIELD THAT NO
+        PRODUCER CONSTRUCTS. Two do, in `twin/traverser.py`, and have since the
+        world-model arc; the sentence described the tree it was written
+        against and was still being shipped two releases later. Second of this
+        shape in a month, after a README guard that pinned a disclaimer the
+        engine had outgrown -- a claim about what the code does NOT do is the
+        kind that rots silently, because nothing fails when it stops being
+        true.
+        """
         tolerance_map = tolerance_map or {}
         ids: List[str] = []
         skipped = 0
@@ -552,28 +666,10 @@ class PredictionLedger:
         target = record.predicted_at + timedelta(seconds=record.horizon_s)
         observed_at, observed = min(
             observations, key=lambda o: abs((o[0] - target).total_seconds()))
-        quantiles = record.quantiles or {}
-        losses = {
-            key: pinball_loss(quantile_level(key), value, observed)
-            for key, value in quantiles.items()
-        }
-        lo, hi = quantiles[_REQUIRED_LEVELS[0]], quantiles[_REQUIRED_LEVELS[1]]
-        covered = lo <= observed <= hi
-        record.scores = {
-            "observed": observed,
-            "observed_at": observed_at.isoformat(),
-            "pinball": {k: round(v, 9) for k, v in losses.items()},
-            "pinball_mean": round(sum(losses.values()) / len(losses), 9),
-            # CRPS for a distribution given by quantiles is approximated by
-            # twice the mean pinball loss over its levels. It is named
-            # `_approx` because the equality is exact only in the limit of
-            # densely and evenly spaced levels, and three levels are neither.
-            "crps_approx": round(2.0 * sum(losses.values()) / len(losses), 9),
-            "covered_90": covered,
-            "interval": [lo, hi],
-            "model_id": record.model_id,
-        }
-        record.verdict = GRADE_CONFIRMED if covered else GRADE_FALSIFIED
+        record.scores = _score_quantiles(
+            record.quantiles or {}, observed, observed_at, record.model_id)
+        record.verdict = (GRADE_CONFIRMED if record.scores["covered_90"]
+                          else GRADE_FALSIFIED)
         record.graded_at = now
         return None
 
@@ -644,6 +740,20 @@ class PredictionLedger:
             return None
         observed_at, observed = min(
             mine, key=lambda o: abs((o[0] - target).total_seconds()))
+        # SCORED BEFORE IT IS JUDGED, AND THE TWO ARE DIFFERENT
+        # QUESTIONS. The verdict below is the point against its declared
+        # tolerance and is untouched; this is what the spread was worth. A
+        # record with no quantiles is not scored and is not counted, on the
+        # same rule the producer aperture follows: a rate over an unstated
+        # subset is worse than no rate.
+        #
+        # `covered_90` here is the central 90% of the declared spread, and the
+        # verdict is the 95% tolerance -- two levels of one declaration, so an
+        # observation between the two edges is covered by neither statement
+        # wrongly. They are reported apart and never summed.
+        if record.quantiles:
+            record.scores = _score_quantiles(
+                record.quantiles, observed, observed_at, record.model_id)
         delta = abs(observed - (record.value or 0.0))
         if record.tolerance is not None and delta <= record.tolerance:
             record.verdict = GRADE_CONFIRMED
@@ -777,6 +887,10 @@ class PredictionLedger:
         falsified = [r for r in self._records if r.verdict == GRADE_FALSIFIED]
         ungradeable = [r for r in self._records if r.verdict == GRADE_UNGRADEABLE]
         graded = confirmed + falsified
+        # The mean confidence the graded records were FILED at. Computed here
+        # because two keys below report it and neither may re-derive it.
+        mean_stated = (sum(r.probability for r in graded) / len(graded)
+                       if graded else None)
         brier = (
             sum((r.probability - (1.0 if r.verdict == GRADE_CONFIRMED else 0.0)) ** 2
                 for r in graded) / len(graded)
@@ -813,10 +927,108 @@ class PredictionLedger:
             # follows: a zero would read as a measurement.
             "episodes_n": (len({r.traversal_id for r in graded})
                            if graded else None),
-            "mean_predicted_probability": (
-                sum(r.probability for r in graded) / len(graded)) if graded else None,
+            "mean_predicted_probability": mean_stated,
+            # WHAT `confirm_rate` SHOULD BE, beside what it is.
+            #
+            # A value record is graded against a band the FILER chose, and
+            # `record_value_prediction` states the confidence that band was
+            # drawn at. So the hit rate has a target, and without it printed
+            # beside it a rate of 1.0 reads as a perfect score when it is
+            # evidence of a band wider than the one declared. Measured on one
+            # reality, a spread ten times too wide scored 1.0 where an honest
+            # one scored 0.95, and nothing in the report said which was right.
+            #
+            # It is the MEAN of the stated confidences rather than a constant,
+            # because the ledger holds records from more than one filer and
+            # they need not agree on how sure they were. No threshold is
+            # attached and no remedy fires from it: this states the target and
+            # the author weighs the distance, which is the rule the per-
+            # coupling remedy already follows.
+            # ONE NUMBER UNDER TWO NAMES, computed once and assigned twice
+            # rather than written twice -- `mean_stated` above is the single
+            # expression, because a figure spelled out in two places is a
+            # figure that eventually disagrees with itself. The older name
+            # describes the INPUT (what the filers said); this one names it as
+            # the TARGET for the rate two lines up, which is the reading a
+            # caller looking at `confirm_rate` has no reason to reach for.
+            "expected_confirm_rate": mean_stated,
             "brier": brier,
             **self._distribution_calibration(),
+            "own_projections": self._own_projection_calibration(),
+        }
+
+    def _own_projection_calibration(self) -> Dict[str, Any]:
+        """The proper scores for forecasts THIS ENGINE made, kept apart.
+
+        `_distribution_calibration` answers *which producer is worth
+        keeping*, and its own docstring says a pooled score cannot answer it.
+        So the engine's own projections are not poured into that figure --
+        they are a different population answering a different question, which
+        is whether the spreads declared in the model are honest. Mixing them
+        would make `coverage_90` a number about nobody.
+
+        THE STRATUM IS THE COUPLING, and it is the one a producer's record
+        can never have. A value filed by a rollout names the declared
+        transitions that drove it, so an author asking *which of my gains has
+        a spread I should not trust* gets an answer per gain rather than one
+        number for the model. `by_horizon` is kept for the same reason it
+        exists next door: a model calibrated at a minute and useless at an
+        hour is one figure describing neither.
+
+        Every rate carries its denominator and every one is `None` rather than
+        zero before anything is scored, on the rule the whole ledger follows.
+        """
+        scored = [r for r in self._records
+                  if r.kind == "value" and r.scores is not None]
+        if not scored:
+            return {"n": 0, "pinball": None, "crps_approx": None,
+                    "coverage_90": None, "expected_coverage_90": 0.9,
+                    "by_coupling": {}, "by_horizon": {},
+                    "unattributed_n": 0}
+
+        def _aggregate(records: List[PredictionRecord]) -> Dict[str, Any]:
+            n = len(records)
+            return {
+                "n": n,
+                "pinball": round(
+                    sum(r.scores["pinball_mean"] for r in records) / n, 9),
+                "crps_approx": round(
+                    sum(r.scores["crps_approx"] for r in records) / n, 9),
+                "coverage_90": round(
+                    sum(1 for r in records if r.scores["covered_90"]) / n, 6),
+                "episodes_n": len({r.traversal_id for r in records}),
+            }
+
+        by_coupling: Dict[str, List[PredictionRecord]] = {}
+        unattributed = 0
+        for record in scored:
+            drove = tuple(record.couplings or ())
+            if not drove:
+                # Counted, never claimed. The same shape the sibling leg uses
+                # for a record that never stated its entity type.
+                unattributed += 1
+                continue
+            # A value two couplings drove belongs to both: this is a
+            # membership fact, not a partition, and the counts are per
+            # coupling rather than summing to `n`.
+            for coupling in drove:
+                by_coupling.setdefault(str(coupling), []).append(record)
+
+        by_horizon: Dict[str, List[PredictionRecord]] = {}
+        for record in scored:
+            by_horizon.setdefault(str(record.horizon_s), []).append(record)
+
+        return {
+            **_aggregate(scored),
+            # WHAT THE COVERAGE SHOULD BE. `_REQUIRED_LEVELS` is the central
+            # 90%, so a well-declared spread is missed one time in ten and a
+            # coverage of 1.0 is the other failure -- the one the docstring of
+            # `_grade_distribution_record` has always named and the one no
+            # figure about this engine could previously show.
+            "expected_coverage_90": 0.9,
+            "by_coupling": {k: _aggregate(v) for k, v in by_coupling.items()},
+            "by_horizon": {k: _aggregate(v) for k, v in by_horizon.items()},
+            "unattributed_n": unattributed,
         }
 
     def _distribution_calibration(self) -> Dict[str, Any]:

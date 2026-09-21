@@ -398,6 +398,16 @@ graded against a parameter-free random-walk baseline fitted only on what it coul
 it issued. `examples/margin_book.yaml` is that shape. The division of labour is the point: a world
 model predicts, and this audits.
 
+**Including when the thing being audited is this engine.** A rollout that files its predictions is
+scored the way a producer's forecast is: pinball loss, a CRPS approximation and interval coverage,
+reported under `calibration.own_projections` beside the coverage a well-declared spread should
+have. That matters because the simpler figure is gameable. Asking only whether a later reading
+landed inside the band your own `gain_sigma:` drew rewards drawing a wider one — measured on one
+tank, a spread ten times too wide scored a perfect hit rate where an honest one scored 0.95, and
+the CRPS ranked them 3.19 against 0.99 the other way round. A hit rate is therefore reported
+against the rate it should be, and the scores that grow with the width of an interval are reported
+beside it.
+
 ## What is not here, and why
 
 The engine is open. The knowledge and the operations are not.

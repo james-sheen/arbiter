@@ -811,8 +811,8 @@ def _projection_record(session: EngineSession, target_type: str,
     """
     ledger = getattr(session, "ledger", None)
     empty = {"graded": 0, "confirmed": 0, "falsified": 0,
-             "confirm_rate": None, "episodes": None, "pending": 0,
-             "unattributed": 0}
+             "confirm_rate": None, "expected_confirm_rate": None,
+             "episodes": None, "pending": 0, "unattributed": 0}
     if ledger is None or not to_property:
         return empty
     # Records are per ENTITY; a coupling is declared per TYPE. Resolve the
@@ -828,6 +828,7 @@ def _projection_record(session: EngineSession, target_type: str,
         return empty
     confirmed = falsified = pending = unattributed = 0
     episodes = set()
+    stated: List[float] = []
     for record in getattr(ledger, "_records", []) or []:
         if getattr(record, "kind", "") != "value":
             continue
@@ -858,6 +859,7 @@ def _projection_record(session: EngineSession, target_type: str,
         elif verdict is None:
             pending += 1
             continue
+        stated.append(float(getattr(record, "probability", 0.0) or 0.0))
         episodes.add(getattr(record, "traversal_id", None))
     graded = confirmed + falsified
     return {
@@ -865,6 +867,15 @@ def _projection_record(session: EngineSession, target_type: str,
         "confirmed": confirmed,
         "falsified": falsified,
         "confirm_rate": (confirmed / graded) if graded else None,
+        # AND WHAT THAT RATE SHOULD BE. These records were graded
+        # against a band drawn at a stated confidence, so the hit rate has a
+        # target: an honest 95% band is missed one time in twenty. Without the
+        # target beside it a rate of 1.0 reads as a perfect score, when it is
+        # evidence the declared spread is wider than the spread that was
+        # meant. No trigger hangs off it -- how much distance is too much is a
+        # domain question, and this leg reports evidence.
+        "expected_confirm_rate": (
+            sum(stated) / len(stated)) if stated else None,
         # HOW MANY TRAJECTORIES those records came from. A rollout
         # files one per step, so twelve steps of one trajectory confirmed or
         # falsified together and `0 of 12` read as twelve contradictions of a

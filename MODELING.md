@@ -832,6 +832,35 @@ statement a rate over five hundred is. Below half confirmed it adds a
 may be too narrow, or the coupling may not hold in the regime the readings
 came from. Nothing is changed for you.
 
+**A hit rate is reported against the rate it should be, because on its own it
+rewards declaring ignorance.** `confirm_rate` asks whether a later reading
+landed inside the band your `gain_sigma:` drew, so a spread ten times wider
+than the truth is confirmed every time. Measured on one tank that really
+scatters by 2.3 points, forecast by the same gain declared twice:
+
+| declared spread | accepted band | `confirm_rate` | `coverage_90` | `crps_approx` |
+|---|---|---|---|---|
+| honest | +/- 4.5 | 0.95 | 0.95 | 0.99 |
+| ten times too wide | +/- 45.0 | **1.00** | **1.00** | **3.19** |
+
+So two things travel with the rate. `expected_confirm_rate` is the confidence
+the band was drawn at -- 0.95 -- and a rate of 1.00 beside a target of 0.95 is
+an overshoot rather than a perfect score. And `calibration.own_projections`
+carries the PROPER scores: pinball loss, a CRPS approximation and
+`coverage_90` against its own `expected_coverage_90` of 0.9. Those grow with
+the width of an interval whether or not it contained the answer, which is why
+the last column above ranks the two declarations the other way round. The leg
+is stratified `by_coupling` and `by_horizon`, so an author asking which of
+their gains carries a spread not worth trusting gets an answer per gain.
+
+No trigger hangs off the distance. How much overshoot is too much is a domain
+question, and this engine reports the evidence and the target beside it.
+
+These figures are kept apart from the `coverage_90` that scores an outside
+producer's forecasts, and deliberately: that one answers *which forecaster is
+worth keeping*, and pooling the engine's own projections into it would make it
+a number about nobody.
+
 **All four of `from`, `to`, `gain` and `source` are required, and a block
 missing any of them is refused rather than completed.** This is the same rule
 `consistency:` follows for its tolerance and `homeostasis:` for its setpoint,

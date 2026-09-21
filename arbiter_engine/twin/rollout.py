@@ -35,6 +35,8 @@ from datetime import timedelta
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 from ..fire_frequency import counting_aside
+from ..projection.projector import SOURCE_ENGINE
+from ..residual.predict_vs_mirror import normal_quantiles
 from .actions import (ActionInstance, ActionRefused, ActionTemplate,
                       deltas_for, load_templates, resolve)
 from .topology import (SimulationDecline, TraversalDirection,
@@ -45,6 +47,13 @@ from .traverser import IMAGINED_PREFIX, TopologyTraverser
 #: because a zero or negative step is an author error, and silently
 #: substituting one would hide it.
 MIN_STEP_S = 1e-6
+
+#: WHO MADE THE FORECAST, for a ledger that holds more than one filer's.
+#: The engine names itself rather than being told apart by the shape of an id
+#: -- the name-heuristic class this package has removed from three axioms --
+#: and it is a fixed string because there is exactly one of it. A DOMAIN never
+#: appears here: the verb is the producer, whatever the model is about.
+_SELF_MODEL_ID: str = "arbiter_engine:rollout"
 
 #: How far back the clone copies. Wide on purpose: a declared `window:` is the
 #: thing being honoured, and truncating the seed would make a windowed axiom
@@ -1314,6 +1323,30 @@ def _file_step(session: Any, result: 'RolloutResult',
                     predicted_at=predicted_at,
                     couplings=tuple(
                         step.drivers.get(entity_id, {}).get(prop, ())),
+                    # THE SPREAD ITSELF, not only the band derived
+                    # from it. The tolerance above asks *did the world land
+                    # inside the band we chose*, and that question rewards
+                    # choosing a wider one: measured on one reality, a
+                    # `gain_sigma:` ten times too wide scored a `confirm_rate`
+                    # of 1.0 where an honest declaration scored 0.95. Stating
+                    # the quantiles makes the proper scores computable, and
+                    # pinball loss grows with the width of an interval whether
+                    # or not it contained the answer.
+                    #
+                    # Same sigma, same instant, two levels -- so the tolerance
+                    # and the quantiles cannot come to disagree about how sure
+                    # the model said it was.
+                    quantiles=normal_quantiles(float(value), float(sigma)),
+                    model_id=_SELF_MODEL_ID,
+                    # NOT A PRODUCER'S SUBMISSION, said in the vocabulary the
+                    # forecast surfaces already read. Every producer path
+                    # filters on `kind == "distribution"` today so nothing
+                    # currently depends on it -- which is exactly why it is
+                    # stated now: the fact is free at the one moment the filer
+                    # knows it, and a later filter widened past `kind` would
+                    # otherwise read the engine's own forecasts as somebody
+                    # else's.
+                    source=SOURCE_ENGINE,
                 )
                 result.predictions_filed += 1
             except Exception:  # noqa: BLE001 - a ledger refusal is not a crash

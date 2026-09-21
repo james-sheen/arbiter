@@ -22,6 +22,80 @@ useful-looking document and the less trustworthy one.
 
 ### Fixed
 
+- **The engine scored its own forecasts on a band it chose itself, and that
+  figure rewarded declaring ignorance.** A rollout filing predictions recorded
+  a POINT with a tolerance of `1.96 * gain_sigma`, so `confirm_rate` asked
+  only whether a later reading landed inside the band the model drew. A wider
+  declaration is therefore confirmed more often. Measured on one tank that
+  really scatters by 2.3 points, forecast by the same gain declared twice —
+  honestly, and ten times too wide:
+
+  | declared spread | accepted band | `confirm_rate` | `brier` |
+  |---|---|---|---|
+  | honest | +/- 4.5 | 0.95 | 0.0475 |
+  | ten times too wide | +/- 45.0 | 1.00 | 0.0025 |
+
+  The useless declaration won on both. `brier` is no second opinion: every
+  record is filed at one stated confidence, which makes it a monotone
+  restatement of the hit rate rather than an independent score.
+
+  `_grade_distribution_record` has always stated the rule in its own
+  docstring — *a model at 100% coverage is badly calibrated in the other
+  direction, having bought its hit-rate with intervals too wide to act on* —
+  and that path is reachable only by an outside producer. The engine applied
+  a standard to its inputs that it did not apply to itself.
+
+  A value filed from a declared spread now states that spread as quantiles,
+  and grading scores them. `calibration.own_projections` carries pinball, a
+  CRPS approximation and `coverage_90` beside `expected_coverage_90`,
+  stratified `by_coupling` and `by_horizon` — the coupling stratum being the
+  one a producer's record can never have. On the same two declarations the
+  CRPS reads 0.99 against 3.19, ranking them the other way round, because
+  pinball loss grows with the width of an interval whether or not it
+  contained the answer.
+
+  `confirm_rate` also travels with `expected_confirm_rate`, in the aggregate
+  and in `transitions.declared[*].projections`, so 1.00 beside a target of
+  0.95 reads as an overshoot rather than as a perfect score. No trigger hangs
+  off the distance: how much overshoot is too much is a domain question.
+
+  **The verdict, the producer figures and every existing key are unchanged.**
+  A record is still graded on its point against its declared tolerance; the
+  engine's own scores are kept out of the `coverage_90` that answers *which
+  forecaster is worth keeping*, because pooling two populations makes that
+  figure a number about nobody. A caller filing no spread is scored on the hit
+  rate alone — nothing is invented to fill the gap.
+
+- **A guard written for this exact change fired on it.** A test named
+  `test_the_kind_filter_is_defence_and_not_a_live_path` reported that
+  `model_figures`'s `kind == "distribution"` filter could not matter, gave the
+  measurement behind that — `record_distribution` was the only filer accepting
+  a `model_id` — and named its own expiry: *the filter stays, because a later
+  method growing a `model_id` argument would reach it.* A rollout filing under
+  `arbiter_engine:rollout` is that method. The filter now does work on every
+  call, the test records the transition rather than widening its list, and the
+  coverage it said was missing exists: a value record with a model id is filed
+  and the forecaster report is asserted not to list it.
+
+- **Two published docstrings described a tree two releases old.** The
+  prediction ledger's module docstring said *no rollout files its per-step
+  values here* — made that false — and `record_projected_values` said
+  `projected_values` was *a dark schema field that no producer constructs*,
+  while two sites in `twin/traverser.py` construct one. The half of the first
+  claim that is still true, that the transition learner reads nothing back, is
+  kept.
+
+  The second sentence was not rotting quietly — **a green test was holding it
+  in place.** A decision-document pin asserted the literal *no producer
+  constructs ProjectedValue yet* must be PRESENT in that module, so that
+  wiring PREDICT would fail it and force the document to be revisited. PREDICT
+  was wired on 2026-08-04, the document gained its superseding note the same
+  day, and the sibling pin was amended to the new invariant. This one was not.
+  For six weeks the suite required a published module to keep denying a
+  producer that the test immediately below it named: correcting the sentence
+  was the failing move and leaving it was the passing one. The pin now holds
+  what is durable — the protocol, not the sentence.
+
 - **A `transition:` block the loader refused reached `gaps` as silence.** A
   block missing any of `from`, `to`, `gain`, `source` is refused rather than
   completed with a default, and the refusal is filed as a

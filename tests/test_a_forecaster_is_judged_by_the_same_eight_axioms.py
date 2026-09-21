@@ -379,31 +379,42 @@ def test_a_declaration_that_names_models_without_expecting_one_counts_nothing():
         assert "forecasts_expected" not in model_figures(session)["garch_v3"]
 
 
-def test_the_kind_filter_is_defence_and_not_a_live_path():
-    """NO TEST CLAIMS TO EXERCISE IT, and that is the honest report.
+def test_the_kind_filter_is_now_a_live_path():
+    """IT WAS DEFENCE UNTIL, AND THIS TEST SAID SO AND SAID WHY.
 
-    `model_figures` keeps only `distribution` records. Measured:
-    `record_distribution` is the ONLY ledger method that accepts a `model_id`
-    -- the other four leave it None -- and the walk already skips records
-    without one. So no record reachable through the public surface can be the
-    wrong kind AND carry a model id, and a mutation deleting the kind filter
-    changes nothing.
+    The version here was named `..._is_defence_and_not_a_live_path`, reported
+    that no test claimed to exercise the filter, and gave the measurement
+    behind that: `record_distribution` was the only ledger method accepting a
+    `model_id`, the walk already skipped records without one, so no record
+    reachable through the public surface could be the wrong kind AND carry a
+    model id. Deleting the filter changed nothing.
 
-    The filter stays, because a later method growing a `model_id` argument
-    would reach it and a stated-probability prediction cannot be scored for
-    coverage. What does not stay is a test pretending to cover it: the version
-    here filed a stated record, which the model-id guard discarded anyway, so
-    it passed with the filter deleted."""
+    It also named its own expiry -- *the filter stays, because a later method
+    growing a `model_id` argument would reach it* -- and that is what happened.
+    A rollout files its projections under `arbiter_engine:rollout` so the
+    coupling stratum in `own_projections` knows whose forecasts it covers, and
+    those are `kind == "value"` records carrying a model id. The filter now
+    does work on every call.
+
+    So the enumeration below changes rather than the filter, and the coverage
+    it said was missing exists: `test_the_forecaster_report_does_not_adopt_them`
+    in `test_the_engine_scores_its_own_declared_spread.py` files one and
+    asserts the report does not list it. A test that predicted the conditions
+    of its own failure is worth more than one that passed."""
     import inspect
     from arbiter_engine.forecast import monitor
     from arbiter_engine.residual import predict_vs_mirror
 
     assert 'r.kind == "distribution"' in inspect.getsource(monitor)
-    accepting = [name for name in dir(predict_vs_mirror.PredictionLedger)
-                 if name.startswith("record_")
-                 and "model_id" in inspect.signature(
-                     getattr(predict_vs_mirror.PredictionLedger, name)).parameters]
-    assert accepting == ["record_distribution"], accepting
+    accepting = sorted(
+        name for name in dir(predict_vs_mirror.PredictionLedger)
+        if name.startswith("record_")
+        and "model_id" in inspect.signature(
+            getattr(predict_vs_mirror.PredictionLedger, name)).parameters)
+    assert accepting == ["record_distribution", "record_value_prediction"], (
+        f"{accepting} -- a NEW filer growing a `model_id` makes the kind "
+        f"filter matter for its records too. Give it live coverage rather "
+        f"than widening this list on sight.")
 
     session = _session(accounts=1)
     _forecast(session)
