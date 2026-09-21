@@ -112,6 +112,52 @@ class AxiomState:
     evidence: Dict[str, Any] = field(default_factory=dict)
     indicator_name: str = ""
 
+    def declared_lines(self) -> List[Tuple[float, bool]]:
+        """The declared limits this state judges a value against.
+
+        Returned as ``(limit, is_upper)`` pairs, empty when this axiom does
+        not judge against declared lines at all.
+
+        THE CALLER MUST NOT KNOW WHICH AXIOM IT IS HOLDING. The
+        planner's margin figures read one axiom's ceilings by name, so a
+        candidate that settled 0.03 spreads from a HOMEOSTASIS band edge was
+        reported as sitting 45.1 spreads clear: the plan RANKED on findings
+        from every axiom and stated its confidence from one. Putting the
+        derivation here is what stops the next axiom that declares a line
+        being added to the reasoner and not to this figure -- which is the
+        failure that an internal ruling fixed for the floor half of BOUNDEDNESS and described
+        as a class while fixing one instance of it.
+        """
+        ev = self.evidence if isinstance(self.evidence, dict) else {}
+
+        def number(raw: Any) -> Optional[float]:
+            if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+                return None
+            return float(raw)
+
+        lines: List[Tuple[float, bool]] = []
+        if self.axiom == Axiom.BOUNDEDNESS:
+            for key, upper in (("critical", True), ("warning", True),
+                               ("lower_critical", False),
+                               ("lower_warning", False)):
+                limit = number(ev.get(key))
+                if limit is not None:
+                    lines.append((limit, upper))
+        elif self.axiom == Axiom.HOMEOSTASIS:
+            # A band, not a ceiling: the setpoint is the centre and the
+            # tolerance is the half-width, so one declaration is two lines.
+            block = ev.get("homeostasis")
+            block = block if isinstance(block, dict) else ev
+            setpoint = number(block.get("setpoint"))
+            if setpoint is not None:
+                for key in ("tolerance", "tolerance_critical"):
+                    half = number(block.get(key))
+                    if half is None or half < 0.0:
+                        continue
+                    lines.append((setpoint + half, True))
+                    lines.append((setpoint - half, False))
+        return lines
+
 
 @dataclass
 class ProjectedValue:
@@ -267,6 +313,23 @@ class TwinNode:
 #: `homeostasis:` makes about a setpoint applies here with more force, because
 #: a wrong gain moves a NUMBER a reader will act on.
 REQUIRED_TRANSITION_KEYS = ("from", "to", "gain", "source")
+
+#: the keys a `temporal:` block must carry for the time course of a
+#: transition to be the AUTHOR'S rather than this engine's.
+#:
+#: Unlike `REQUIRED_TRANSITION_KEYS` these are not enforced, and the difference
+#: was ruled rather than reasoned: a missing gain refuses, a missing time
+#: course defaults and SAYS SO. The reason for saying so is that the default
+#: is not small. Measured on `examples/pump_tank_dynamics.yaml`, dropping
+#: `time_constant_s` alone moved the first reported level from 61.01 to 69.99
+#: and reported a tank as settled that was halfway -- the engine's 60 s stands
+#: in for a declared 600 s, and every value before steady state is a different
+#: number.
+#:
+#: `response_model` is deliberately absent from this tuple. A response SHAPE
+#: beside a declared tau is a materially weaker assumption than the tau, and
+#: exponential is the documented first-order form.
+TIME_COURSE_KEYS = ("propagation_delay_s", "time_constant_s")
 
 #: `gain: estimate` says the author declares the COUPLING and asks
 #: the engine to fit the MAGNITUDE.
@@ -434,6 +497,12 @@ class TwinEdge:
     #: A list because one relationship can drive more than one property: a
     #: pump feeding a tank moves both its level and its inflow.
     transitions: List['Transition'] = field(default_factory=list)
+
+    #: which of `TIME_COURSE_KEYS` this edge's author did NOT
+    #: declare, so the walk can stamp a trajectory whose transient this
+    #: engine supplied. Empty when the time course is entirely the author's,
+    #: which is also the case for an edge carrying no transition at all.
+    undeclared_time_course: Tuple[str, ...] = ()
 
     # Metadata
     confidence: float = 1.0
@@ -617,6 +686,10 @@ class TransitionApplied:
     delta_target: float
     source: str
     elapsed_s: float
+    #: whether the `fraction` above was computed from the author's
+    #: own time course. False means this engine supplied a delay or a time
+    #: constant, so the fraction is inspectable but not attributable.
+    time_course_declared: bool = True
 
 
 @dataclass

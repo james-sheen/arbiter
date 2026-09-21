@@ -291,20 +291,38 @@ def learn_transitions(session: Any, topology: Any,
             times, a, b = align_with_times(shifted, target)
 
             if len(a) == 0 and len(source) >= 2 and len(target) >= 2:
-                # THE DELAY DOES NOT LAND ON THE SAMPLING GRID, and this is
-                # NOT `insufficient_samples`. `align` intersects on exact
-                # timestamps, so a declared 90-second delay against a series
-                # sampled every 60 seconds pairs nothing however long the
-                # series is. Reporting a sample shortage would send the author
-                # to collect more data, which cannot help -- a decline whose
-                # remedy does not work is worse than no decline.
+                # NOTHING PAIRED, and the reason is one of two things that
+                # want opposite remedies. `align` intersects on exact
+                # timestamps, so either the shift moved the source off a grid
+                # the two series DO share, or they never shared one.
+                #
+                # TELLING THEM APART IS THE POINT. This reported
+                # the delay in both cases, and the second case was the common
+                # one: two `add_observations` calls each read the wall clock
+                # for themselves, so their ladders sat microseconds apart and
+                # intersected nowhere. Every declared delay including ZERO
+                # refused, and the remedy named the delay, which was not what
+                # was wrong. The comment this replaces says a decline whose
+                # remedy does not work is worse than no decline; that was
+                # true of the decline it was attached to.
+                _, undelayed, _ = align_with_times(source, target)
+                if len(undelayed) == 0:
+                    refusals.append(TransitionRefusal(
+                        "series_not_co_sampled", label,
+                        f"{edge.source_id}.{transition.from_property} and "
+                        f"{edge.target_id}.{transition.to_property} share no "
+                        f"timestamp at all, so no pair of readings can be "
+                        f"aligned at any delay. Feed both series against one "
+                        f"clock -- timestamped samples, or bare readings fed "
+                        f"in a single pass."))
+                    continue
                 refusals.append(TransitionRefusal(
                     "delay_off_grid", label,
-                    f"the declared propagation delay of {delay:g}s does not "
-                    f"land on the sampling grid of these two series, so no "
-                    f"pair of readings can be aligned. Feed the series on a "
-                    f"grid the delay divides, or declare a delay that is a "
-                    f"multiple of the sampling interval."))
+                    f"the two series share a sampling grid, but the declared "
+                    f"propagation delay of {delay:g}s does not land on it, "
+                    f"so no pair of readings can be aligned. Declare a delay "
+                    f"that is a multiple of the sampling interval, or feed "
+                    f"the series on a grid the delay divides."))
                 continue
 
             # THE COUPLING IS BETWEEN CHANGES, so the fit is on first

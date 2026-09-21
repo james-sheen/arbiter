@@ -77,6 +77,15 @@ Three things about it are promises and not accidents:
   the same default branch. `not_a_producers_submission` arrived this way,
   turning a zero denominator that had been reported with no reason beside it
   into one that names what it set aside and whose it was.
+- **Add a stamp to an `assumptions` list**, with the same three-valued
+  reading as the two entries above. Spelled out because those name enums of
+  REASONS and a stamp is a value in a list, so a reader could take the list as
+  closed: it is not, and the sets are separate again.
+  `time_course_not_declared` arrived this way, naming the one assumption in
+  that list a reader can remove by editing their own model -- the engine's own
+  60 s dead time and time constant, standing in wherever a `temporal:` block
+  was absent or short of a key.
+
 - **Add an axiom, an indicator field, or a nested config block.** A model
   written before the field keeps its behaviour; that is a rule this project
   enforces on itself, not a courtesy.

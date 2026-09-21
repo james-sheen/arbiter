@@ -22,6 +22,66 @@ useful-looking document and the less trustworthy one.
 
 ### Fixed
 
+- **A time course nobody declared was invented in silence.** `temporal:` is
+  optional, and an edge without it — or with it and short of a key — kept this
+  engine's own 60 s dead time and 60 s time constant, reported by nothing.
+  Measured on the shipped `pump_tank_dynamics` model, dropping
+  `time_constant_s` alone moved the first reported level from 61.01 to 69.99
+  and reported the tank as settled when it was halfway: 60 s standing in for a
+  declared 600 s. The sibling block on the same edge has refused partial
+  declarations since 0.2.3 for exactly this reason. The values are unchanged;
+  what is new is that an edge carrying a `transition:` without the pair now
+  raises a `missing_declaration` question naming the absent key AND the number
+  used in its place, and every envelope computed across it carries
+  `time_course_not_declared` in `assumptions`.
+
+- **`margin_sigmas` and `clearance_probability` measured against one axiom
+  while the plan ranked on eight.** Both read `BOUNDEDNESS` evidence by name
+  and had never seen a HOMEOSTASIS band. On the shipped model, whose every
+  plan finding is a HOMEOSTASIS breach, the best-tying candidate settles 0.03
+  spreads from the line that decides whether it files a finding and was
+  reported 45.1 spreads clear; candidates already breaching reported
+  comfortable positive margins. Which lines an axiom declares is now the
+  axiom's own business, and the planner asks every axiom state that judges the
+  property. Reported from outside.
+
+- **Gain fitting was unreachable from the documented shape.** Bare
+  `add_observations` spaced readings ending at `now`, read once per call, so
+  two series fed one after the other shared no timestamp — 0 of 5, 0.003146 s
+  apart — and the fitter, which intersects on exact timestamps, paired nothing
+  at EVERY declared delay including zero. It reported `delay_off_grid`, whose
+  remedy could not work because the delay was never the cause. A feeding pass
+  now shares one instant, with the reuse window taken from the caller's own
+  `interval_seconds`; inside `as_of` nothing changes, because that path was
+  always joinable — which is why no test saw this. `delay_off_grid` now fires
+  only when the series genuinely share a grid the delay misses, and
+  `series_not_co_sampled` names the other case. Reported from outside.
+
+- **A wrong argument type was filed under coverage.** Passing plain mappings
+  as `actions` or `candidates` raised inside the walk, and the discipline
+  reported `internal_error` with `meta.source: unavailable` — which says the
+  engine broke over a cell nobody could answer, when nothing was wrong with
+  the model and the caller had passed a dict. Both verbs now accept a mapping
+  or an `ActionInstance`; two transports were already converting one by hand
+  in two copies of the same six lines, and that conversion has one home. A
+  type that is neither raises at the boundary. Reported from outside.
+
+### Added
+
+- `twin.topology.TIME_COURSE_KEYS` — the two `temporal:` keys that decide
+  whose number a transient is, alongside `REQUIRED_TRANSITION_KEYS` for the
+  block beside it. `response_model` is deliberately not a member.
+- `twin.actions.as_action_instance` — one action, however a caller spelled it.
+- `residual.predict_vs_mirror.NORMAL_90_HALF_WIDTH` — the half-width of a 90%
+  normal interval, in standard deviations. Added in the round that gave the
+  engine's own forecasts a producer's scores and named here late: the guard
+  that watches public constants for departure had been reporting it as
+  unwritten since, which is the guard working.
+- `simulation` and `plan` are named in `envelope.schema.json` rather than
+  riding as additional properties. The prose beside that keyword enumerated
+  six smaller tool-specific keys and mentioned neither, so the schema's own
+  inventory was stale by exactly the surface 0.2.3 added.
+
 - **The engine scored its own forecasts on a band it chose itself, and that
   figure rewarded declaring ignorance.** A rollout filing predictions recorded
   a POINT with a tolerance of `1.96 * gain_sigma`, so `confirm_rate` asked

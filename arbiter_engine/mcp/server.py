@@ -377,29 +377,18 @@ TOOL_SPECS: List[Dict[str, Any]] = [
 ]
 
 def _rollout(session: EngineSession, arguments: Dict[str, Any]) -> Envelope:
-    """Coerce JSON action mappings into `ActionInstance` before dispatch.
+    """Dispatch `rollout`, passing the JSON actions through as they arrived.
 
-    Over the wire an action is a plain object. The verb takes dataclasses, and
-    building them HERE keeps the transport thin in the direction that matters:
-    the MCP layer translates shapes and decides nothing. A malformed action
-    mapping is passed through as an instance with whatever it carried, so the
-    rollout's own refusal vocabulary names the problem rather than this
-    function inventing a second one.
+    Over the wire an action is a plain object. the verb accepts a
+    mapping, so this no longer builds dataclasses on the way in. It did, and
+    so did `_plan`, in two copies of the same six lines; the conversion now
+    has one home and the transport translates nothing. Keeping it here would
+    also have hidden the defect that motivated the move, because every
+    consumer that reached the verb through MCP was converted and every
+    consumer that called it directly was not.
     """
-    from arbiter_engine.twin.actions import ActionInstance
-
-    instances = []
-    for raw in arguments.get("actions") or []:
-        if not isinstance(raw, dict):
-            continue
-        instances.append(ActionInstance(
-            template=str(raw.get("template", "")),
-            entity_id=str(raw.get("entity_id", "")),
-            parameters=dict(raw.get("parameters") or {}),
-            at_s=float(raw.get("at_s", 0.0) or 0.0),
-        ))
     return rollout(
-        session, actions=instances,
+        session, actions=list(arguments.get("actions") or ()),
         horizon_s=float(arguments.get("horizon_s", 3600.0)),
         step_s=float(arguments.get("step_s", 60.0)),
         seed_mode=str(arguments.get("seed_mode", "current")),
@@ -409,21 +398,9 @@ def _rollout(session: EngineSession, arguments: Dict[str, Any]) -> Envelope:
 
 
 def _plan(session: EngineSession, arguments: Dict[str, Any]) -> Envelope:
-    """Coerce JSON candidate mappings into `ActionInstance`, as `_rollout` does."""
-    from arbiter_engine.twin.actions import ActionInstance
-
-    candidates = []
-    for raw in arguments.get("candidates") or []:
-        if not isinstance(raw, dict):
-            continue
-        candidates.append(ActionInstance(
-            template=str(raw.get("template", "")),
-            entity_id=str(raw.get("entity_id", "")),
-            parameters=dict(raw.get("parameters") or {}),
-            at_s=float(raw.get("at_s", 0.0) or 0.0),
-        ))
+    """Dispatch `plan`, passing the JSON candidates through, as `_rollout` does."""
     return plan(
-        session, candidates=candidates,
+        session, candidates=list(arguments.get("candidates") or ()),
         horizon_s=float(arguments.get("horizon_s", 1800.0)),
         step_s=float(arguments.get("step_s", 60.0)),
         max_transitions=int(arguments.get("max_transitions", 100_000)),

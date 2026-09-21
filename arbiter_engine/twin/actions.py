@@ -28,7 +28,7 @@ that was declared.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Mapping
 
 from .action_clears_problem import resolve_effect_property
 
@@ -75,6 +75,36 @@ class ActionInstance:
     #: Seconds from the start of the rollout. An action at t=0 is applied in
     #: the first step; one at t=600 enters in whichever step contains it.
     at_s: float = 0.0
+
+
+def as_action_instance(raw: Any, *, where: str) -> ActionInstance:
+    """One action, however a caller spelled it.
+
+    A WRONG ARGUMENT TYPE IS A CALLER BUG, NOT A COVERAGE GAP.
+    `rollout` and `plan` took dataclasses only, and a plain mapping -- the
+    shape every JSON consumer has -- reached the walk and raised
+    `AttributeError` deep inside it. The discipline caught that and reported
+    `internal_error` with `meta.source: unavailable`, which says THE ENGINE
+    BROKE over a cell nobody could answer. Nothing was wrong with the model
+    and nothing was unanswerable; the caller passed a dict.
+
+    A mapping is accepted because two transports already converted one by
+    hand on the way in, in two copies of the same six lines. Anything that is
+    neither raises, at the boundary, naming what arrived -- which is what a
+    caller bug should do.
+    """
+    if isinstance(raw, ActionInstance):
+        return raw
+    if isinstance(raw, Mapping):
+        return ActionInstance(
+            template=str(raw.get("template", "")),
+            entity_id=str(raw.get("entity_id", "")),
+            parameters=dict(raw.get("parameters") or {}),
+            at_s=float(raw.get("at_s", 0.0) or 0.0),
+        )
+    raise TypeError(
+        f"{where} takes ActionInstance objects or mappings with "
+        f"template/entity_id/parameters/at_s; got {type(raw).__name__}")
 
 
 @dataclass

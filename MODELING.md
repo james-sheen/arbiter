@@ -747,6 +747,25 @@ not picked over key by key.
 `dynamics:` is deliberately exempt: the keys inside it belong to the model an
 author named, not to this engine.
 
+**A time course this engine supplied says so.** `temporal:` is optional, and
+where it is absent -- or present and short of a key -- the edge keeps this
+engine's own 60 s dead time and 60 s time constant. That default is not small:
+on the shipped `pump_tank_dynamics` model, dropping `time_constant_s` alone
+moves the first reported level from 61.01 to 69.99 and reports a tank as
+settled that is halfway there, because 60 s stands in for a declared 600 s.
+
+So an edge that carries a `transition:` and does not carry the pair reports it
+twice. `gaps` raises a `missing_declaration` question naming the key that is
+absent and the number this engine used in its place, and any envelope whose
+values were computed across that edge carries `time_course_not_declared` in its
+`assumptions`. The values are unchanged -- this is a reporting rule, not a
+refusal, and it is the one stamp in that list naming something a reader can
+remove by editing the file rather than an assumption about the model itself.
+
+`response_model` is deliberately not in that pair. A response SHAPE beside a
+declared time constant is a materially weaker assumption than the time constant
+is, and `exponential` is the documented first-order form.
+
 **`offset:` is a constant term on the coupling, and it is charged once.** The
 contribution is `(gain x change + offset) x response fraction`, so the offset
 crosses the same declared dead time the gain does -- a constant that walks

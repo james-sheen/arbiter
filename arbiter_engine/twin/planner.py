@@ -390,22 +390,39 @@ def _bounds_for(envelope: Any, entity_id: str, prop: str
     Read off the topology the rollout already built rather than re-derived, so
     a bound this engine judges against and a bound this figure is measured
     against cannot be two different numbers.
+
+    EVERY axiom that judges this property, not BOUNDEDNESS alone.
+    This read one state by name, so the two figures built on it measured
+    distances to a ceiling while the plan they annotate ranked on findings
+    from a band. On `examples/pump_tank_dynamics.yaml` the best-tying
+    candidate settles 0.03 spreads from the HOMEOSTASIS edge that decides
+    whether it files a finding and was reported 45.1 spreads clear.
+
+    Which lines an axiom declares is the axiom's own business, so it is asked
+    rather than decoded here; see `AxiomState.declared_lines`.
     """
     topology = getattr(envelope, "topology", None)
     node = topology.get_node(entity_id) if topology is not None else None
     if node is None:
         return []
-    state = (getattr(node, "axiom_states", {}) or {}).get(
-        f"BOUNDEDNESS:{prop}")
-    evidence = getattr(state, "evidence", None) if state else None
-    if not isinstance(evidence, dict):
-        return []
     out: List[Tuple[float, bool]] = []
-    for key, upper in (("critical", True), ("warning", True),
-                       ("lower_critical", False), ("lower_warning", False)):
-        limit = evidence.get(key)
-        if isinstance(limit, (int, float)) and not isinstance(limit, bool):
-            out.append((float(limit), upper))
+    seen: set = set()
+    for key, state in (getattr(node, "axiom_states", {}) or {}).items():
+        # Either spelling identifies the property. The key carries it because
+        # that is how this read the one state it used to look up; matching on
+        # `indicator_name` as well makes this strictly a widening, so no line
+        # the old lookup found can be lost by a state that spells one and not
+        # the other.
+        if (getattr(state, "indicator_name", None) != prop
+                and not str(key).endswith(f":{prop}")):
+            continue
+        reader = getattr(state, "declared_lines", None)
+        if not callable(reader):
+            continue
+        for line in reader():
+            if line not in seen:
+                seen.add(line)
+                out.append(line)
     return out
 
 

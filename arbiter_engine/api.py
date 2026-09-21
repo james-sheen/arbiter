@@ -24,7 +24,7 @@ from datetime import datetime, timedelta, timezone
 from typing import (Any, Dict, Iterable, List, Optional, Sequence, Set,
                     Tuple)
 
-from .clock import as_naive_utc, as_of, now_utc
+from .clock import as_naive_utc, as_of, clock_is_frozen, now_utc
 from arbiter_engine.axiom_thresholds import (
     AXIOM_THRESHOLD_OVERRIDES_KEY, DECLARED_THRESHOLDS_KEY,
     OVERRIDE_CONSULTED_BY, OVERRIDE_DECLARED_BUT_UNREACHABLE,
@@ -42,6 +42,7 @@ from arbiter_engine.history.observation import InMemoryObservationHistory
 from arbiter_engine.interfaces import (
     Entity, RelationshipGraph,
 )
+from arbiter_engine.twin.actions import as_action_instance
 from arbiter_engine.ontology.axioms.roles import (
     unreachable_axioms as _unreachable_axioms,
 )
@@ -89,6 +90,9 @@ class EngineSession:
         self.entities: Dict[str, Entity] = {}
         self.graph = RelationshipGraph()
         self._last_result = None
+        #: the instant the current feeding pass stamps bare
+        #: readings against. See `_bare_reading_instant`.
+        self._bare_pass_instant: Optional[datetime] = None
         # THE LEDGER IS PER-SESSION, not the module singleton.
         #
         # `get_prediction_ledger()` returns one ledger for the whole process,
@@ -177,13 +181,50 @@ class EngineSession:
                     entity_id, property_name, float(value), _as_timestamp(when))
             return
 
-        now = now_utc()
+        now = self._bare_reading_instant(interval_seconds)
         count = len(samples)
         for i, value in enumerate(samples):
             self.history.add(
                 entity_id, property_name, float(value),
                 now - timedelta(seconds=(count - i) * interval_seconds),
             )
+
+    def _bare_reading_instant(self, interval_seconds: float) -> datetime:
+        """The instant a bare series ends at — ONE per feeding pass.
+
+        TWO BARE SERIES MUST BE JOINABLE. Each call read the wall
+        clock for itself, so two consecutive calls ended microseconds apart
+        and their uniform ladders shared not one timestamp. Measured: feeding
+        a pump and the tank it drives, five readings each, `0 of 5` in
+        common, the two grids 0.003146 s apart.
+
+        Nothing downstream that joins two series survives that. The gain
+        fitter intersects on exact timestamps, so it paired nothing and
+        reported `delay_off_grid` — for EVERY declared delay including zero,
+        and with a remedy about the delay that could not work, because the
+        delay was never what was wrong.
+
+        Inside :func:`as_of` the clock is already pinned and every call
+        shares it, so this returns it unchanged; that path was always
+        joinable, which is why the suite never saw this. Outside, the pass's
+        own instant is held and reused.
+
+        THE REUSE WINDOW IS THE CALLER'S OWN `interval_seconds`, not a
+        constant chosen here. Two calls less than one sampling interval apart
+        are the same sample instant by the caller's own declaration, and a
+        session that feeds again later re-pins rather than stamping new
+        readings into a receding past.
+        """
+        present = now_utc()
+        if clock_is_frozen():
+            return present
+        pinned = self._bare_pass_instant
+        if pinned is not None:
+            elapsed = (present - pinned).total_seconds()
+            if 0.0 <= elapsed < max(float(interval_seconds), 0.0):
+                return pinned
+        self._bare_pass_instant = present
+        return present
 
     def reading_history(self):
         """The store every reader should ask, rather than `self.history`.
@@ -1726,6 +1767,13 @@ def rollout(session: EngineSession,
             f"seed_mode {seed_mode!r} is not supported; this build accepts "
             f"current, projected.")
 
+    # COERCED OUTSIDE THE BOUNDARY BELOW, deliberately. A caller
+    # who passes the wrong TYPE has a bug, and reporting it as an unanswered
+    # cell files it under coverage, where it reads as something the model
+    # failed to declare. A mapping is accepted; anything else raises here.
+    acts = [as_action_instance(a, where="rollout(actions=...)")
+            for a in (actions or ())]
+
     # the boundary starts HERE, before the topology is built, and
     # not after it. Building a topology and fitting projections are both real
     # work over caller-supplied data, and a raise out of either escaped this
@@ -1751,7 +1799,7 @@ def rollout(session: EngineSession,
             topology._last_projector = projector
 
         result = _rollout.run(
-            session, topology, actions=list(actions or ()),
+            session, topology, actions=acts,
             horizon_s=horizon_s, step_s=step_s, seed_mode=seed,
             file_predictions=file_predictions,
             max_transitions=max_transitions)
@@ -1787,7 +1835,7 @@ def rollout(session: EngineSession,
             "steps_completed": result.steps_completed,
             "transitions_attempted": result.transitions_attempted,
             "transitions_applied": result.transitions_applied,
-            "actions_scheduled": len(list(actions or ())),
+            "actions_scheduled": len(acts),
             "actions_refused": len(result.refused_actions),
             "history_seeded": result.history_seeded,
             # the DENOMINATOR beside the attempt count. A zero
@@ -1935,6 +1983,11 @@ def plan(session: EngineSession,
             f"seed_mode {seed_mode!r} is not supported; this build accepts "
             f"current, projected.")
 
+    # as `rollout` does, and for the same reason.
+    cands = None if candidates is None else [
+        as_action_instance(c, where="plan(candidates=...)")
+        for c in candidates]
+
     try:
         topology = _build_topology(session)
         if topology is None:
@@ -1963,7 +2016,7 @@ def plan(session: EngineSession,
             topology._last_projector = projector
 
         result = _planner.search(
-            session, topology, candidates=list(candidates or ()),
+            session, topology, candidates=list(cands or ()),
             horizon_s=horizon_s, step_s=step_s,
             max_transitions=max_transitions,
             seed_mode=seed,

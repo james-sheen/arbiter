@@ -9,7 +9,7 @@ Two entry points:
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from ..interfaces import Entity, RelationshipGraph
 from ..types import Axiom, Severity
@@ -19,7 +19,7 @@ from ..propagation.weight_learner import LearnedWeight
 from .topology import (
     TwinNode, TwinEdge, TopologyGap, DigitalTwinTopology,
     AxiomState, NodeConfidence, Transition, REQUIRED_TRANSITION_KEYS,
-    ESTIMATE_SENTINEL,
+    ESTIMATE_SENTINEL, TIME_COURSE_KEYS,
     EdgeDirection, FlowType, EdgeSource, GapType, ResolutionStrategy,
 )
 
@@ -282,6 +282,12 @@ class TopologyBuilder:
                 'critical': ind.get('critical'),
                 'lower_warning': ind.get('lower_warning'),
                 'lower_critical': ind.get('lower_critical'),
+                # the HOMEOSTASIS band is a declared line too, and
+                # carrying only the four BOUNDEDNESS names is the same shape
+                # An internal ruling closed for the floor half: a bound the reasoner
+                # reads and this builder does not is a bound every reader
+                # downstream of the topology cannot see.
+                'homeostasis': ind.get('homeostasis'),
             }
         else:
             name = getattr(ind, 'name', '') or ''
@@ -296,6 +302,8 @@ class TopologyBuilder:
                     ind, 'lower_warning_threshold', None),
                 'lower_critical': getattr(
                     ind, 'lower_critical_threshold', None),
+                'homeostasis': getattr(
+                    ind, 'homeostasis_config', None),
             }
         return name, axioms, bounds
 
@@ -428,11 +436,74 @@ class TopologyBuilder:
             rule, edge.source_id, edge.target_id)
         edge.transitions = transitions
         edge.gaps = list(edge.gaps) + gaps
+        edge.undeclared_time_course = self._undeclared_time_course(
+            temporal_block, transitions)
+        if edge.undeclared_time_course:
+            edge.gaps = list(edge.gaps) + [self._time_course_gap(
+                edge, temporal_block, edge.undeclared_time_course)]
         # The edge IS declared, and `source` is the field that says so. It
         # read `auto` for every edge on this path, including edges a model
         # author wrote a rule for.
         edge.source = EdgeSource.YAML
         edge.confidence = 1.0
+
+    @staticmethod
+    def _undeclared_time_course(
+        temporal_block: Dict[str, Any],
+        transitions: Sequence['Transition'],
+    ) -> Tuple[str, ...]:
+        """Which of `TIME_COURSE_KEYS` this rule left to the engine.
+
+        Only asked of an edge that actually carries a transition:
+        with nothing to project, the delay and the time constant reach
+        `traverse` reachability and no reported VALUE, and raising a question
+        about them there would be asking an author to declare a number
+        nothing reads.
+        """
+        if not transitions:
+            return ()
+        declared = temporal_block if isinstance(temporal_block, dict) else {}
+        return tuple(k for k in TIME_COURSE_KEYS
+                     if declared.get(k) is None)
+
+    @staticmethod
+    def _time_course_gap(edge: 'TwinEdge', temporal_block: Dict[str, Any],
+                         missing: Tuple[str, ...]) -> TopologyGap:
+        """The question whose answer makes the transient the author's.
+
+        `question_override` names the key that is absent, for the
+        reason that an internal ruling gives for the sibling block: the author does not need
+        to be asked what a time course is, they need the one word they left
+        out. A block that is present and short is called out as such, because
+        writing the block is itself a signal that the time course was
+        considered.
+        """
+        location = f"{edge.source_id}->{edge.target_id}"
+        absent = " and ".join(f"`{k}`" for k in missing)
+        supplied = ", ".join(f"{k}={getattr(edge, k):g}s" for k in missing)
+        shape = "is missing" if temporal_block else "is absent"
+        # THE NUMBER GOES IN THE QUESTION, not the description.
+        # Only `question` reaches a caller; `gaps` serialises the type, the
+        # location and the priority beside it and drops everything else. The
+        # description below is for a reader of the topology, and writing the
+        # actionable half only there is the mistake that an internal ruling fixed one block
+        # over.
+        asks = "Which value does" if len(missing) == 1 else "Which values do"
+        return TopologyGap(
+            gap_type=GapType.MISSING_DECLARATION,
+            location=location,
+            description=(
+                f"the `temporal:` block on {edge.relation_type} {shape} "
+                f"{absent}; this engine used {supplied}, so the transient of "
+                f"every value projected across this edge is its number "
+                f"rather than yours"),
+            discovered_during="build",
+            question_override=(
+                f"{asks} {absent} take for the time course on "
+                f"'{{location}}'? This engine used {supplied}, so the "
+                f"transient of every value projected across it is this "
+                f"engine's number rather than yours."),
+        )
 
     @staticmethod
     def _transitions_from_rule(
@@ -650,7 +721,24 @@ class TopologyBuilder:
         transitions, transition_gaps = self._transitions_from_rule(
             rule or {}, source_id, target_id)
 
-        return TwinEdge(
+        # THE SAME QUESTION ON THIS BUILDER TOO. A check added to
+        # one of these two readers and not the other is the shape and
+        # each closed from a different direction, and this file
+        # carries both of their docstrings.
+        #
+        # A `temporal_store` annotation counts as declared: the numbers came
+        # from somewhere an author put them, and only the YAML block is
+        # missing. So the question is asked of what neither source supplied.
+        from_store = set()
+        if temporal_store and temporal_store.get(
+                source_type, target_type, rel_type):
+            from_store = set(TIME_COURSE_KEYS)
+        undeclared = tuple(
+            k for k in self._undeclared_time_course(temporal_block,
+                                                    transitions)
+            if k not in from_store)
+
+        edge = TwinEdge(
             source_id=source_id,
             target_id=target_id,
             relation_type=rel_type,
@@ -669,7 +757,12 @@ class TopologyBuilder:
             source=EdgeSource.YAML if rule else EdgeSource.AUTO_DISCOVERY,
             transitions=transitions,
             gaps=transition_gaps,
+            undeclared_time_course=undeclared,
         )
+        if undeclared:
+            edge.gaps = list(edge.gaps) + [
+                self._time_course_gap(edge, temporal_block, undeclared)]
+        return edge
 
     def _detect_unobserved_target_types(
         self,

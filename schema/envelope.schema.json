@@ -286,10 +286,18 @@
     "discovery": {
       "description": "The `discovery` sub-envelope. Present only on the verb that produces it; NOT required, so an envelope from an engine predating it still validates.",
       "$ref": "#/$defs/sub_envelope"
+    },
+    "simulation": {
+      "description": "The `simulation` sub-envelope, carried by `rollout` and by `plan`'s per-candidate rollouts. Present only on the verbs that produce it; NOT required, so an envelope from an engine predating it still validates.",
+      "$ref": "#/$defs/sub_envelope"
+    },
+    "plan": {
+      "description": "The `plan` sub-envelope, carried by `plan`. Present only on the verb that produces it; NOT required, so an envelope from an engine predating it still validates.",
+      "$ref": "#/$defs/sub_envelope"
     }
   },
   "additionalProperties": {
-    "description": "Tool-specific payloads ride ALONGSIDE the five legs rather than inside them: `model` and `unconsumed_observations` and `unread_threshold_overrides` from model_describe, `evidence` from attest, `unread_properties` from check and gaps, `dropped_declarations` from check AND from model_describe since 0.1.16 (the report was unreachable from the tool an author actually calls to read their model back) -- that last one carried by check because removing a name-derived rule withdrew a check whose cell has no indicator and no axiom to decline on, and a withdrawn check that leaves the envelope identical to a clean pass is the one thing the compatibility policy forbids a patch release from doing. Additive by design -- the four legs plus meta are what every tool satisfies identically, and a tool-specific key is not a change to that contract. `dropped_declarations` carries the values the loader read and did not recognise, so the declaration was not applied: a misspelled axiom name produced an envelope identical to declaring none, and a decline could not express it because `not_checked[].axiom` is a closed enum of the eight names. Same reason as the key beside it, one field further in."
+    "description": "Tool-specific payloads ride ALONGSIDE the five legs rather than inside them: `model` and `unconsumed_observations` and `unread_threshold_overrides` from model_describe, `evidence` from attest, `unread_properties` from check and gaps, `dropped_declarations` from check AND from model_describe since 0.1.16 (the report was unreachable from the tool an author actually calls to read their model back) -- that last one carried by check because removing a name-derived rule withdrew a check whose cell has no indicator and no axiom to decline on, and a withdrawn check that leaves the envelope identical to a clean pass is the one thing the compatibility policy forbids a patch release from doing. Additive by design -- the four legs plus meta are what every tool satisfies identically, and a tool-specific key is not a change to that contract. `dropped_declarations` carries the values the loader read and did not recognise, so the declaration was not applied: a misspelled axiom name produced an envelope identical to declaring none, and a decline could not express it because `not_checked[].axiom` is a closed enum of the eight names. Same reason as the key beside it, one field further in.  \u2014 `simulation` and `plan` are NOT in this list: they are named in `properties` above and shaped like every other sub-envelope. They rode here unnamed for three releases while this sentence enumerated six smaller keys beside them, so the schema's own inventory was stale by exactly the surface the 0.2.3 release was about."
   },
   "$defs": {
     "sub_envelope": {

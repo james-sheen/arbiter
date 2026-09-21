@@ -1598,6 +1598,7 @@ class TopologyTraverser:
                 delta_source=delta_source, gain=transition.gain,
                 fraction=fraction, delta_target=delta_target,
                 source=transition.source, elapsed_s=elapsed,
+                time_course_declared=not edge.undeclared_time_course,
             ))
         return budget_left
 
@@ -1704,6 +1705,17 @@ class TopologyTraverser:
             if any(t.fraction >= 1.0 for t in result.transitions_applied):
                 result.assumptions.append("steady_state_reached")
             result.assumptions.append("declared_coupling_not_probability_pruned")
+            # THE TRANSIENT IS NOT ALWAYS THE AUTHOR'S. A
+            # `temporal:` block that is absent, or present and short of a
+            # key, leaves `TwinEdge`'s own 60 s standing in for a number
+            # nobody wrote, and every value before steady state is computed
+            # from it. That is a weaker claim than the four stamps above,
+            # which are assumptions about the MODEL; this one is an
+            # assumption the ENGINE supplied, and it is the only stamp here
+            # that names something a reader can remove by editing the file.
+            if any(not t.time_course_declared
+                   for t in result.transitions_applied):
+                result.assumptions.append("time_course_not_declared")
 
     def _evaluate_axioms(
         self, node: TwinNode, values: Dict[str, Any],

@@ -379,6 +379,14 @@ dynamics are **declared**. A coupling is a sentence with a number and its proven
 missing any of `from`, `to`, `gain`, `source` is refused by name rather than completed with a
 default.
 
+One thing IS completed with a default, and saying so is the point. A coupling's TIME COURSE is
+optional: an edge with no `temporal:` block, or one short of a key, keeps this engine's own 60 s
+dead time and 60 s time constant. That default is not small — on the shipped pump-and-tank model,
+leaving out `time_constant_s` alone moves the first projected level from 61.01 to 69.99 and reports
+a tank as settled that is halfway there. So it is reported rather than applied quietly: the key
+nobody wrote and the number standing in for it come back as a question, and every envelope computed
+across that edge carries `time_course_not_declared` in its assumptions.
+
 The overlap is narrow and mostly one word. `rollout` here means: apply declared transitions and
 declared action effects on a private clone of the session, evaluate all eight axioms over every
 imagined state, prefix those findings `imagined_` so a simulated breach can never read as a live
