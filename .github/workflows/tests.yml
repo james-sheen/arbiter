@@ -79,11 +79,24 @@ jobs:
       # skipped without it, and a component whose only test is skipped
       # everywhere wears the same green as one that is covered. That shim
       # already shipped once having never been executed.
+      #
+      # `jsonschema` is installed for the same reason, and it took an
+      # outside reader to notice that the paragraph above stopped one line
+      # short of it. TEN tests gate on that import, and until now no lane
+      # installed it: this job ran `.[mcp]` and pytest, and the reproduction
+      # our own documents imply runs numpy, pyyaml and pytest. So the
+      # machine-readable contract that `meta.schema_version` advertises had
+      # never been put in front of a validator here -- including the single
+      # check that `schema/envelope.schema.json` parses as a 2020-12 schema at
+      # all, which has no derivation-based substitute and skipped in silence
+      # through every release. It is a TEST requirement and not a dependency:
+      # the engine still runs on numpy and pyyaml, and the pin below is what
+      # keeps that true.
       - name: Install the package and the suite's requirements
         run: |
           python -m pip install --upgrade pip
           python -m pip install .[mcp]
-          python -m pip install pytest
+          python -m pip install pytest jsonschema
 
       # `set +e` is load-bearing, not tidiness. GitHub runs `run:` steps under
       # `bash -e`, so a failing pytest would end the step at that line and the
@@ -112,5 +125,36 @@ jobs:
           echo "collected: $COLLECTED"
           if [ -z "$COLLECTED" ] || [ "$COLLECTED" -lt 60 ]; then
             echo "::error::collected ${COLLECTED:-0} tests; the suite has lost coverage"
+            exit 1
+          fi
+
+      # and the mirror image of the step above. A floor on COLLECTED
+      # catches a suite that shrinks; nothing caught a suite that goes QUIET,
+      # and going quiet is what actually happened -- ten tests turned into
+      # skips when an optional import went missing, and the pass count moved
+      # by ten in a number nobody reads to the digit.
+      #
+      # THE CEILING IS MEASURED, not chosen. With the package installed, the
+      # skips that remain are structural: three axioms declare a floor of one
+      # and have no below-the-floor case to construct, and two parametrized
+      # tests receive an empty axiom set. That is five. Without the package
+      # installed four more appear, which is nine, and nine is the ceiling so
+      # that a job on a runner that resolves the install differently does not
+      # go red for a reason that is not this one.
+      #
+      # WHAT IT CANNOT SEE: one test going quiet. A tier is what this catches
+      # -- losing `jsonschema` again puts the count at fifteen. Losing the
+      # `mcp` binding puts it at six and passes here, which is why that extra
+      # is pinned in the install rather than watched from here.
+      - name: The suite is not quietly going skipped
+        run: |
+          set +e
+          SUMMARY=$(pytest -q -rs 2>/dev/null | tail -1)
+          echo "summary: $SUMMARY"
+          SKIPPED=$(echo "$SUMMARY" | grep -oE '[0-9]+ skipped' | grep -oE '^[0-9]+')
+          SKIPPED=${SKIPPED:-0}
+          echo "skipped: $SKIPPED"
+          if [ "$SKIPPED" -gt 9 ]; then
+            echo "::error::$SKIPPED tests skipped; a tier of the suite has gone quiet. Run pytest -rs and read the reasons -- an optional import that stops resolving takes its whole tier with it and reports the same green."
             exit 1
           fi

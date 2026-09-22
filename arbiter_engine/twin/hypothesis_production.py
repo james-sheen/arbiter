@@ -208,8 +208,8 @@ def get_production_hypotheses():
 
 
 def get_production_hypothesis_count() -> int:
-    """Aggregate count for dashboard-data defensive-accessor
-    (Round-56 P2). Returns 0 when gate off."""
+    """Aggregate count for dashboard-data defensive-accessor.
+    Returns 0 when the gate is off."""
     if not DT_PRODUCTION_HYPOTHESIS_ENABLED:
         return 0
     with _PRODUCTION_HYPOTHESIS_LOCK:

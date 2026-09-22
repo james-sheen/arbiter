@@ -34,7 +34,7 @@ KNOWN_KERNEL_MODES: tuple = (
 
 PIPELINE_MAX_STEPS: int = 16
 
-# (Track-A A-5): per-step honesty markers — the same vocabulary the
+# Per-step honesty markers — the same vocabulary the
 # bootstrap-aware envelopes speak one layer up. "unavailable" means the step ran
 # but had no substrate/topology to consult; "no findings" (live + zero
 # counts) stays distinguishable from "not looking".

@@ -94,12 +94,30 @@ def _envelopes():
 
 
 class TestTheSchemaIsStillValid:
+    """Both guards name why they are gated and what covers the
+    question when they are not run. The bare `importorskip` these replaced
+    produced a skip line saying only that an import failed, and ten such lines
+    went unremarked across every release until an outside reader ran the suite
+    on the install our own documents imply and reported eleven more skips than
+    any lane here had ever seen."""
+
     def test_it_is_a_well_formed_2020_12_schema(self, schema):
-        jsonschema = pytest.importorskip("jsonschema")
+        jsonschema = pytest.importorskip(
+            "jsonschema",
+            reason="`jsonschema` is a TEST requirement, not an engine "
+                   "dependency. NOTHING ELSE ANSWERS THIS ONE: every other "
+                   "check here walks the schema as data and would pass on a "
+                   "document that is not a schema at all. CI installs it for "
+                   "exactly this test.")
         jsonschema.Draft202012Validator.check_schema(schema)
 
     def test_every_verb_produces_a_conforming_envelope(self, schema):
-        jsonschema = pytest.importorskip("jsonschema")
+        jsonschema = pytest.importorskip(
+            "jsonschema",
+            reason="`jsonschema` is a TEST requirement, not an engine "
+                   "dependency; the derived coverage checks below join the "
+                   "schema to what the verbs emit either way, and this adds "
+                   "the type checking a structural walk cannot do.")
         validator = jsonschema.Draft202012Validator(schema)
         for name, envelope in _envelopes().items():
             errors = sorted(validator.iter_errors(envelope),

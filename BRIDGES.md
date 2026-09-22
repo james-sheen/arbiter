@@ -265,6 +265,74 @@ one is inferred from an unknown.
 
 ---
 
+## 2a. The discipline vocabularies, which are not that one
+
+Sec. 2 is titled *the decline vocabulary* and there are eight of them. The
+fourteen above are the ones `check` uses to refuse an axiom evaluation. Each
+sub-envelope -- `simulation`, `shadow`, `projection`, `discovery`,
+`entailment`, `inference`, `forecasts` -- refuses out of its OWN closed set.
+`COMPATIBILITY.md` says so, warns that reading a reason from one set against
+another is how a closed enum stops being closed, and grants a patch release
+permission to add a member to any of them.
+
+**Until now no document said what they contain.** A reader told the sets are
+separate, told not to mix them, and told they may grow had no way to see one,
+and this guide -- the one that calls a decline vocabulary a requirements
+document -- named only the fourteen.
+
+What that costs is measurable. An outside comparison written in September 2026
+reproduced every vocabulary this project had published -- the fourteen above,
+the six gap types, the eight raced outcomes, the twenty assumption stamps -- by
+exact membership. Its own table of *the closed vocabularies* then listed five
+sets and none of these seven, and three members of the `simulation` set turned
+up in its prose instead, beside a gap type, in a list read against the
+fourteen. That is precisely the mistake `COMPATIBILITY.md` warns against, made
+by a reader who got everything else exactly right, because what they needed in
+order to avoid it was not published.
+
+Ninety-three names across seven sets. Each row below is complete: what it folds
+in, plus what is its own, is the whole set.
+
+| sub-envelope | members | folds in | its own |
+|---|---:|---|---|
+| `simulation` | 39 | the fourteen, `projection` | `budget_exhausted`, `contradictory_actions`, `counterfactual_not_a_prediction`, `coupling_uninstantiated`, `cycle_unsupported`, `gain_not_adopted`, `malformed_action`, `malformed_request`, `missing_declaration`, `missing_dynamics`, `missing_entity`, `no_candidates`, `no_declared_tolerance`, `no_objective`, `settle_exceeds_step`, `unknown_action`, `unknown_parameter`, `wrong_entity_type` |
+| `shadow` | 18 | the fourteen | `internal_error`, `no_report_probability`, `not_a_producers_submission`, `tail_not_declared` |
+| `projection` | 9 | -- | `covariance_unbounded`, `insufficient_samples`, `internal_error`, `model_inconsistent`, `model_missing`, `no_lookback`, `no_report_probability`, `no_threshold`, `unidentifiable_parameter` |
+| `discovery` | 8 | -- | `faithfulness_unverifiable`, `insufficient_samples`, `internal_error`, `latent_confounding_possible`, `no_significance_level`, `nonstationary_series`, `orientation_undetermined`, `untested_pair` |
+| `entailment` | 7 | -- | `binding_budget_exhausted`, `depth_exceeded`, `internal_error`, `malformed_rule`, `open_world_undecidable`, `recursion_unsupported`, `rule_unreachable` |
+| `inference` | 7 | -- | `cpt_missing`, `cycle_unsupported`, `evidence_conflict`, `internal_error`, `no_report_probability`, `not_identifiable`, `treewidth_exceeded` |
+| `forecasts` | 5 | -- | `forecast_missing`, `internal_error`, `model_unknown`, `stale_forecast`, `ungradeable` |
+
+Read every one of them three-valued, as `COMPATIBILITY.md` says: **a member you
+do not recognise means this engine is newer than your reader**, not that the
+record is malformed. A reader that switches exhaustively and raises on the
+default will break, and the sets have each grown at least once.
+
+Three things the shape of the table is telling you:
+
+* **`simulation` is the large one because it inherits twice.** A rollout runs
+  the eight axioms over every imagined state, so every axiom decline can reach
+  it; and `seed_mode="projected"` runs the declared projector, so every
+  projection decline can too. Its eighteen own members are the ones about
+  actions, couplings and the walk itself.
+* **A member appearing in two sets is the same word, not the same claim.**
+  `cycle_unsupported` in `simulation` is a topology the walk will not step;
+  in `inference` it is a graph the elimination order cannot handle.
+  `internal_error` is in six of the seven and means the same thing in all of
+  them, which is why it is not folded anywhere.
+* **A withdrawn member is recorded, not deleted.** `forecasts` once held
+  `no_tolerance` and `entailment` two more; they were withdrawn when it was
+  shown no input could reach them, and the reasoning stays in
+  `subenvelope.py` beside the sets. A member nobody can construct an input for
+  makes the set a worse instrument.
+
+This table is DERIVED from `subenvelope.py`, not transcribed beside it, and a
+test fails when the two disagree. A table maintained by hand next to a
+frozenset is a second copy of one closed set, which is the drift the module
+itself refuses one level further in.
+
+---
+
 ## 3. The read surface that is not `check`
 
 The vocabulary above is everything the engine refuses to **judge**. It is not

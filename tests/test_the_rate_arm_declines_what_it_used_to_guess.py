@@ -30,7 +30,19 @@ import pytest
 
 from arbiter_engine.api import EngineSession, check
 
-NOW = _dt.datetime.now(_dt.timezone.utc)
+#: -- TAKEN WHEN THE SERIES IS BUILT, NOT WHEN THE MODULE IS IMPORTED.
+#: This was a module-level `datetime.now(...)` constant, and the observations
+#: below are anchored to it while `check()` evaluates the declared `window`
+#: against the real clock. Collection imports this file minutes before the
+#: tests run, so in a long suite the anchor is stale by exactly that gap and
+#: every window silently slides off the samples it was written to cover.
+#:
+#: FOUND BY LOOKING FOR THE SHAPE rather than stopping at the instance: the
+#: sibling `test_a_freeze_is_found_inside_its_window.py` failed first, and this
+#: file carries the same construction. It survives fifteen minutes of drift and
+#: fails fourteen tests at sixty.
+def _now() -> _dt.datetime:
+    return _dt.datetime.now(_dt.timezone.utc)
 
 MODEL = """
 domain:
@@ -50,7 +62,8 @@ domain:
 
 def _stamped(values, cadence=60.0):
     n = len(values)
-    return [(NOW - _dt.timedelta(seconds=cadence * (n - 1 - i)), v)
+    now = _now()
+    return [(now - _dt.timedelta(seconds=cadence * (n - 1 - i)), v)
             for i, v in enumerate(values)]
 
 

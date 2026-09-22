@@ -29,7 +29,20 @@ import pytest
 
 from arbiter_engine.api import EngineSession, check
 
-NOW = _dt.datetime.now(_dt.timezone.utc)
+#: -- TAKEN WHEN THE SERIES IS BUILT, NOT WHEN THE MODULE IS IMPORTED.
+#: This was a module-level `datetime.now(...)` constant, and the observations
+#: below are anchored to it while `check()` evaluates the declared `window`
+#: against the real clock. Collection imports this file minutes before the
+#: tests run, so in a long suite the anchor is stale by exactly that gap and
+#: every window silently slides off the samples it was written to cover.
+#:
+#: MEASURED: green in the engine lane forever, because import to execute is
+#: seconds there -- and four failures in a 22-minute full regression. The 10m
+#: and 15m windows stopped finding a freeze that is there, and the 30m window
+#: started reporting one that is not. Reproduced exactly by making this value
+#: fifteen minutes stale.
+def _now() -> _dt.datetime:
+    return _dt.datetime.now(_dt.timezone.utc)
 CADENCE_S = 60.0
 
 MODEL = """
@@ -60,8 +73,9 @@ def _run(values, window: str | None = None) -> dict:
         session.add_entity("s1", "Sensor",
                            properties={"weld_current_a": values[-1]})
         n = len(values)
+        now = _now()
         session.add_observations("s1", "weld_current_a", [
-            (NOW - _dt.timedelta(seconds=CADENCE_S * (n - 1 - i)), v)
+            (now - _dt.timedelta(seconds=CADENCE_S * (n - 1 - i)), v)
             for i, v in enumerate(values)])
         return check(session).to_dict()
 
@@ -128,8 +142,9 @@ class TestTheWindowIsTheLever:
             session.add_entity("s1", "Sensor",
                                properties={"weld_current_a": fast[-1]})
             n = len(fast)
+            now = _now()
             session.add_observations("s1", "weld_current_a", [
-                (NOW - _dt.timedelta(seconds=10.0 * (n - 1 - i)), v)
+                (now - _dt.timedelta(seconds=10.0 * (n - 1 - i)), v)
                 for i, v in enumerate(fast)])
             envelope = check(session).to_dict()
         assert _reasons(envelope) == [], (

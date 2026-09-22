@@ -400,7 +400,7 @@ def classify_escalation_tier(
 
 
 class NLHypothesisTranslator:
-    """ (Round-57 P3): 3-tier escalation NL → VerdictRequest translator.
+    """A 3-tier escalation NL-to-VerdictRequest translator.
 
     The canonical-invariant shape
     — rule or template, LLM fallback, human escape hatch — implemented Decision Flavor D (rule/template

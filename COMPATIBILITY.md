@@ -77,6 +77,20 @@ Three things about it are promises and not accidents:
   the same default branch. `not_a_producers_submission` arrived this way,
   turning a zero denominator that had been reported with no reason beside it
   into one that names what it set aside and whose it was.
+
+  - **and the sets this rule permits growing are now published.**
+  `BRIDGES.md` Sec. 2a carries all seven, ninety-three names, derived from
+  `subenvelope.py` rather than transcribed beside it. Until then this entry had
+  the defect that an internal ruling closed one bullet down, and closed first: a consumer told a
+  set may grow in a patch release had no baseline to diff the growth against,
+  and this one was worse, because the entry above it also tells that consumer
+  the sets are SEPARATE and not to read a reason from one against another --
+  advice nobody could follow. The outside review that found the stamps found
+  this too, in the same way: it listed five closed vocabularies under a heading
+  naming the engine's trust surface, and none of these seven were among them.
+  The schema stays as it is, declaring no `enum` on a sub-envelope's
+  `not_checked[].reason`, for the reason given below -- an enum would make
+  every addition this rule permits a change to the wire contract.
 - **Add a stamp to an `assumptions` list**, with the same three-valued
   reading as the two entries above. Spelled out because those name enums of
   REASONS and a stamp is a value in a list, so a reader could take the list as

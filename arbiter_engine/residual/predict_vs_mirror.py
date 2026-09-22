@@ -1,4 +1,4 @@
-""" (Track-A A-7) — PREDICT-vs-MIRROR residual: the prediction ledger.
+"""The PREDICT-versus-MIRROR residual: the prediction ledger.
 
 The document's central engine (dt.md 5.4.2): a prediction recorded at
 traversal time, graded against the mirrored world at horizon maturity.
@@ -530,7 +530,7 @@ class PredictionLedger:
         model_id: Optional[str] = None,
         source: Optional[str] = None,
     ) -> str:
-        """ (value-kind v1): file a value prediction — entity E's
+        """File a value prediction, the first of its kind: entity E's
         property P will read ~V (+/- tolerance) at horizon H. Tolerance is
         caller-owned and mandatory: the ledger never guesses resolution.
 

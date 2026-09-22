@@ -22,6 +22,68 @@ useful-looking document and the less trustworthy one.
 
 ### Fixed
 
+- **The published derivation of the exact cascade response was wrong by a
+  sign.** `MODELING.md` and the `cascade_fraction` docstring both printed
+  `h(t) = 1 - e^{-at}(1 - a t phi(-(b-a)t))` beside `phi(x) = (e^x - 1)/x`.
+  Read with the `phi` given next to it, that returns 1.1116 where the true
+  two-stage step response at `tau1 = tau2 = 600 s` and `t = 900 s` is
+  0.442174599629 -- a step response above one. The engine was never wrong and
+  is unchanged: it agrees with the truth to twelve digits, and every NUMBER in
+  the surrounding paragraph was measured from it, which is why two rounds of
+  outside review read past the formula. The third copied it verbatim into a
+  comparison this project did not write, which is how it was found. The sign
+  is now a plus in both copies, and a test evaluates the published text rather
+  than restating it -- a guard that hard-codes the corrected expression passes
+  on the broken document, because the document is not what it read.
+
+- **The only tests that put the wire contract in front of a validator ran
+  nowhere.** Ten tests gate on `jsonschema`, which no lane installed: CI
+  installs the package with its `mcp` extra and pytest, and the reproduction
+  this project's own documents imply installs numpy, pyyaml and pytest. Among
+  the ten is the single check that `envelope.schema.json` is a well-formed
+  2020-12 schema, which has no derivation-based substitute -- so whether the
+  document `meta.schema_version` advertises parses as a schema at all had
+  never been answered on any machine here, across three Python versions and
+  every release. The argument was already in the CI file, four lines above the
+  install, made about the other optional extra, and stopped one line short of
+  this one. CI now installs `jsonschema`; the two guards that had a bare
+  `importorskip` now say why they are gated and what covers the question
+  otherwise; and a skip CEILING sits beside the collected-count floor, because
+  a floor catches a suite that shrinks and nothing caught one that goes quiet.
+  No runtime dependency changed: the engine still needs numpy and pyyaml.
+
+- **Seven closed decline vocabularies, ninety-three names, published
+  nowhere.** Each sub-envelope refuses out of its own closed set --
+  `simulation` 39, `shadow` 18, `projection` 9, `discovery` 8, `entailment` 7,
+  `inference` 7, `forecasts` 5 -- and `COMPATIBILITY.md` grants a patch release
+  permission to add a member to any of them while warning, one entry above,
+  that the sets are SEPARATE and that reading a reason from one against another
+  is how a closed enum stops being closed. Neither the guide nor the schema
+  said what any set contained, so that warning could not be followed.
+  Reported from outside in the way the stamps were: a comparison that
+  reproduced every published vocabulary of this engine by exact membership --
+  the fourteen decline reasons, six gap types, eight raced outcomes, twenty
+  assumption stamps -- listed five closed vocabularies under a heading naming
+  the engine's trust surface, and none of these seven were among them. Three
+  members of `simulation` appeared in its prose instead, beside a gap type, in
+  a list read against the fourteen. `BRIDGES.md` Sec. 2a now publishes all
+  seven, derived from the code and pinned by a test. The schema is unchanged
+  and still declares no `enum` on a sub-envelope reason, so that the permission
+  stays real.
+
+- **The scrub removed the citation and shipped the broken sentence.** Fourteen
+  docstrings in six modules of the published package opened on a space and a
+  parenthetical naming nothing, because a deletion took the first token and
+  not the space beside it -- and nine internal coordinates shipped in forms no
+  rule knew, a drain letter, three round numbers, two track coordinates and
+  two programme names. The rules that exist are exact: zero `CD-N`, `S-N` or
+  `DDC-N` tokens reached the tree. One module's docstring published an
+  internal three-phase adoption roadmap that appears in no document here, and
+  an outside reader copied *Phase-1 sampling estimator* out of it into a
+  comparison as though it were API documentation. The prose is rewritten at
+  source, and the build now refuses both shapes rather than substituting,
+  because no public replacement is derivable from a round number.
+
 - **The assumption stamps were a vocabulary nobody could read.** Every number
   this engine projects rests on approximations it made rather than an author
   declared, and an `assumptions` stamp names one of them -- the list this

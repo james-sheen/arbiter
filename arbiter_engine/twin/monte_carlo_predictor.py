@@ -1,38 +1,26 @@
-""" (Phase 1 of phased adoption) — Monte Carlo
-probabilistic prediction layer over the SIMULATE substrate.
+"""A sampling estimator for the probability of a simulated outcome.
 
-Per decision (phased adoption: Phase 1 Monte Carlo → Phase 2
-Bayesian → Phase 3 LLM-counterfactual), this module supplies Phase 1.
-
-Architecture: a sampling-based probability estimator over a
-DigitalTwinTopology snapshot. The estimator runs N randomized
-mutations + simulation calls and aggregates outcome frequencies as
-probability estimates with binomial-standard-error confidence
-bands.
+The estimator runs N randomised mutations and simulation calls over a
+topology snapshot and aggregates outcome frequencies into probability
+estimates with binomial-standard-error confidence bands.
 
 Design choices:
-- **Caller-supplied simulation callable**. The predictor is NOT
-  hard-wired to any specific detection / RCA / action-planning
-  pathway — callers supply `simulation_step(snapshot, rng) ->
-  Dict[outcome_name, bool]` and decide what one "sample" means.
-  This keeps the predictor reusable across the BP Digital-Twin
-  pillars: "Predicts" via outcome-of-problem estimation,
-  "Acts proactively" via P(action_clears_problem) estimation,
-  cross-domain propagation via posterior-shape inputs.
-- **Deterministic given seed**. Same `(snapshot, simulation_step,
-  seed, n_samples)` produces the same outcome distributions. The
-   trade-off table calls this out as a load-bearing property
-  for calibration validation.
-- **Sample count is a tunable, not an architectural commitment**.
-  Default N=100, min N=10 (fast smoke), max N=10000 (high-confidence
-  verdicts). The N=100 default matches decision's stated
-  sample count.
 
-Per phase ordering: this Phase 1 supplies the calibration
-baseline that Phase 2 Bayesian re-anchors against, and the
-numeric grounding that Phase 3 LLM-counterfactual requires.
+- **Caller-supplied simulation callable**. The predictor is NOT hard-wired
+  to any one pathway — callers supply `simulation_step(snapshot, rng) ->
+  Dict[outcome_name, bool]` and decide what one sample means. That is what
+  keeps it reusable: the probability that a problem occurs, the probability
+  that a candidate action clears one, and a posterior shape for propagation
+  across domains are the same estimator with a different step.
+- **Deterministic given a seed**. The same `(snapshot, simulation_step,
+  seed, n_samples)` produces the same outcome distributions, which is a
+  load-bearing property for calibration: a sampling estimator nobody can
+  re-run is a number nobody can check.
+- **Sample count is a tunable, not an architectural commitment**. Default
+  N=100, minimum 10 for a fast smoke, maximum 10000 for a high-confidence
+  verdict.
 
-Per read-only-by-design contract — never mutates inputs.
+Read-only by design — it never mutates its inputs.
 """
 
 from __future__ import annotations
@@ -141,8 +129,7 @@ class MonteCarloPredictionRequest:
 
 
 class MonteCarloPredictor:
-    """ — sample-based probability estimator over a
-    DigitalTwinTopology snapshot.
+    """Sample-based probability estimator over a topology snapshot.
 
     Caller-supplied simulation: ``predict(snapshot, simulation_step,
     request)`` runs ``request.n_samples`` calls of
@@ -347,9 +334,8 @@ def make_threshold_perturbation_simulation_step(
     ],
     outcome_extractors: Dict[str, Callable[[Dict[str, Any]], bool]],
 ) -> Callable[[Any, random.Random], Dict[str, bool]]:
-    """factory producing a Monte Carlo
-    ``simulation_step`` closure that perturbs threshold values per
-    sample and re-runs detection.
+    """Factory for a ``simulation_step`` closure that perturbs threshold
+    values per sample and re-runs detection.
 
     Per off-ramp 4 (variance-reduction techniques): the
     perturbation_strategy is caller-supplied so different sampling
@@ -430,8 +416,7 @@ def uniform_threshold_perturbation_strategy(
     baseline_thresholds: Dict[str, float],
     bounds: Dict[str, tuple],
 ) -> Callable[[Dict[str, float], random.Random], Dict[str, float]]:
-    """ — uniform-sampling perturbation strategy
-    factory.
+    """Factory for a uniform-sampling perturbation strategy.
 
     Returns a perturbation_strategy callable suitable for
     ``make_threshold_perturbation_simulation_step``. Each threshold
@@ -496,8 +481,7 @@ _MAX_PERTURBATION_SECONDS_DEFAULT = 30.0
 
 
 def deepcopy_snapshot(snapshot: Any) -> Any:
-    """ (substrate) — deep-copy a DigitalTwinTopology
-    snapshot for per-sample isolation.
+    """Deep-copy a topology snapshot, for per-sample isolation.
 
     Per scope item #1: per-sample snapshot deep-copy is
     REQUIRED so threshold injection doesn't leak across samples.
@@ -524,9 +508,8 @@ def deepcopy_snapshot(snapshot: Any) -> Any:
 def extract_axiom_thresholds_from_domain_config(
     domain_config: Any,
 ) -> Dict[Tuple[str, str, str], Tuple[Optional[float], Optional[float]]]:
-    """ (substrate) — extract per-(entity_type,
-    indicator, axiom) [warning, critical] threshold tuples from a
-    DomainConfig.
+    """Extract per-(entity_type, indicator, axiom) [warning, critical]
+    threshold tuples from a ``DomainConfig``.
 
     Per scope item #2: pull current threshold values from
     DomainConfig.indicators + axiom_parameters so the perturbation
@@ -594,9 +577,9 @@ def make_real_perturbation_simulation_step_v2(
     detection_callable: Callable[[Any, Dict[Tuple[str, str, str], Tuple[Optional[float], Optional[float]]]], Dict[str, Any]],
     outcome_extractors: Dict[str, Callable[[Dict[str, Any]], bool]],
 ) -> Callable[[Any, random.Random], Dict[str, bool]]:
-    """ (substrate) — factory producing a v2 Monte Carlo
-    ``simulation_step`` that deep-copies the snapshot + injects
-    perturbed thresholds per sample + runs caller-supplied detection.
+    """Factory for a ``simulation_step`` that deep-copies the snapshot,
+    injects perturbed thresholds per sample, and runs caller-supplied
+    detection.
 
     Per scope items #1-3: deep-copy + threshold extraction +
     detection re-run per sample.
@@ -732,8 +715,8 @@ def make_layered_detector_runtime_callable(
         ]
     ] = None,
 ) -> Callable[[Any, Dict[Tuple[str, str, str], Tuple[Optional[float], Optional[float]]]], Dict[str, Any]]:
-    """ (substrate) — build a sync detection_callable
-    compatible with the v2 perturbation factory.
+    """Build a sync ``detection_callable`` compatible with the perturbation
+    factory.
 
     Wires `LayeredDetector.detect_all` into the
     ``detection_callable(snapshot_copy, perturbed_thresholds) -> dict``
@@ -886,7 +869,7 @@ def inject_thresholds_via_entity_properties(
         Tuple[str, str, str], Tuple[Optional[float], Optional[float]]
     ],
 ) -> None:
-    """ (option b) — canonical threshold_injector.
+    """The canonical ``threshold_injector``.
 
     Mutates ``snapshot_copy.nodes[id].entity.properties`` in place, adding
     or updating the ``__axiom_threshold_overrides__`` sentinel key with a

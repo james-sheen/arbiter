@@ -564,10 +564,22 @@ class TwinEdge:
 
         Derivation, for stages `a = 1/tau1`, `b = 1/tau2`, `d = b - a`:
 
-            h(t) = 1 - e^{-at} *(1 - a*t*phi(-d*t)), phi(x) = (e^x - 1)/x
+            h(t) = 1 - e^{-at} *(1 + a*t*phi(-d*t)), phi(x) = (e^x - 1)/x
 
-        `phi(-d*t)` is `expm1(-x)/x`, which tends to -1 as `x -> 0` and
-        recovers `1 - (1 + a*t)e^{-at}`, the equal-tau series response.
+        THE SIGN IS THE WHOLE OF IT, and this docstring carried it wrong from
+        the closure that derived the form until an outside comparison
+        republished the broken version. Read with the `phi` defined here, the
+        minus form returns 1.1116 where the true response at `tau1 = tau2 =
+        600` and `t = 900` is 0.442174599629 -- a step response above 1, which
+        the code has never produced. The code below is what was always right.
+
+        The confusion has a source worth naming: `phi(-d*t)` under the
+        definition above is MINUS `expm1(-x)/x` at `x = d*t`, and the line
+        below computes the latter. So the sign lives in the plus, and the
+        identity is stated once here rather than derived twice: the term
+        `a*t*phi(-d*t)` equals `a*t*expm1(-x)/x` negated, tends to `a*t` as
+        `x -> 0`, and recovers `1 - (1 + a*t)e^{-at}`, the equal-tau series
+        response.
 
         Returns ``None`` when no exact form applies -- a chain that is not
         exactly two exponential stages. The caller keeps the product and its

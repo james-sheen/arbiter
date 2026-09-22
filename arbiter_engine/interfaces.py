@@ -522,7 +522,7 @@ class RelationshipGraph:
         relation_type: str,
         target_id: str,
     ) -> Optional[Dict[str, Any]]:
-        """ (G4b drain): return the parallel metadata for an
+        """Return the parallel metadata for an
         edge or ``None`` if the edge is unknown. Returned dict carries
         ``properties / strength / discovered_at`` keys; an internal ruling adds
         ``source_domain / target_domain`` for cross-domain edges.

@@ -1,4 +1,4 @@
-""" — action-clears-problem Monte Carlo substrate.
+"""The action-clears-problem sampling substrate.
 
 Composes a ``P(action_clears_problem)`` estimate over the
 ``MonteCarloPredictor`` for the ACTIVE-mode confidence gate: apply a candidate action's effect to a copy of the state,

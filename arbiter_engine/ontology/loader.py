@@ -722,7 +722,7 @@ class OntologyLoader:
 
     @staticmethod
     def _resolve_direction(raw: Optional[str], indicator_name: str = "") -> str:
-        """ (implements): validate direction field.
+        """Validate the direction field (implementing).
 
         Case-insensitive lookup against ``_VALID_HOMEOSTASIS_DIRECTIONS``;
         defaults to ``BIDIRECTIONAL`` (previously behavior) when unset.

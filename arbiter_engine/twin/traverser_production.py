@@ -248,8 +248,8 @@ def get_production_traversals():
 
 
 def get_production_traversal_count() -> int:
-    """Aggregate count for dashboard-data defensive-accessor
-    (Round-55 P2). Returns 0 when gate off."""
+    """Aggregate count for dashboard-data defensive-accessor.
+    Returns 0 when the gate is off."""
     if not DT_PRODUCTION_TRAVERSAL_ENABLED:
         return 0
     with _PRODUCTION_TRAVERSAL_LOCK:

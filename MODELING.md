@@ -973,7 +973,13 @@ rollout crossing both kinds carries BOTH stamps.
 
 **A `series_errors` row per step records what the approximation would have
 cost** -- the `product` that was avoided, the `exact` value used, and the
-signed gap, as fractions of the final impact. On two equal 600 s lags the
+signed gap, as fractions of the final impact. **The rows belong to the EXACT
+branch**, which is the half of this that reads backwards at speed and did: an
+outside comparison put them beside `series_edges_compose_by_product`, where
+there are none. Where the product is actually used the exact value has no
+closed form, so the cost is not knowable and nothing can be reported; the stamp
+says an approximation happened and these rows say what one WOULD have cost
+where the engine avoided it. On two equal 600 s lags the
 product leads by up to 0.161 per unit at `t = 900 s`, closing to 0.012 by an
 hour. An author reading a multi-hop transient learns from it how much of that
 transient depends on the composition being exact.
@@ -988,7 +994,7 @@ down onto it, the partial fraction holds to 2e-14 at a separation of 1 s, reads
 `0.625` against a true `0.442174599629` at a separation of `1e-13`, and divides
 by zero at equality. The divided-difference form
 
-    h(t) = 1 - e^{-at} (1 - a t phi(-(b-a) t)), phi(x) = (e^x - 1)/x
+    h(t) = 1 - e^{-at} (1 + a t phi(-(b-a) t)), phi(x) = (e^x - 1)/x
 
 holds every digit across the same sweep and meets the equal-tau closed form
 `1 - (1 + t/tau)exp(-t/tau)` exactly, because `expm1` is built for it and the
@@ -997,6 +1003,16 @@ bound the correction carries is a property of float64 and not of any model:
 below the ULP of 1.0 the exact response has no significant digit, so the walk
 keeps the product there, where both curves are zero to representable precision
 anyway.
+
+**That sign was published as a minus until 2026-09-22**, and this note stays
+because a reader who implemented the printed form got a different engine. Under
+the `phi` defined beside it the minus version returns `1.1116` at
+`tau1 = tau2 = 600 s` and `t = 900 s`, where the response is `0.442174599629`
+-- a step response above one, which no plant has and this engine has never
+reported. Only the derivation was wrong: every figure in the paragraph above
+was measured from the code, which is why two rounds of review read past it. The
+plus form agrees with what runs across every combination of the two time
+constants and the elapsed time.
 
 ## Acting on the model: `action_templates`
 

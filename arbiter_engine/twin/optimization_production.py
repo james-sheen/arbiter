@@ -205,8 +205,8 @@ def get_production_optimizations():
 
 
 def get_production_optimization_count() -> int:
-    """Aggregate count for dashboard-data defensive-accessor
-    (Round-57 P2). Returns 0 when gate off."""
+    """Aggregate count for dashboard-data defensive-accessor.
+    Returns 0 when the gate is off."""
     if not DT_PRODUCTION_OPTIMIZATION_ENABLED:
         return 0
     with _PRODUCTION_OPTIMIZATION_LOCK:
