@@ -37,8 +37,8 @@ from arbiter_engine.twin.actions import ActionInstance
 
 
 def _examples_dir() -> pathlib.Path:
-    """Whichever copy this tree has; never an absolute path into the private
-    tree, which the build refuses and rightly -- this file ships."""
+    """Whichever copy this tree has; never an absolute path -- one names a
+    directory that exists only where this file was written, and this file ships."""
     here = pathlib.Path(__file__).resolve()
     for candidate in (here.parents[1] / "examples",
                       here.parents[2] / "docs" / "publication"

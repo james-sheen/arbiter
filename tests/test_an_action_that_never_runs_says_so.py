@@ -48,9 +48,9 @@ from arbiter_engine.twin.actions import ActionInstance
 
 def _examples_dir() -> pathlib.Path:
     """Whichever copy this tree has: the built package ships `examples/` at its
-    root, the source tree keeps them under the publication docs. NOT an
-    absolute path -- an absolute path into the source repository is a reference the
-    build refuses, and rightly: this file ships."""
+    root, the source tree keeps them under the publication docs. Never an
+    absolute path -- one names a directory that exists only where this file was
+    written, and this file ships."""
     here = pathlib.Path(__file__).resolve()
     for candidate in (here.parents[1] / "examples",
                       here.parents[2] / "docs" / "publication"

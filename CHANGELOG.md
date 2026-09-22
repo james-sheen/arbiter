@@ -7,6 +7,20 @@ The wire contract is versioned separately from the package: every envelope
 carries `meta.schema_version`, and [COMPATIBILITY.md](COMPATIBILITY.md) states
 what may change without moving it.
 
+**An entry says what changed and what it means for a caller, in two or three
+lines.** The reasoning behind a fix -- what was measured, why it survived, what
+shape it belongs to -- lives in the project's own record and is not repeated
+here. That rule is written down because it was broken: entries grew from about
+five hundred bytes through the 0.1 series to nine hundred and more, and a
+sample of the pending ones shared 93 to 100 per cent of their vocabulary with
+the internal notes they were paraphrasing. A changelog that restates a working
+record is two copies of one thing, and the copy nobody edits is this one.
+
+**Released sections are not tidied.** Each is the record of what a release told
+its readers on the day, and a correction is APPENDED to it as an erratum rather
+than written over the original -- there is a test pinning one such erratum in
+place, for exactly the later tidy-up that would read it as stale.
+
 **Entries before 0.1.7 are RECONSTRUCTED.** This file did not exist during those
 releases, which is the gap it closes. They were rebuilt from the release runbook
 and the decision record, and they are deliberately thinner than the entries that
@@ -22,544 +36,100 @@ useful-looking document and the less trustworthy one.
 
 ### Fixed
 
-- **Two actions scheduled at different times were refused as a collision when
-  the step was coarse enough to hold both.** `rollout` gathered every action
-  falling inside a step into one bucket keyed by `(entity, property)`, which
-  discarded `at_s`; two `set` effects nine hundred seconds apart then met the
-  rule written for two effects at ONE instant and the whole pair was dropped.
-  Measured on one model and one pair of actions, changing nothing but the step:
-  at `step_s=900` the pump never moves and the tank it feeds reads 50.0, and at
-  `step_s=450` the tank peaks at 88.0 and files a warning. **`step_s` is how
-  finely a caller asks to see a trajectory and it was deciding whether a
-  declared action happened at all.** The refusal's own message was the tell --
-  it said the effects *share* an `at_s` and prescribed scheduling them at
-  different times, which is what the caller had done. Effects are now resolved
-  per instant, in order, each measured from what the previous one left; the
-  refusal still fires for effects that genuinely share an instant, and `add`
-  and `scale` were never affected because both are order-free. Found from a
-  measurement rather than a report.
+- **Two actions scheduled at different times were refused as a collision** when
+  the step was coarse enough to hold both, because effects inside a step were
+  gathered by property and `at_s` was discarded. They now resolve per instant,
+  in order. Two effects that genuinely share an instant are still refused.
+- **The published derivation of the exact two-stage cascade had the wrong
+  sign.** The code was always right; the formula printed beside it in
+  `MODELING.md` returned a step response above one. Re-derive from the
+  corrected form if you implemented it.
+- **The only tests that put the wire contract in front of a JSON Schema
+  validator ran on no lane.** CI now installs `jsonschema`, and a skip ceiling
+  sits beside the collected-count floor.
+- **Seven sub-envelope decline vocabularies were published nowhere** --
+  `simulation`, `shadow`, `projection`, `discovery`, `entailment`, `inference`,
+  `forecasts`, ninety-three names between them -- while `COMPATIBILITY.md`
+  granted a patch release permission to add to them. `BRIDGES.md` Sec. 2a now
+  carries all seven, derived from the code.
+- **Docstrings in the published package had lost words to the tooling that
+  removes internal identifiers.** Fourteen opened on punctuation, two on a
+  deleted subject, and seven explained a rule by pointing at a repository the
+  reader has not got. All now read as sentences.
+- **The assumption stamps had no published baseline.** They existed only as
+  string literals, and `COMPATIBILITY.md` allowed a patch release to add one.
+  `MODELING.md` now carries the table, derived from the engine's vocabulary.
+- **The schema named `simulation` and `plan` and nothing they carry.** Fifteen
+  payload keys were undeclared. The three sub-envelopes that deviate now have
+  their own definitions.
+- **`gaps` reported two different things undeclared in one place as one**, and
+  the verbs that cross an undeclared edge filed no question about it. `rollout`,
+  `plan` and `traverse` now report what `gaps` does.
+- **A plan's tie-break read a figure that cannot say which side of a line a
+  candidate fell**, and an exact tie fell to the order candidates were listed
+  in. Ranking is now objective, then fewer actions, then wider signed headroom.
+- **An undeclared or partial `temporal:` block invented a time course in
+  silence.** Envelopes that rest on the engine's own default now carry
+  `time_course_not_declared` and a question naming the key.
+- **`margin_sigmas` and `clearance_probability` measured against BOUNDEDNESS
+  alone** while the plan ranked on all eight axioms.
+- **Gain fitting was unreachable from the documented shape**, and passing plain
+  mappings to `rollout` and `plan` raised where the guides said it would work.
+- **The engine scored its own forecasts on a band it chose itself**, so a
+  spread ten times too wide won every figure. Its projections are now graded
+  the way a producer's are, raced against a random walk, and reported under
+  `calibration.own_projections` apart from the producer population.
+- **A `transition:` block the loader refused reached `gaps` as silence**, and
+  `transitions.refused_blocks` named the key without the rule it was declared
+  on. Both are now reported.
+- **`plan` never fitted the projected seed**, so under `seed_mode="projected"`
+  every candidate declined for want of samples, and `project` filed a reference
+  forecast without reporting it.
 
-### Added — the engine says which instants it judged
+### Added
 
 - **`movement_between_sampled_steps`**, a new assumption stamp. The axioms run
-  at the sampled instants and nowhere between them, so a trajectory that turns
-  between two of them turns unjudged. Measured with the line at 88.1 and a true
-  peak of 88.314 at `t = 950`: grids that sample that instant report the
-  breach, grids of 300, 200 and 100 seconds report clean, and **refining the
-  grid does not help** -- what decides is whether the turning instant is on the
-  grid. The stamp fires only where it can cost something: a property that moved
-  more than once, turning at an instant off the grid. A single movement cannot
-  hide an extremum, so the shipped example does not carry it. `MODELING.md`
-  gains the stamp and a section saying what `step_s` decides, which neither
-  published guide had mentioned at all.
-
-- **The published derivation of the exact cascade response was wrong by a
-  sign.** `MODELING.md` and the `cascade_fraction` docstring both printed
-  `h(t) = 1 - e^{-at}(1 - a t phi(-(b-a)t))` beside `phi(x) = (e^x - 1)/x`.
-  Read with the `phi` given next to it, that returns 1.1116 where the true
-  two-stage step response at `tau1 = tau2 = 600 s` and `t = 900 s` is
-  0.442174599629 -- a step response above one. The engine was never wrong and
-  is unchanged: it agrees with the truth to twelve digits, and every NUMBER in
-  the surrounding paragraph was measured from it, which is why two rounds of
-  outside review read past the formula. The third copied it verbatim into a
-  comparison this project did not write, which is how it was found. The sign
-  is now a plus in both copies, and a test evaluates the published text rather
-  than restating it -- a guard that hard-codes the corrected expression passes
-  on the broken document, because the document is not what it read.
-
-- **The only tests that put the wire contract in front of a validator ran
-  nowhere.** Ten tests gate on `jsonschema`, which no lane installed: CI
-  installs the package with its `mcp` extra and pytest, and the reproduction
-  this project's own documents imply installs numpy, pyyaml and pytest. Among
-  the ten is the single check that `envelope.schema.json` is a well-formed
-  2020-12 schema, which has no derivation-based substitute -- so whether the
-  document `meta.schema_version` advertises parses as a schema at all had
-  never been answered on any machine here, across three Python versions and
-  every release. The argument was already in the CI file, four lines above the
-  install, made about the other optional extra, and stopped one line short of
-  this one. CI now installs `jsonschema`; the two guards that had a bare
-  `importorskip` now say why they are gated and what covers the question
-  otherwise; and a skip CEILING sits beside the collected-count floor, because
-  a floor catches a suite that shrinks and nothing caught one that goes quiet.
-  The ceiling reads the GRADED run rather than starting another one, so its
-  verdict is about the execution the job accepted, and the reason for every skip
-  now appears in that run's own output. No runtime dependency changed: the
-  engine still needs numpy and pyyaml.
-
-- **Seven closed decline vocabularies, ninety-three names, published
-  nowhere.** Each sub-envelope refuses out of its own closed set --
-  `simulation` 39, `shadow` 18, `projection` 9, `discovery` 8, `entailment` 7,
-  `inference` 7, `forecasts` 5 -- and `COMPATIBILITY.md` grants a patch release
-  permission to add a member to any of them while warning, one entry above,
-  that the sets are SEPARATE and that reading a reason from one against another
-  is how a closed enum stops being closed. Neither the guide nor the schema
-  said what any set contained, so that warning could not be followed.
-  Reported from outside in the way the stamps were: a comparison that
-  reproduced every published vocabulary of this engine by exact membership --
-  the fourteen decline reasons, six gap types, eight raced outcomes, twenty
-  assumption stamps -- listed five closed vocabularies under a heading naming
-  the engine's trust surface, and none of these seven were among them. Three
-  members of `simulation` appeared in its prose instead, beside a gap type, in
-  a list read against the fourteen. `BRIDGES.md` Sec. 2a now publishes all
-  seven, derived from the code and pinned by a test. The schema is unchanged
-  and still declares no `enum` on a sub-envelope reason, so that the permission
-  stays real.
-
-- **The scrub removed the citation and shipped the broken sentence.** Fourteen
-  docstrings in six modules of the published package opened on a space and a
-  parenthetical naming nothing, because a deletion took the first token and
-  not the space beside it -- and nine internal coordinates shipped in forms no
-  rule knew, a drain letter, three round numbers, two track coordinates and
-  two programme names. The rules that exist are exact: zero `CD-N`, `S-N` or
-  `DDC-N` tokens reached the tree. One module's docstring published an
-  internal three-phase adoption roadmap that appears in no document here, and
-  an outside reader copied *Phase-1 sampling estimator* out of it into a
-  comparison as though it were API documentation. The prose is rewritten at
-  source, and the build now refuses both shapes rather than substituting,
-  because no public replacement is derivable from a round number.
-
-- **The assumption stamps were a vocabulary nobody could read.** Every number
-  this engine projects rests on approximations it made rather than an author
-  declared, and an `assumptions` stamp names one of them -- the list this
-  project offers as its trust surface. The stamps existed only as bare string
-  literals at twenty sites across four modules, with no definition anywhere.
-  `envelope.schema.json`, which `meta.schema_version` advertises as the wire
-  contract, did not contain the word `assumptions`; the published guides
-  between them named six of the twenty; and `COMPATIBILITY.md` granted a patch
-  release permission to ADD a stamp, so the project published a rule for
-  changing a vocabulary it had never published. Reported from outside, in the
-  only way it could be: a review that reproduced this engine's fourteen decline
-  reasons, six gap types and eight raced outcomes by exact membership listed
-  this one at nine of twenty, under a heading saying *seen*, because nine is
-  what running the shipped example shows you. The stamps now have one
-  definition, every emitting site imports the name instead of repeating the
-  literal, and `MODELING.md` publishes the table derived from that definition.
-  No stamp changed its spelling and no envelope changed.
-
-- **The schema named its two largest sub-envelopes and nothing they carry.**
-  The previous release added `simulation` and `plan` to the schema's
-  `properties`, both pointing at the one generic sub-envelope definition, which
-  declares the five legs and allows anything beside them. So the trajectory,
-  the tier, the candidate ranking and the assumption stamps stayed undeclared
-  one level below the fix -- `simulation` carries six keys beside the legs and
-  `plan` eight, where four of the other sub-envelopes carry none and
-  `projection` carries one. Worse, the fix asserted otherwise: the sentence it
-  added said the two were *shaped like every other sub-envelope*, and a claim
-  of sameness is worse than silence because it removes the reason to look. The
-  three that deviate now have their own definitions, each composing the shared
-  shape and adding only its own payload, and the coverage is derived from what
-  the verbs emit rather than from a list written beside them.
-
-- **Two different things undeclared in one place were reported as one.**
-  `gaps` deduplicated on `(gap_type, location)`, which assumes each type asks a
-  single question at a given place. `missing_declaration` stopped being one
-  claim when a refused `transition:` block started using it, and a second
-  arrived with the time-course report: an edge whose delay or time constant
-  this engine supplied. The question TEMPLATE was fixed for exactly this reason
-  one release earlier; the key beside it kept the old assumption. Where both
-  claims land on one edge, one question was reported and the other silently
-  dropped -- and the survivor was the refusal, so what went missing was the
-  question naming the number the engine substituted. The claim is now part of
-  the key. Identical claims about one place still collapse, which is what the
-  deduplication was for.
-
-- **The verb that used an undeclared number was the one that did not name it.**
-  An edge whose time course this engine supplied is reported twice: a
-  `missing_declaration` question naming the absent key and the number used, and
-  a `time_course_not_declared` stamp on every envelope computed across that
-  edge. Only the stamp reached `rollout`, `plan` and `traverse`. The question
-  was raised by `gaps` alone -- a verb that computes no values -- so a caller
-  who rolled a trajectory forward, every value of which rested on a 60 s
-  constant standing in for a declared 600 s, and then read the leg whose stated
-  purpose is what the model never declared, was told nothing. Those three verbs
-  now file the question beside the stamp, scoped to the edges their walk
-  actually CROSSED: an edge nothing traversed raises nothing, and a fully
-  declared model stays silent. No value and no ranking changes.
-
-- **A plan's tie-break read a figure that cannot say which side of a line a
-  value sat on.** The tie between two equally-scored candidates broke toward
-  the wider `margin_sigmas`, which is the minimum ABSOLUTE distance to any
-  line over the horizon. Among candidates that breach, that is not a measure
-  of the breach — it is wherever a discrete step fell as the trajectory
-  crossed the line. Two candidates tied at 1.667 while settling about 4 and
-  about 8 points past a band edge reported 1.443 and 0.089, and at
-  `step_s=450` the order reversed and the deeper breach was preferred: the
-  ranking moved with the step size rather than the risk. Ties now break on
-  `clearance_sigmas`, the SIGNED worst headroom in declared spreads, taken
-  from the same margin `clearance_probability` centres its distribution on.
-  `margin_sigmas` is unchanged and, as its own description has always said,
-  changes no ranking.
-
-- **An exact tie between two candidate plans was broken by the order they were
-  written in.** The ranking sorted on the objective and then the action count;
-  two candidates equal on both fell to insertion order. On the shipped
-  pump-and-tank model two candidates tie at `expected_findings` 0.000 while
-  settling 0.03 and 15.08 declared spreads from the line that decides whether
-  they file a finding — and the engine's own sampler scores the same two
-  rollouts at 0.43 and 1.00 clear. Swapping their entries in the YAML swapped
-  their rank. The tie now breaks toward the wider `margin_sigmas`, stamped
-  `ties_break_toward_the_wider_margin` and only when a declared spread actually
-  reached a trajectory. A candidate with no measured margin sorts last among
-  its ties, so a model that declares no `gain_sigma:` keeps the order it had.
-  No reported number changes; this reorders exact ties only.
-
-- **A time course nobody declared was invented in silence.** `temporal:` is
-  optional, and an edge without it — or with it and short of a key — kept this
-  engine's own 60 s dead time and 60 s time constant, reported by nothing.
-  Measured on the shipped `pump_tank_dynamics` model, dropping
-  `time_constant_s` alone moved the first reported level from 61.01 to 69.99
-  and reported the tank as settled when it was halfway: 60 s standing in for a
-  declared 600 s. The sibling block on the same edge has refused partial
-  declarations since 0.2.3 for exactly this reason. The values are unchanged;
-  what is new is that an edge carrying a `transition:` without the pair now
-  raises a `missing_declaration` question naming the absent key AND the number
-  used in its place, and every envelope computed across it carries
-  `time_course_not_declared` in `assumptions`.
-
-- **`margin_sigmas` and `clearance_probability` measured against one axiom
-  while the plan ranked on eight.** Both read `BOUNDEDNESS` evidence by name
-  and had never seen a HOMEOSTASIS band. On the shipped model, whose every
-  plan finding is a HOMEOSTASIS breach, the best-tying candidate settles 0.03
-  spreads from the line that decides whether it files a finding and was
-  reported 45.1 spreads clear; candidates already breaching reported
-  comfortable positive margins. Which lines an axiom declares is now the
-  axiom's own business, and the planner asks every axiom state that judges the
-  property. Reported from outside. **Measured afterwards against the pre-fix
-  tree, and larger than first described: `clearance_probability` had been
-  returning 1.00 for EVERY candidate, including the two that already file
-  findings. It was not a wrong number but a vacuous objective, ranking
-  nothing.**
-
-- **Gain fitting was unreachable from the documented shape.** Bare
-  `add_observations` spaced readings ending at `now`, read once per call, so
-  two series fed one after the other shared no timestamp — 0 of 5, 0.003146 s
-  apart — and the fitter, which intersects on exact timestamps, paired nothing
-  at EVERY declared delay including zero. It reported `delay_off_grid`, whose
-  remedy could not work because the delay was never the cause. A feeding pass
-  now shares one instant, with the reuse window taken from the caller's own
-  `interval_seconds`; inside `as_of` nothing changes, because that path was
-  always joinable — which is why no test saw this. `delay_off_grid` now fires
-  only when the series genuinely share a grid the delay misses, and
-  `series_not_co_sampled` names the other case. Reported from outside.
-
-- **A wrong argument type was filed under coverage.** Passing plain mappings
-  as `actions` or `candidates` raised inside the walk, and the discipline
-  reported `internal_error` with `meta.source: unavailable` — which says the
-  engine broke over a cell nobody could answer, when nothing was wrong with
-  the model and the caller had passed a dict. Both verbs now accept a mapping
-  or an `ActionInstance`; two transports were already converting one by hand
-  in two copies of the same six lines, and that conversion has one home. A
-  type that is neither raises at the boundary. Reported from outside.
-
-### Added
-
-- `plan` candidates carry `clearance_sigmas`: the signed worst headroom over
-  the horizon in declared spreads — positive when the trajectory stayed clear
-  of every line it was judged against, negative by how far the deepest
-  excursion went past one. On the shipped example a candidate reports a
-  `margin_sigmas` of 0.920 while sitting 4.985 spreads the wrong side of a
-  line, and an absolute distance cannot express the difference.
-
-- `twin.topology.TIME_COURSE_KEYS` — the two `temporal:` keys that decide
-  whose number a transient is, alongside `REQUIRED_TRANSITION_KEYS` for the
-  block beside it. `response_model` is deliberately not a member.
-- `twin.actions.as_action_instance` — one action, however a caller spelled it.
-- `residual.predict_vs_mirror.NORMAL_90_HALF_WIDTH` — the half-width of a 90%
-  normal interval, in standard deviations. Added in the round that gave the
-  engine's own forecasts a producer's scores and named here late: the guard
-  that watches public constants for departure had been reporting it as
-  unwritten since, which is the guard working.
-- `assumptions` — the stamp vocabulary as NAMES, so an emitting site imports one
-  instead of repeating a literal and a consumer has something to compare
-  against: `FIRST_ORDER_RESPONSE`, `TIME_COURSE_NOT_DECLARED`,
-  `STEADY_STATE_REACHED`, `SERIES_EDGES_COMPOSED_EXACTLY`,
-  `SERIES_EDGES_COMPOSE_BY_PRODUCT`, `FIRST_ORDER_UNCERTAINTY`,
-  `INDEPENDENT_DECLARED_SPREADS`, `GAUSSIAN_FROM_MEAN_SIGMA`,
-  `EXOGENOUS_INPUTS_HELD`, `NO_ACTION_SCHEDULED`, `LINEAR_SUPERPOSITION`,
-  `DECLARED_COUPLING_NOT_PROBABILITY_PRUNED`, `SEEDED_FROM_PROJECTION`,
-  `DETERMINISTIC_TRANSITIONS`, `DECLARED_GAIN_SPREAD_SAMPLED`,
-  `WORST_STEP_BINDS_THE_HORIZON`, `OBJECTIVE_EVALUATED_AT_MEDIAN`,
-  `TIES_BREAK_TOWARD_FEWER_ACTIONS` and `TIES_BREAK_TOWARD_THE_WIDER_MARGIN`,
-  collected in `ASSUMPTION_STAMPS`; plus
+  at the sampled instants and nowhere between them, so a property that moved
+  more than once may have turned at an instant nothing judged. `MODELING.md`
+  gains a section on what `step_s` decides.
+- **`plan` candidates carry `clearance_sigmas`** -- the signed worst headroom
+  over the horizon in declared spreads, negative by how far the deepest
+  excursion went past a line. Reported beside `margin_sigmas`, which measures
+  the closest approach and cannot express the difference.
+- **Two exponential lags in series compose to their convolution** rather than
+  to the product of their responses, stamped `SERIES_EDGES_COMPOSED_EXACTLY`
+  where it applies and `SERIES_EDGES_COMPOSE_BY_PRODUCT` where no closed form
+  does. A `series_errors` row per step reports what the approximation would
+  have cost.
+- **Both calibration tables carry `by_target`**, and the README answers whether
+  this is a world model.
+- **New public names.** `assumptions` carries the stamp vocabulary:
+  `FIRST_ORDER_RESPONSE`, `TIME_COURSE_NOT_DECLARED`, `STEADY_STATE_REACHED`,
+  `SERIES_EDGES_COMPOSED_EXACTLY`, `SERIES_EDGES_COMPOSE_BY_PRODUCT`,
+  `FIRST_ORDER_UNCERTAINTY`, `INDEPENDENT_DECLARED_SPREADS`,
+  `GAUSSIAN_FROM_MEAN_SIGMA`, `EXOGENOUS_INPUTS_HELD`, `NO_ACTION_SCHEDULED`,
+  `LINEAR_SUPERPOSITION`, `DECLARED_COUPLING_NOT_PROBABILITY_PRUNED`,
+  `SEEDED_FROM_PROJECTION`, `DETERMINISTIC_TRANSITIONS`,
+  `DECLARED_GAIN_SPREAD_SAMPLED`, `WORST_STEP_BINDS_THE_HORIZON`,
+  `MOVEMENT_BETWEEN_SAMPLED_STEPS`, `OBJECTIVE_EVALUATED_AT_MEDIAN`, `TIES_BREAK_TOWARD_FEWER_ACTIONS` and
+  `TIES_BREAK_TOWARD_THE_WIDER_MARGIN`, collected in `ASSUMPTION_STAMPS`, plus
   `ACTION_PROPERTY_FROM_PARAMETER_NAME_PREFIX` for the one stamp that carries a
-  property name, which is why `is_known_stamp` exists rather than a membership
-  test. **Named here for the same reason as the row above**: the guard that
-  watches public constants had been reporting all twenty as unwritten since the
-  round that added them, and a count of expected reds is the one form in which
-  that report is indistinguishable from an old one.
-- `simulation` and `plan` are named in `envelope.schema.json` rather than
-  riding as additional properties. The prose beside that keyword enumerated
-  six smaller tool-specific keys and mentioned neither, so the schema's own
-  inventory was stale by exactly the surface 0.2.3 added.
-
-- **The engine scored its own forecasts on a band it chose itself, and that
-  figure rewarded declaring ignorance.** A rollout filing predictions recorded
-  a POINT with a tolerance of `1.96 * gain_sigma`, so `confirm_rate` asked
-  only whether a later reading landed inside the band the model drew. A wider
-  declaration is therefore confirmed more often. Measured on one tank that
-  really scatters by 2.3 points, forecast by the same gain declared twice —
-  honestly, and ten times too wide:
-
-  | declared spread | accepted band | `confirm_rate` | `brier` |
-  |---|---|---|---|
-  | honest | +/- 4.5 | 0.95 | 0.0475 |
-  | ten times too wide | +/- 45.0 | 1.00 | 0.0025 |
-
-  The useless declaration won on both. `brier` is no second opinion: every
-  record is filed at one stated confidence, which makes it a monotone
-  restatement of the hit rate rather than an independent score.
-
-  `_grade_distribution_record` has always stated the rule in its own
-  docstring — *a model at 100% coverage is badly calibrated in the other
-  direction, having bought its hit-rate with intervals too wide to act on* —
-  and that path is reachable only by an outside producer. The engine applied
-  a standard to its inputs that it did not apply to itself.
-
-  A value filed from a declared spread now states that spread as quantiles,
-  and grading scores them. `calibration.own_projections` carries pinball, a
-  CRPS approximation and `coverage_90` beside `expected_coverage_90`,
-  stratified `by_coupling` and `by_horizon` — the coupling stratum being the
-  one a producer's record can never have. On the same two declarations the
-  CRPS reads 0.99 against 3.19, ranking them the other way round, because
-  pinball loss grows with the width of an interval whether or not it
-  contained the answer.
-
-  `confirm_rate` also travels with `expected_confirm_rate`, in the aggregate
-  and in `transitions.declared[*].projections`, so 1.00 beside a target of
-  0.95 reads as an overshoot rather than as a perfect score. No trigger hangs
-  off the distance: how much overshoot is too much is a domain question.
-
-  **The verdict, the producer figures and every existing key are unchanged.**
-  A record is still graded on its point against its declared tolerance; the
-  engine's own scores are kept out of the `coverage_90` that answers *which
-  forecaster is worth keeping*, because pooling two populations makes that
-  figure a number about nobody. A caller filing no spread is scored on the hit
-  rate alone — nothing is invented to fill the gap.
-
-- **A guard written for this exact change fired on it.** A test named
-  `test_the_kind_filter_is_defence_and_not_a_live_path` reported that
-  `model_figures`'s `kind == "distribution"` filter could not matter, gave the
-  measurement behind that — `record_distribution` was the only filer accepting
-  a `model_id` — and named its own expiry: *the filter stays, because a later
-  method growing a `model_id` argument would reach it.* A rollout filing under
-  `arbiter_engine:rollout` is that method. The filter now does work on every
-  call, the test records the transition rather than widening its list, and the
-  coverage it said was missing exists: a value record with a model id is filed
-  and the forecaster report is asserted not to list it.
-
-- **Two published docstrings described a tree two releases old.** The
-  prediction ledger's module docstring said *no rollout files its per-step
-  values here* — made that false — and `record_projected_values` said
-  `projected_values` was *a dark schema field that no producer constructs*,
-  while two sites in `twin/traverser.py` construct one. The half of the first
-  claim that is still true, that the transition learner reads nothing back, is
-  kept.
-
-  The second sentence was not rotting quietly — **a green test was holding it
-  in place.** A decision-document pin asserted the literal *no producer
-  constructs ProjectedValue yet* must be PRESENT in that module, so that
-  wiring PREDICT would fail it and force the document to be revisited. PREDICT
-  was wired on 2026-08-04, the document gained its superseding note the same
-  day, and the sibling pin was amended to the new invariant. This one was not.
-  For six weeks the suite required a published module to keep denying a
-  producer that the test immediately below it named: correcting the sentence
-  was the failing move and leaving it was the passing one. The pin now holds
-  what is durable — the protocol, not the sentence.
-
-- **A `transition:` block the loader refused reached `gaps` as silence.** A
-  block missing any of `from`, `to`, `gain`, `source` is refused rather than
-  completed with a default, and the refusal is filed as a
-  `missing_declaration` gap naming the key that was absent. That gap is
-  attached to the edge. `gaps` read the topology-level list, which is one of
-  three populations, so a model declaring a coupling and omitting `source`
-  answered `questions: []` beside `meta.source: live` — the engine reporting
-  that it looked and found nothing missing, on the one verb whose whole job is
-  naming what is missing.
-
-  `DigitalTwinTopology.get_unresolved_gaps()` already collected all three
-  populations. `gaps` now reads it, deduplicated on the same
-  `(gap_type, location)` key, so a gap a traversal also found keeps the
-  traversal's richer context path.
-
-  **Net new questions on all six shipped examples: zero.** The collector
-  returns roughly twice as many raw gap objects and they collapse onto the
-  keys the traversal already reported. That measurement is also the diagnosis:
-  no shipped example declares a coupling it then refuses, so no example
-  exercised the path. One that does is now in the suite, and a guard pins the
-  property rather than the six counts.
-
-  A value-mode `traverse` and `rollout` reported this refusal the whole time,
-  as a `missing_declaration` decline, and they distinguish it from
-  `missing_dynamics` on purpose: reporting *no transition declared* for a
-  block sitting in the author's file would send them looking for something
-  already written. That split is unchanged and now pinned.
-
-- **The refusal question asked for something the author had already written.**
-  The description named the missing key and nothing serialised it, so the text
-  reaching a caller was the gap type's generic template — written for a
-  conservation gap, and asking *which quantities balance against which, and in
-  which direction*. An author who declared both quantities and the direction
-  and left out `source` was being asked to re-derive their own block. A gap may
-  now carry an exact question, left unset everywhere else, and a refused
-  transition asks: `Which value does `source` take for the transition on
-  'p1->h1'?`
-
-- **`transitions.refused_blocks` said which key and not which rule.** Blocks
-  are indexed within their own rule, so two rules each refusing their first
-  block both reported `transition[0]` with nothing to tell them apart. Each
-  entry is now prefixed with its rule label. The element stays a string;
-  readers do substring tests on the key name.
-
-- **A README guard could not go green.** It asserted the README still called
-  the PREDICT path *plumbed but unfed* — true when `ProjectedValue` was
-  constructed only in a test, false since 0.1.15 fed the path with `project`,
-  and red since the sentence left the README on 2026-09-17. It now pins the
-  relationship in both directions and was proved live by reintroducing the
-  sentence.
-
-- **The engine's own rollout forecasts were the one population with nothing
-  to beat.** Three surfaces file forecasts into the ledger. `ingest_forecasts`
-  fits a parameter-free random walk beside every producer record and reports
-  the outcome per record; `project` fits one beside its own forecast;
-  `rollout(file_predictions=True)` filed neither, and no leg of the envelope
-  said so. Measured, one session, one series, one horizon, the engine's own
-  two verbs:
-
-  | verb | ledger after one call |
-  |---|---|
-  | `project` | `{'local_level:estimated_parameters': 1, 'baseline_rw': 1}` |
-  | `rollout` | `{'arbiter_engine:rollout': 6}` |
-
-  So `calibration.own_projections` reported a well-formed score that could not
-  separate a declared `gain:` carrying real information from one whose
-  `gain_sigma:` was merely generous — which is the failure `RandomWalk`'s own
-  docstring names: *a forecaster can be beautifully calibrated and still carry
-  no information at all*. A rollout now files the reference beside each of its
-  projections, fitted on the driven property's own readings as of the instant
-  the walk was run for, and reports it under `own_projections.baseline` with
-  `beats_baseline` decided on CRPS over the **matched** targets only.
-
-  **The yardstick is excluded from the figure it is the yardstick for.** Both
-  are `kind == "value"` records; pouring the reference into the headline would
-  have moved the engine's own score toward the baseline by however many
-  companions were filed — a defect worse than the gap.
-
-  **This is a class reopening.** `ingest._file_baseline` records the same gap
-  in the mirror direction, when the reference ran for `project` and not for a
-  producer: *it was filed beside one of the two kinds.* That fix covered the
-  two kinds that existed; `rollout` arrived in 0.2.3 as a third.
-
-- **`plan` ranked by a forecast that nothing could ever grade.** The verb
-  states an objective per candidate — *throttling to 800 rpm produces 4.33
-  expected findings, doing nothing produces 0.0* — and filed nothing: the
-  ledger was empty after a call and the plan leg carried no calibration. Most
-  rows must stay ungradeable, and `rollout` already says why: a candidate
-  carrying actions describes a world nobody brought about, and grading it
-  against a world where nobody acted would fill the ledger with falsified
-  records that say nothing about the model.
-
-  **`do_nothing` is not a counterfactual.** It is the trajectory that obtains
-  if nobody acts and the row every other row is measured against, so it is the
-  one whose projections are filable. `plan(file_predictions=True)` now files
-  it — default OFF, like `rollout`'s own flag, because a verb that reads as a
-  query should not write to a durable ledger unasked — and what it files is
-  raced against a random walk like any other forecast. The rows that do not
-  file say so ONCE with a count at plan level, never on the per-candidate
-  `declines`, where a by-design exclusion would sit beside real faults and
-  make four healthy rows look damaged.
-
-  `seed_mode` reaches `plan` for the first time and reaches **every candidate
-  or none**: under the default `current` nothing moves, so the no-action row
-  correctly files nothing. Applying `projected` to the filing row alone would
-  score one row on a trajectory the others never saw — the defect that an internal ruling
-  recorded, a number claiming a measurement of a plan nobody simulated.
-
-- **`plan` never fitted the projected seed, so every candidate declined.** The
-  projector step `rollout` performs before walking was absent here. Measured,
-  same model and same inputs: `steps_requested: 6` through `rollout` and `0`
-  through `plan`, with every candidate reporting `insufficient_samples` — a
-  sample shortage reported for a projection nobody had fitted. Fitted once and
-  shared by every candidate, which is also what keeps the rows comparable.
-
-- **`project` filed a reference and reported nothing about it.** A refused fit
-  was dropped on the floor — the forecast was still filed and later graded,
-  raced against nothing, with no leg carrying the fact. That is the shape
-  `BRIDGES.md` names in its own words, *nothing declines, because a race with
-  one runner still has a winner*, sitting on the verb whose own reference
-  exists to prevent it. `project` now reports `raced`, one row per issued
-  forecast, in the same closed vocabulary `ingest_forecasts` uses, and counts
-  `baselines_filed` beside `forecasts_issued`.
-
-### Added
-
-- **Two exponential lags in series now compose to their convolution.** The
-  walk charged each edge's response against a source already lagged, so two
-  hops developed as the PRODUCT of two curves. They are now composed exactly
-  and stamped `series_edges_composed_exactly`. Measured on two equal 600 s
-  lags with a 100-unit step, the answer moves from 60.35 to **44.22 at
-  `t = 900 s`** — the product led by 16.1 units, so a breach two hops out was
-  predicted early, and `plan` ranks on transients.
-
-  Done as a multiplicative correction on the response FRACTION, so a value and
-  its declared spread cannot come apart, and applied PER CONTRIBUTION — a
-  target fed by a chain and by a direct edge gets each one right, because
-  superposition is linear.
-
-  **What has no closed form still composes by product and still says so.** A
-  `linear` or `logarithmic` stage anywhere in the chain keeps
-  `series_edges_compose_by_product`. A third hop gets the exact two-stage head
-  and the product beyond it: measured on three equal 600 s lags, error falls
-  from 28.11 units to 18.42, and it is still stamped, because closer is not
-  exact. A rollout crossing both kinds carries BOTH stamps.
-
-  `series_errors` rows now record what the approximation would have COST
-  rather than what it did: the `product` avoided, the `exact` value used, and
-  the signed gap.
-
-- **The engine now says how much its one approximation costs.** A value two
-  hops out is charged each edge's own step response against a source already
-  lagged, so it develops as the PRODUCT of two curves where the declared
-  dynamics imply their CONVOLUTION. That has been stamped
-  `series_edges_compose_by_product` since 0.2.5 — which names the assumption
-  and stops there, while the trajectory it produced went out as a bare number.
-  A `series_errors` row per step now carries the `product` used, the `exact`
-  convolution, and the signed gap, as fractions of the final impact. Measured
-  on two equal 600 s lags: the product leads by up to **0.161 per unit** at
-  `t = 900 s`, and the gap closes to 0.012 by an hour.
-
-  **Quantified only where a closed form exists** — a chain of exactly two
-  exponential stages. Anything else keeps the bare stamp and contributes no
-  row, so an empty leg under the stamp reads *not quantifiable*, never *no
-  error*. **The trajectory is unchanged**: this measures the walk, it does not
-  correct it.
-
-  The documented reason the exact form was unavailable — that the
-  partial-fraction expression cancels catastrophically as two time constants
-  approach each other, needing a near-equality tolerance nobody declared —
-  is true of that FORMULATION and not of the convolution. Measured at
-  `t = 900 s`, `tau1 = 600 s`: the partial fraction holds to 2e-14 at a 1 s
-  separation, reads 0.625 against a true 0.442174599629 at 1e-13, and divides
-  by zero at equality; the divided-difference form holds every digit across
-  the same sweep and meets the equal-tau closed form exactly. `expm1` is built
-  for it and the only branch is an exact comparison against zero.
-
-- **Both calibration tables carry `by_target`.** The producer table strata by
-  `by_model` / `by_entity_type` and the engine's own by `by_coupling`; the only
-  axis they shared was `by_horizon`, which resolves neither entity nor
-  property. So *did my declared coupling beat the learned producer on THIS
-  series* had no surface to be asked on, although both populations forecast the
-  same `(entity, property, horizon)` triples. The two tables stay separate —
-  pooling them would make `coverage_90` a number about nobody — and now share
-  one join key.
-
-- **The README answers whether this is a world model.** The term appeared once
-  on the published surface, in `ROADMAP.md`, and nowhere in the README — so
-  the question was left to readers, one of whom answered it in 464 lines. The
-  section states the line the rest of the engine holds: dynamics are declared
-  or refused, never learned; `rollout` means declared transitions and declared
-  action effects on a private clone that dispatches nothing; and a learned
-  model belongs on the producing side, with `forecast:`, `ingest_forecasts`
-  and the shadow axioms keeping its books against a random-walk baseline.
+  property name -- which is why `is_known_stamp` exists rather than a
+  membership test. Also `twin.topology.TIME_COURSE_KEYS` and
+  `REQUIRED_TRANSITION_KEYS`, `twin.actions.as_action_instance`,
+  `residual.predict_vs_mirror.NORMAL_90_HALF_WIDTH` and `BASELINE_MODEL_ID`,
+  and the constants a caller may already have been reading off the modules that
+  hold them: `BINDING_BUDGET`, `DECLARED_THRESHOLDS_KEY`, `DEFAULT_BUDGET_PAIRS`,
+  `DEFAULT_LAGS`, `DEFAULT_LEAK`, `DEFAULT_MAX_DEPTH`, `DEFAULT_MAX_ROLLOUTS`,
+  `DEFAULT_WEIGHT`, `DERIVED_LEVELS`, `EFFECTS`, `ESTIMATE_SENTINEL`,
+  `FACTOR_VARIABLE_LIMIT`, `IMAGINED_PREFIX`, `MAX_BODY_ATOMS`,
+  `MINIMUM_PAIRED_SAMPLES`, `MINIMUM_SAMPLES`, `MIN_STEP_S`, `NIS_BAND`,
+  `OBJECTIVES`, `REQUIRED_QUANTILES`, `REQUIRED_TEMPLATE_KEYS`, `ROOT_PRIOR`,
+  `SHADOW_PREFIX`, `SOURCE_BASELINE`, `SOURCE_CURVE`, `SOURCE_DECLARED`,
+  `SOURCE_DEFAULT`, `SOURCE_ENGINE`, `SOURCE_ESTIMATED`, `SOURCE_LEARNED`,
+  `THRESHOLD_FIELDS`, `TOOL_SPECS`, `TREND_T_LIMIT`,
+  `UNGATED_CONSISTENCY_KEYS` and `VARIANCE_RATIO_BAND`. The projector
+  vocabulary is `LocalLevel`, `RandomWalk` and `TrendCurve`.
 
 ## [0.2.5] — 2026-09-20
 
