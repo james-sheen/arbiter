@@ -446,7 +446,7 @@ The engine is open. The knowledge and the operations are not.
 
 ## Status
 
-**v0.2.** 92 Python files, 90 modules importing on the declared dependencies alone, 14 supported
+**v0.2.** 93 Python files, 91 modules importing on the declared dependencies alone, 14 supported
 names — **counted in this repository**, which is the package you are holding.
 
 That basis is stated because it is easy to get wrong in a way nobody notices. The build adds one
@@ -455,7 +455,7 @@ are holding — and this line published the smaller figure until 2026-08-12, whe
 falsify it with `find . -name '*.py' | wc -l`. A checkable false claim, in the Status section of a
 project whose subject is checkable claims. Count the artifact, never an earlier stage of it.
 
-The import figure carries the same hazard one layer down, and it depends on what you have installed. Sweeping the package where `scipy` happens to be present imports 91; on the declared dependencies alone it is the 90 above, because `propagation.lp_confidence` is the one module that needs `scipy` and it is a deep path outside the supported surface. Count the artifact **in the state the reader will have it**, not in the state the person measuring happens to be standing in — this line quoted the with-`scipy` figure until 2026-08-12, which no reader installing normally could reproduce.
+The import figure carries the same hazard one layer down, and it depends on what you have installed. Sweeping the package where `scipy` happens to be present imports 92; on the declared dependencies alone it is the 91 above, because `propagation.lp_confidence` is the one module that needs `scipy` and it is a deep path outside the supported surface. Count the artifact **in the state the reader will have it**, not in the state the person measuring happens to be standing in — this line quoted the with-`scipy` figure until 2026-08-12, which no reader installing normally could reproduce.
 
 **The supported-name count went stale in exactly the way this section warns about.** It read
 `11` for the release that added `SqliteObservationHistory`, `SessionCalendar` and
@@ -464,7 +464,7 @@ heading **14 names**. One number stated twice will drift, and the copy that drif
 reader is looking at while they read the other. It is now derived from `arbiter_engine.__all__`
 by a test rather than typed, which is the only version of this fix that stays fixed.
 
-**And the count is of SUBMODULES: the root package is not one of them.** Walking `arbiter_engine` for what it contains gives 90; adding the package you imported to reach them gives 91. Both are honest and they are answers to different questions, so a reader who recounts and gets one more has not found a defect — they have used the other convention. Stated because someone did exactly that from outside, and a number published without its predicate can only be agreed with or disagreed with, never checked.
+**And the count is of SUBMODULES: the root package is not one of them.** Walking `arbiter_engine` for what it contains gives 91; adding the package you imported to reach them gives 92. Both are honest and they are answers to different questions, so a reader who recounts and gets one more has not found a defect — they have used the other convention. Stated because someone did exactly that from outside, and a number published without its predicate can only be agreed with or disagreed with, never checked. **Every figure in this paragraph moved by one when `assumptions` landed, and nothing went red for two rounds** -- the guard that compares them to the artifact only runs when a built tree exists, so it is silent in every session that does not build one. A check conditioned on an artifact is not a check that runs.
 
 Honest boundaries, stated because you would otherwise find them yourself:
 

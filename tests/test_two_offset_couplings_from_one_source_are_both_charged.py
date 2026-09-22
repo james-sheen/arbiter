@@ -1,6 +1,6 @@
 """An offset belongs to a COUPLING. Two couplings from one source carry two.
 
- stopped a declared `offset:` being charged once per movement
+An internal ruling stopped a declared `offset:` being charged once per movement
 of its source, which was right: a rollout walks one group per distinct
 movement instant so that two movements superpose, and a constant term added
 in every group would settle at `g*(d1+d2) + 2c`. The mechanism it introduced

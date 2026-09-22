@@ -128,6 +128,25 @@ DECLARED_GAIN_SPREAD_SAMPLED = "declared_gain_spread_sampled"
 #: minutes and breaches for one is scored as breaching.
 WORST_STEP_BINDS_THE_HORIZON = "worst_step_binds_the_horizon"
 
+#: AND THE STEPS ARE ALL THERE IS. The axioms are evaluated at the
+#: sampled instants and nowhere between them, so a trajectory that turns
+#: between two of them turns unjudged. This stamp fires only where that can
+#: actually cost something: a property moved more than once, and one of those
+#: movements landed strictly between two sampled steps. One movement cannot
+#: hide an extremum -- a first-order response from a single movement is
+#: monotonic -- which is why a rollout of the shipped example does not carry
+#: it.
+#:
+#: MEASURED, on two settings nine hundred and fifty seconds apart with the
+#: line at 88.1: the true peak is 88.314 at t=950 and a grid that samples that
+#: instant reports the breach, while grids of 300, 200 and 100 seconds report
+#: CLEAN. **Refining the grid does not fix it** -- 100 s is clean and 950 s
+#: breaches -- because what matters is whether the turning instant is on the
+#: grid, not how fine the grid is. `step_s` is how finely a caller asked to
+#: see the trajectory; without this stamp nothing said it was also deciding
+#: what got judged.
+MOVEMENT_BETWEEN_SAMPLED_STEPS = "movement_between_sampled_steps"
+
 #: `expected_findings` was evaluated on the MEDIAN trajectory. The objective is
 #: a step function of the values it compares, so a candidate settling a whisker
 #: below a line scores as though it cleared comfortably. This is the stamp that
@@ -181,6 +200,7 @@ ASSUMPTION_STAMPS: Tuple[str, ...] = (
     DETERMINISTIC_TRANSITIONS,
     DECLARED_GAIN_SPREAD_SAMPLED,
     WORST_STEP_BINDS_THE_HORIZON,
+    MOVEMENT_BETWEEN_SAMPLED_STEPS,
     OBJECTIVE_EVALUATED_AT_MEDIAN,
     TIES_BREAK_TOWARD_FEWER_ACTIONS,
     TIES_BREAK_TOWARD_THE_WIDER_MARGIN,

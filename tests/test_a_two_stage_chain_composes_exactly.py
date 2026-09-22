@@ -1,6 +1,6 @@
 """Two exponential lags in series now compose to their convolution.
 
- established that the exact cascade response is available and
+An internal ruling established that the exact cascade response is available and
 numerically stable, and measured what the product approximation cost: on two
 equal 600 s lags the product LEADS by 0.161 per unit at `t = 900 s`, so a
 breach two hops out was predicted early and `plan` ranks on transients.

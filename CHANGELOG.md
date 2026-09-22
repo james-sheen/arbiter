@@ -22,6 +22,37 @@ useful-looking document and the less trustworthy one.
 
 ### Fixed
 
+- **Two actions scheduled at different times were refused as a collision when
+  the step was coarse enough to hold both.** `rollout` gathered every action
+  falling inside a step into one bucket keyed by `(entity, property)`, which
+  discarded `at_s`; two `set` effects nine hundred seconds apart then met the
+  rule written for two effects at ONE instant and the whole pair was dropped.
+  Measured on one model and one pair of actions, changing nothing but the step:
+  at `step_s=900` the pump never moves and the tank it feeds reads 50.0, and at
+  `step_s=450` the tank peaks at 88.0 and files a warning. **`step_s` is how
+  finely a caller asks to see a trajectory and it was deciding whether a
+  declared action happened at all.** The refusal's own message was the tell --
+  it said the effects *share* an `at_s` and prescribed scheduling them at
+  different times, which is what the caller had done. Effects are now resolved
+  per instant, in order, each measured from what the previous one left; the
+  refusal still fires for effects that genuinely share an instant, and `add`
+  and `scale` were never affected because both are order-free. Found from a
+  measurement rather than a report.
+
+### Added — the engine says which instants it judged
+
+- **`movement_between_sampled_steps`**, a new assumption stamp. The axioms run
+  at the sampled instants and nowhere between them, so a trajectory that turns
+  between two of them turns unjudged. Measured with the line at 88.1 and a true
+  peak of 88.314 at `t = 950`: grids that sample that instant report the
+  breach, grids of 300, 200 and 100 seconds report clean, and **refining the
+  grid does not help** -- what decides is whether the turning instant is on the
+  grid. The stamp fires only where it can cost something: a property that moved
+  more than once, turning at an instant off the grid. A single movement cannot
+  hide an extremum, so the shipped example does not carry it. `MODELING.md`
+  gains the stamp and a section saying what `step_s` decides, which neither
+  published guide had mentioned at all.
+
 - **The published derivation of the exact cascade response was wrong by a
   sign.** `MODELING.md` and the `cascade_fraction` docstring both printed
   `h(t) = 1 - e^{-at}(1 - a t phi(-(b-a)t))` beside `phi(x) = (e^x - 1)/x`.
@@ -238,6 +269,24 @@ useful-looking document and the less trustworthy one.
   engine's own forecasts a producer's scores and named here late: the guard
   that watches public constants for departure had been reporting it as
   unwritten since, which is the guard working.
+- `assumptions` — the stamp vocabulary as NAMES, so an emitting site imports one
+  instead of repeating a literal and a consumer has something to compare
+  against: `FIRST_ORDER_RESPONSE`, `TIME_COURSE_NOT_DECLARED`,
+  `STEADY_STATE_REACHED`, `SERIES_EDGES_COMPOSED_EXACTLY`,
+  `SERIES_EDGES_COMPOSE_BY_PRODUCT`, `FIRST_ORDER_UNCERTAINTY`,
+  `INDEPENDENT_DECLARED_SPREADS`, `GAUSSIAN_FROM_MEAN_SIGMA`,
+  `EXOGENOUS_INPUTS_HELD`, `NO_ACTION_SCHEDULED`, `LINEAR_SUPERPOSITION`,
+  `DECLARED_COUPLING_NOT_PROBABILITY_PRUNED`, `SEEDED_FROM_PROJECTION`,
+  `DETERMINISTIC_TRANSITIONS`, `DECLARED_GAIN_SPREAD_SAMPLED`,
+  `WORST_STEP_BINDS_THE_HORIZON`, `OBJECTIVE_EVALUATED_AT_MEDIAN`,
+  `TIES_BREAK_TOWARD_FEWER_ACTIONS` and `TIES_BREAK_TOWARD_THE_WIDER_MARGIN`,
+  collected in `ASSUMPTION_STAMPS`; plus
+  `ACTION_PROPERTY_FROM_PARAMETER_NAME_PREFIX` for the one stamp that carries a
+  property name, which is why `is_known_stamp` exists rather than a membership
+  test. **Named here for the same reason as the row above**: the guard that
+  watches public constants had been reporting all twenty as unwritten since the
+  round that added them, and a count of expected reds is the one form in which
+  that report is indistinguishable from an old one.
 - `simulation` and `plan` are named in `envelope.schema.json` rather than
   riding as additional properties. The prose beside that keyword enumerated
   six smaller tool-specific keys and mentioned neither, so the schema's own

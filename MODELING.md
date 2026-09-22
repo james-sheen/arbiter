@@ -1174,6 +1174,7 @@ the key being absent.
 | `deterministic_transitions` | the candidate was scored on one trajectory because no declared spread reached it; a `clearance_probability` under this stamp is a 0 or a 1 |
 | `declared_gain_spread_sampled` | the candidate was scored over trajectories sampled from the declared gain spreads |
 | `worst_step_binds_the_horizon` | a trajectory counts as breaching if it breaches at any step, so one bad minute scores as breaching |
+| `movement_between_sampled_steps` | the axioms ran at the sampled steps and nowhere between them, and a property that moved more than once turned at an instant off the grid |
 | `objective_evaluated_at_median` | `expected_findings` was evaluated on the median trajectory, and it is a step function -- rank on `clearance_probability` when the question is how likely the candidate is to stay clear |
 | `ties_break_toward_fewer_actions` | candidates equal on the objective were ordered by acting less |
 | `ties_break_toward_the_wider_margin` | candidates still equal were ordered by the wider signed headroom, and only where a declared spread reached a trajectory |
@@ -1190,6 +1191,40 @@ wrong trade. So `schema/envelope.schema.json` types `assumptions` as an array
 of string with no `enum`, and this table is derived from the engine's own
 vocabulary rather than transcribed beside it. Read a stamp you do not
 recognise as an approximation newer than your copy of this document.
+
+## `step_s` decides what gets judged, not only what you see
+
+A `rollout` evaluates the eight axioms at each sampled instant -- `step_s`,
+`2 x step_s`, and so on to the horizon -- and **nowhere between them**. Reading
+`step_s` as a rendering choice is the mistake: it is also the list of moments
+at which this engine looked.
+
+It costs nothing while a property moves once, because a first-order response
+from a single movement is monotonic and its extremes are its endpoints, which
+are sampled. It costs something as soon as a property moves twice, because the
+trajectory can turn between two samples and a turn nobody judged is a breach
+nobody found. Measured on two settings 950 s apart, with the line placed at
+88.1 and the true peak 88.314 at `t = 950`:
+
+| `step_s` | samples `t = 950` | verdict |
+|---:|---|---|
+| 950 | yes | breach |
+| 475 | yes | breach |
+| 300 | no | clean |
+| 200 | no | clean |
+| 100 | no | clean |
+
+**A finer grid is not a safer one.** 100 s reports clean where 950 s reports
+the breach; what decides is whether the turning instant falls on the grid, so
+halving `step_s` to be careful buys nothing in particular. Where a property
+moved more than once and turned off the grid, the envelope says so with
+`movement_between_sampled_steps`. **Choose `step_s` so that the instants your
+actions are scheduled at are sampled** -- those are the moments a declared
+trajectory can turn.
+
+The engine does not add instants of its own. Judging a moment the caller did
+not ask for would put a row in `per_step` nobody requested, and picking which
+moments would be the engine choosing the resolution of the answer.
 
 ## When the world is open: `calendar`
 

@@ -35,7 +35,9 @@ from datetime import timedelta
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 from ..fire_frequency import counting_aside
-from ..assumptions import (EXOGENOUS_INPUTS_HELD, NO_ACTION_SCHEDULED,
+from ..assumptions import (EXOGENOUS_INPUTS_HELD,
+                           MOVEMENT_BETWEEN_SAMPLED_STEPS,
+                           NO_ACTION_SCHEDULED,
                            SEEDED_FROM_PROJECTION)
 from ..projection.projector import (BASELINE_MODEL_ID, PROJECTORS,
                                     RandomWalk, SOURCE_ENGINE)
@@ -694,13 +696,23 @@ def run(session: Any, topology: Any, *,
                 seed_carried[(entity_id, prop)] = 1.0
 
         # 1b. Actions whose time falls inside this step.
-        action_deltas: Dict[str, Dict[str, float]] = {}
-        #:. (entity, property) -> the action's OWN scheduled time, not
-        #: this step's. An action at `at_s=0` fires in step 1, whose clock
-        #: reads 60 s; stamping the movement with the step would charge the
-        #: response one step less elapsed time than actually passed, and the
-        #: whole trajectory would lag by exactly one step.
-        action_times: Dict[Tuple[str, str], float] = {}
+        #: entity -> property -> INSTANT -> delta. This was
+        #: entity -> property -> delta, one number per property per step, and
+        #: the instant lived in `action_times` beside it, one per property.
+        #: Two actions on one property inside one step therefore had one
+        #: instant between them, which is the whole of the defect: `at_s` is
+        #: the ordering this module says it uses and the bucket threw it away.
+        #: `movements` downstream was ALREADY keyed by instant and has been
+        #: since, so the shape below is the one the rest of the loop
+        #: was already written for.
+        action_deltas: Dict[str, Dict[str, Dict[float, float]]] = {}
+        #: An internal ruling established that a movement is stamped with the action's
+        #: OWN scheduled time and not the step's: an action at `at_s=0` fires
+        #: in a step whose clock reads 60 s, and stamping the step would
+        #: charge the response one step less elapsed time than passed.
+        #: An internal ruling moved that instant INTO the keys below rather than keeping
+        #: it in a table beside them, because a table keyed by property can
+        #: hold one instant and a step can carry two.
         #:. (entity, property) -> [(effect, value, label)] for EVERY
         #: effect this step carries, additive ones included.
         #:
@@ -711,13 +723,14 @@ def run(session: Any, topology: Any, *,
         #: unrefused, and reachable whenever two templates touch one property.
         #: The rule is about the SET of effects meeting at one instant, so the
         #: set has to be complete before anything is decided.
-        intents: Dict[Tuple[str, str], List[Tuple[str, float, str]]] = {}
+        intents: Dict[Tuple[str, str, float],
+                      List[Tuple[str, float, str]]] = {}
         #:. (label, the (entity, property) pairs that instance asked
         #: for), one entry per instance that got this far. `actions_applied`
         #: is rebuilt from it once the refusals are known, so an instance
         #: survives when ANY of its effects did -- an action touching two
         #: properties, one of which collided, still happened.
-        intended: List[Tuple[str, Set[Tuple[str, str]]]] = []
+        intended: List[Tuple[str, Set[Tuple[str, str, float]]]] = []
         for instance, template in schedule:
             # Half-open on the left EXCEPT for the first step, which is closed
             # at zero. `at_s=0` -- *do this now* -- is the most natural thing a
@@ -750,8 +763,10 @@ def run(session: Any, topology: Any, *,
             # step in which the pump never moved reported `throttle_pump@
             # pump1` as applied, in the one field a caller reads to find out
             # what happened.
+            when_scheduled = max(0.0, float(instance.at_s))
             intended.append((f"{instance.template}@{instance.entity_id}",
-                             {(instance.entity_id, prop) for prop in deltas}))
+                             {(instance.entity_id, prop, when_scheduled)
+                              for prop in deltas}))
 
             if template.settle_s > step_s:
                 # The actuator is slower than the step. Reported rather than
@@ -764,17 +779,14 @@ def run(session: Any, topology: Any, *,
                     f"step_s={step_s}; the effect is applied as a step at "
                     f"t={at_s}s and the ramp is not modelled"))
             label = f"{instance.template}@{instance.entity_id}"
-            bucket = action_deltas.setdefault(instance.entity_id, {})
             for prop, delta in deltas.items():
                 kind, value = effects.get(prop, ("add", delta))
                 # Held back, all of them, and resolved once every instance in
                 # this step has been read: this loop sees one at a time and
                 # the rule needs the whole set.
                 intents.setdefault(
-                    (instance.entity_id, prop), []).append(
+                    (instance.entity_id, prop, when_scheduled), []).append(
                         (kind, value, label))
-                action_times[(instance.entity_id, prop)] = max(
-                    0.0, float(instance.at_s))
 
         # RESOLVE THE NON-ADDITIVE EFFECTS, one property at a time.
         #
@@ -788,7 +800,7 @@ def run(session: Any, topology: Any, *,
         # in, and the engine computes it. Two DIFFERENT settings have no
         # answer, so they are refused by name with both values in the refusal
         # and the property is left where it was.
-        refused_pairs: Set[Tuple[str, str]] = set()
+        refused_pairs: Set[Tuple[str, str, float]] = set()
         # WHAT THE COUPLINGS HAVE DELIVERED BY THE INSTANT EACH
         # ACTION LANDS. `set` and `scale` are the two effects whose delta
         # READS the standing value, and on a property that is also a
@@ -813,12 +825,11 @@ def run(session: Any, topology: Any, *,
         delivered_at: Dict[float, Tuple[Dict[str, Dict[str, float]],
                                         Dict[str, Dict[str, Dict[Any,
                                                                  float]]]]] = {}
-        for (entity_id, prop), items in intents.items():
+        for (entity_id, prop, when), items in intents.items():
             if {kind for kind, _, _ in items} == {"add"}:
                 # An increment does not read the standing value, so there is
                 # nothing here for it to be resolved against.
                 continue
-            when = action_times.get((entity_id, prop), at_s)
             if when in delivered_at:
                 continue
             values_then, spread_then, _ = _deliver(
@@ -827,20 +838,24 @@ def run(session: Any, topology: Any, *,
                 spread_at=_spread_at, offsets_charged=set())
             delivered_at[when] = (values_then, spread_then)
 
-        for (entity_id, prop), items in sorted(intents.items()):
+        # IN INSTANT ORDER, because with more than one instant per
+        # property the later one must be resolved against what the earlier one
+        # left. Sorted on the instant first and the names after it, so the
+        # walk is deterministic and does not depend on dict insertion order.
+        for (entity_id, prop, when_acted), items in sorted(
+                intents.items(), key=lambda kv: (kv[0][2], kv[0][0], kv[0][1])):
             standing = state.get(entity_id, {}).get(prop)
             if (not isinstance(standing, (int, float))
                     or isinstance(standing, bool)):
                 continue
             kinds = {kind for kind, _, _ in items}
             values = {value for _, value, _ in items}
-            bucket = action_deltas.setdefault(entity_id, {})
+            bucket = action_deltas.setdefault(entity_id, {}).setdefault(prop, {})
             # how much of the forecast's doubt this movement
             # carries, and how much the property keeps afterwards. `carried`
             # is the property's current sensitivity to its own seed, 1.0
             # while the forecast still describes it.
             carried = seed_carried.get((entity_id, prop), 0.0)
-            when_acted = action_times.get((entity_id, prop), at_s)
             values_then, spread_then = delivered_at.get(when_acted, ({}, {}))
             arrived_then = values_then.get(entity_id, {}).get(prop, 0.0)
             # the value this property ACTUALLY HAS at the instant
@@ -848,8 +863,15 @@ def run(session: Any, topology: Any, *,
             # registered so far, plus what the couplings had delivered by
             # then. `state` is the same quantity one step later, which is the
             # whole of the defect above.
+            # plus what THIS step has already applied to the same
+            # property at an EARLIER instant. `movements` carries the previous
+            # steps; without this term a second `set` in one step measures
+            # itself from where the property stood before the first one, and
+            # the two deltas both land.
             base = (baseline.get(entity_id, {}).get(prop, 0.0)
                     + sum(movements.get((entity_id, prop), {}).values())
+                    + sum(value for instant, value in bucket.items()
+                          if instant < when_acted)
                     + arrived_then)
             # The doubt that came with what arrived, per declared source. The
             # seed's own share is excluded: `_seed_moves` already carries it,
@@ -899,7 +921,7 @@ def run(session: Any, topology: Any, *,
                 # composition needs no ordering AND no single answer: two
                 # increments are two increments.
                 for _, value, _ in items:
-                    bucket[prop] = bucket.get(prop, 0.0) + value
+                    bucket[when_acted] = bucket.get(when_acted, 0.0) + value
                 # An increment does not depend on where the property was, so
                 # it carries none of the doubt and erases none of it.
                 _seed_moves(0.0, carried)
@@ -909,7 +931,8 @@ def run(session: Any, topology: Any, *,
                 factor = 1.0
                 for _, value, _ in items:
                     factor *= value
-                bucket[prop] = bucket.get(prop, 0.0) + (base * factor - base)
+                bucket[when_acted] = (bucket.get(when_acted, 0.0)
+                                      + (base * factor - base))
                 _seed_moves((factor - 1.0) * carried, factor * carried)
                 _received_moves(factor - 1.0)
                 if len(items) > 1:
@@ -918,8 +941,8 @@ def run(session: Any, topology: Any, *,
             if kinds == {"set"} and len(values) == 1:
                 # Redundant rather than contradictory: applied once, which is
                 # what asking for it twice asks for.
-                bucket[prop] = bucket.get(prop, 0.0) + (
-                    items[0][1] - base)
+                bucket[when_acted] = (bucket.get(when_acted, 0.0)
+                                      + (items[0][1] - base))
                 # A SETTING PINS THE PROPERTY. Whatever the forecast said, the
                 # property is now the number asked for, so the delta carries
                 # exactly the doubt the seed had -- with the opposite sign,
@@ -940,8 +963,7 @@ def run(session: Any, topology: Any, *,
                 f"; `at_s` is the only ordering this engine has and they "
                 f"share it, so nothing was applied to it. Schedule them at "
                 f"different times, or declare the one effect meant."))
-            action_times.pop((entity_id, prop), None)
-            refused_pairs.add((entity_id, prop))
+            refused_pairs.add((entity_id, prop, when_acted))
 
         # what actually happened, rebuilt once every refusal is
         # known. An instance is reported applied when at least one of the
@@ -949,8 +971,9 @@ def run(session: Any, topology: Any, *,
         step.actions_applied = [label for label, pairs in intended
                                 if pairs - refused_pairs]
 
-        for entity_id, deltas in action_deltas.items():
-            for prop, delta in deltas.items():
+        for entity_id, per_property in action_deltas.items():
+            for prop, by_instant in per_property.items():
+                delta = sum(by_instant.values())
                 state.setdefault(entity_id, {})
                 state[entity_id][prop] = state[entity_id].get(prop, 0.0) + delta
                 # from here on this property is managed, and the
@@ -991,11 +1014,11 @@ def run(session: Any, topology: Any, *,
         #    sums the contributions of movements that began at different
         #    times. Cost is one walk per distinct movement time per step,
         #    charged against `max_transitions`, which already declines.
-        for entity_id, deltas in action_deltas.items():
-            for prop, delta in deltas.items():
-                when = action_times.get((entity_id, prop), at_s)
+        for entity_id, per_property in action_deltas.items():
+            for prop, applied in per_property.items():
                 by_instant = movements.setdefault((entity_id, prop), {})
-                by_instant[when] = by_instant.get(when, 0.0) + delta
+                for when, delta in applied.items():
+                    by_instant[when] = by_instant.get(when, 0.0) + delta
 
         # THE DECOMPOSITION MUST SUM TO WHERE THE PROPERTY ACTUALLY IS.
         # `state` is the one account of that, and a movement list disagreeing
@@ -1184,9 +1207,30 @@ def run(session: Any, topology: Any, *,
             f"confirming them. Declare a spread on the transition that drives "
             f"the property to make its projection gradeable."))
 
+    # THE AXIOMS WERE JUDGED AT THE STEPS AND NOWHERE BETWEEN THEM,
+    # and this says so on the runs where it can cost something. A property that
+    # moved ONCE cannot hide an extremum: a first-order response from a single
+    # movement is monotonic, so every turning point of such a trajectory is a
+    # sampled instant already. Two or more movements can turn between steps,
+    # and the turn is invisible unless its instant is on the grid.
+    #
+    # Reported, not fixed, and deliberately: judging at instants the caller did
+    # not ask for would put rows in `per_step` that nobody requested, and
+    # choosing them would be the engine picking the resolution. The honest form
+    # is to say which instants were judged. -> `worst_step_binds_the_horizon`
+    # is the sibling: that one names WHICH step decides, this one names that
+    # only steps do.
+    sampled = {recorded.at_s for recorded in result.steps}
+    turned_off_grid = any(
+        len(by_instant) > 1
+        and any(instant > 0.0 and instant not in sampled
+                for instant in by_instant)
+        for by_instant in movements.values())
+
     # De-duplicated: the per-step walk stamps its own, and a stamp repeated
     # reads as two separate assumptions rather than one made twice.
     for assumption in (EXOGENOUS_INPUTS_HELD,
+                       MOVEMENT_BETWEEN_SAMPLED_STEPS if turned_off_grid else "",
                        NO_ACTION_SCHEDULED if not schedule else ""):
         if assumption and assumption not in result.assumptions:
             result.assumptions.append(assumption)
