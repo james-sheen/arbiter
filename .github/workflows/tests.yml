@@ -103,11 +103,21 @@ jobs:
       # exit-5 branch below would never execute -- a handler that reads
       # correctly and cannot run. Verified by running it, because reading it
       # was how it looked fine.
+      #
+      # `-rs` prints the reason for every skip, and the output is
+      # TEE'd so the step after can read this run's summary instead of
+      # producing another one. Two reasons, and the second is the real one:
+      # a second run costs twenty seconds per matrix entry, and it grades a
+      # DIFFERENT EXECUTION than the one this job just accepted.
+      #
+      # `${PIPESTATUS[0]}`, not `$?`. Through a pipe, `$?` is tee's status --
+      # tee succeeds when pytest fails, so the naive form turns every red
+      # suite green and the exit-5 branch below never fires.
       - name: Run the suite, and fail if it ran nothing
         run: |
           set +e
-          pytest -q --tb=short
-          rc=$?
+          pytest -q -rs --tb=short | tee "${RUNNER_TEMP:-/tmp}/pytest-summary.txt"
+          rc=${PIPESTATUS[0]}
           if [ "$rc" -eq 5 ]; then
             echo "::error::pytest exited 5 -- it collected no tests. A suite that runs nothing reports the same green as one that passes."
             exit 1
@@ -146,15 +156,29 @@ jobs:
       # -- losing `jsonschema` again puts the count at fifteen. Losing the
       # `mcp` binding puts it at six and passes here, which is why that extra
       # is pinned in the install rather than watched from here.
+      #
+      # It reads the GRADED run's summary rather than running the
+      # suite again. The first version ran it a second time, which measured
+      # twenty seconds per matrix entry and, worse, asked its question of an
+      # execution this job had never accepted.
+      #
+      # AND IT REFUSES WHEN IT CANNOT ANSWER. A missing or unrecognisable
+      # summary used to leave `SKIPPED` defaulting to zero, which is the
+      # failure mode this whole step exists to catch, one level up: a check
+      # that cannot see anything reporting the same green as one that looked.
       - name: The suite is not quietly going skipped
         run: |
           set +e
-          SUMMARY=$(pytest -q -rs 2>/dev/null | tail -1)
+          SUMMARY=$(tail -1 "${RUNNER_TEMP:-/tmp}/pytest-summary.txt" 2>/dev/null)
+          if ! echo "$SUMMARY" | grep -qE '[0-9]+ (passed|failed|error)'; then
+            echo "::error::no pytest summary from the graded run, so this check cannot answer -- and a check that cannot answer must not pass."
+            exit 1
+          fi
           echo "summary: $SUMMARY"
           SKIPPED=$(echo "$SUMMARY" | grep -oE '[0-9]+ skipped' | grep -oE '^[0-9]+')
           SKIPPED=${SKIPPED:-0}
           echo "skipped: $SKIPPED"
           if [ "$SKIPPED" -gt 9 ]; then
-            echo "::error::$SKIPPED tests skipped; a tier of the suite has gone quiet. Run pytest -rs and read the reasons -- an optional import that stops resolving takes its whole tier with it and reports the same green."
+            echo "::error::$SKIPPED tests skipped; a tier of the suite has gone quiet. The reasons are in the run step above -- an optional import that stops resolving takes its whole tier with it and reports the same green."
             exit 1
           fi

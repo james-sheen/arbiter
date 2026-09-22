@@ -50,7 +50,10 @@ useful-looking document and the less trustworthy one.
   `importorskip` now say why they are gated and what covers the question
   otherwise; and a skip CEILING sits beside the collected-count floor, because
   a floor catches a suite that shrinks and nothing caught one that goes quiet.
-  No runtime dependency changed: the engine still needs numpy and pyyaml.
+  The ceiling reads the GRADED run rather than starting another one, so its
+  verdict is about the execution the job accepted, and the reason for every skip
+  now appears in that run's own output. No runtime dependency changed: the
+  engine still needs numpy and pyyaml.
 
 - **Seven closed decline vocabularies, ninety-three names, published
   nowhere.** Each sub-envelope refuses out of its own closed set --
