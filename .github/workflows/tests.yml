@@ -182,3 +182,50 @@ jobs:
             echo "::error::$SKIPPED tests skipped; a tier of the suite has gone quiet. The reasons are in the run step above -- an optional import that stops resolving takes its whole tier with it and reports the same green."
             exit 1
           fi
+
+      # The step above COUNTS; this one NAMES. A ceiling cannot see a
+      # swap -- one test going quiet while another starts passing leaves the
+      # number exactly where it was -- and the comment above already says what a
+      # single quiet test costs here: losing the `mcp` binding puts the count at
+      # six and passes.
+      #
+      # An outside report then measured exactly six against this commit, on this
+      # install recipe, and nothing this project ships could say which test it
+      # was. The only SINGLE-test optional import in the suite is that binding:
+      # `jsonschema` gates ten and `yaml` gates whole modules, so six is not a
+      # number the other two can produce. The SDK binding had almost certainly
+      # gone unrun again -- and *almost certainly* is the wrong grade for a
+      # component that already shipped once having never been executed.
+      #
+      # KEYED ON THE FILE, not the line. Line numbers move whenever a file is
+      # edited, and a guard going red for an edit above the skip teaches people
+      # to update it without reading it. WHAT THAT COSTS, written down rather
+      # than left to be discovered: two tests trading places inside ONE file are
+      # invisible here. Anything arriving, leaving, or moving between files is
+      # named.
+      #
+      # It reads the GRADED run's summary, for the reason the step above gives.
+      - name: The skips are the ones we expect, by name
+        run: |
+          set +e
+          SUMMARY_FILE="${RUNNER_TEMP:-/tmp}/pytest-summary.txt"
+          if [ ! -s "$SUMMARY_FILE" ]; then
+            echo "::error::no summary from the graded run, so the skip set cannot be read -- and a check that cannot answer must not pass."
+            exit 1
+          fi
+          EXPECTED=$(printf '%s\n' \
+            "3 tests/test_absent_data_regressions.py" \
+            "2 tests/test_threshold_overrides.py")
+          ACTUAL=$(awk '/^SKIPPED \[[0-9]+\]/ {
+                          n = $2; gsub(/[^0-9]/, "", n);
+                          split($3, part, ":"); count[part[1]] += n
+                        }
+                        END { for (f in count) printf "%d %s\n", count[f], f }' \
+                    "$SUMMARY_FILE" | sort -k2)
+          echo "expected skips:"; printf '%s\n' "$EXPECTED"
+          echo "actual skips:";   printf '%s\n' "$ACTUAL"
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "::error::the skip set moved. Lines with < are expected and absent; lines with > are skipping and were not expected to. A test that starts skipping stops being evidence while still counting as collected."
+            diff <(printf '%s\n' "$EXPECTED") <(printf '%s\n' "$ACTUAL")
+            exit 1
+          fi

@@ -36,6 +36,16 @@ useful-looking document and the less trustworthy one.
 
 ### Fixed
 
+- **The README said a durable prediction ledger was not here.**
+  `SqlitePredictionLedger` shipped in 0.2.3, so every install since has carried
+  the class its own README denied. The bullet now states the real boundary:
+  nothing wires it for you, and `EngineSession` takes no ledger argument.
+- **The README said `load_model()` takes a mapping and not a file.** It accepts
+  a parsed mapping, YAML text or a path. The advice the sentence carried holds
+  -- the parse costs about thirty times the load -- so pass a cached mapping.
+- **A skip gate counted skips without naming them**, so one test going quiet
+  passed while a whole tier going quiet failed. CI now diffs the skip set by
+  name against a committed expectation.
 - **Two actions scheduled at different times were refused as a collision** when
   the step was coarse enough to hold both, because effects inside a step were
   gathered by property and `at_s` was discarded. They now resolve per instant,
@@ -132,6 +142,16 @@ useful-looking document and the less trustworthy one.
   vocabulary is `LocalLevel`, `RandomWalk` and `TrendCurve`.
 
 ## [0.2.5] — 2026-09-20
+
+**PREPARED, NOT PUBLISHED.** No `v0.2.5` tag exists and no artifact was uploaded:
+the newest release on PyPI is 0.2.4, and the work below is on `master` only. The
+heading is dated like the released sections above it because it was written to be
+one, and the release did not follow. An outside report read down to here, took the
+formatting at its word, and recorded the gap between what this file says shipped
+and what a reader can install -- which is why the marker is in the file now rather
+than in somebody's head. That gap matters more here than it would elsewhere: the
+paragraph below is addressed to a 0.2.4 user, and 0.2.4 is what PyPI serves. Until
+a release is cut, read this section the way you read [Unreleased].
 
 **What a 0.2.4 user is getting.** 0.2.4 shipped the simulation surface --
 `rollout`, `plan`, the transition learner, the prediction ledger -- and that

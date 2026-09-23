@@ -425,17 +425,19 @@ The engine is open. The knowledge and the operations are not.
   teaching model, deliberately not among them.
 - **The operator half.** Clinic, planning, the Kubernetes executor, the introspection layer. These
   are welded to a running deployment and are not v0.1.
-- **A durable prediction ledger.** `SqliteObservationHistory` persists observations; the ledger that
-  holds forecasts and their grades has no equivalent, and this is a boundary rather than an
-  oversight to route around. `grade_matured` scores a record when its horizon has passed **and the
-  record is still in the live session's ledger**, so *did it beat a random walk* is answerable only
-  by a process that outlives the horizon. A one-shot command that loads a model, ingests a feed and
-  exits will report `calibration` with every rate null, every time — correctly, because nothing in
-  that run matured. Feeding forecasts that have ALREADY matured is not the way around it either: on
-  a model declaring `max_age:` the forecasts leg declines them `stale_forecast`, since the leg is
-  asking whether the producer is current and cannot tell *late* from *here to be scored*. Either
-  keep a session resident across the horizon, or treat calibration as out of reach until the ledger
-  is persistent. Written down because the number's absence otherwise reads as a defect in the feed.
+- **A prediction ledger wired in by default.** `SqliteObservationHistory` persists observations and
+  `SqlitePredictionLedger` persists forecasts and their grades, but nothing reaches for the second
+  one on your behalf. `EngineSession.__init__` takes no ledger argument, so a session keeps the
+  in-memory ledger until a caller assigns `session.ledger = SqlitePredictionLedger(path)` — a deep
+  import, and not one of the supported names. `grade_matured` scores a record when its horizon has
+  passed **and the record is still in the session's ledger**, so *did it beat a random walk* is
+  answerable only by a ledger outliving the horizon: a resident session, or a file somebody asked
+  for. A one-shot command that loads a model, ingests a feed and exits will report `calibration`
+  with every rate null, every time — correctly, because nothing in that run matured. Feeding
+  forecasts that have ALREADY matured is not the way around it either: on a model declaring
+  `max_age:` the forecasts leg declines them `stale_forecast`, since the leg is asking whether the
+  producer is current and cannot tell *late* from *here to be scored*. Written down because the
+  number's absence otherwise reads as a defect in the feed.
 - **Two lazy imports reach outside the cut, and they behave differently.** One root-cause wiring
   module and an LLM client are imported lazily and are not shipped, so the package still imports
   cleanly. The root-cause wiring **degrades to a no-op** — its callsite is guarded and the feature it
@@ -513,10 +515,10 @@ Three things follow, and the third is the one that saves anybody time. The feed 
 data is added, so a consumer re-feeding every cycle pays it every cycle. `load_model()` is flat in
 the entity count, so a session held across cycles pays it once — but it is *not* flat in the model,
 and quoting it from a four-indicator fixture is how it gets called negligible. And **`load_model()`
-takes a mapping, not a file**: at 180 indicators the YAML parse in front of it costs about thirty
-times the load, so a consumer paying a quarter-second to get a generated model in is mostly paying
-PyYAML. Cache the parsed mapping rather than only the session, and use `yaml.CSafeLoader` where
-libyaml is installed — same result, several times faster.
+accepts a parsed mapping, YAML text or a path**: at 180 indicators the YAML parse in front of it
+costs about thirty times the load, so a consumer paying a quarter-second to get a generated model
+in is mostly paying PyYAML. Cache the parsed mapping and hand it that rather than re-reading the
+file, and use `yaml.CSafeLoader` where libyaml is installed — same result, several times faster.
 
 Re-derive it rather than trusting the tables. The two axes are separate arguments, because they are
 separate questions:
