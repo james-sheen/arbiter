@@ -244,12 +244,20 @@ def run_inference(session, query: Query,
         horizon_s=0.0, severity="medium", kind="stated")
 
     if report_above is None:
+        # The number in this sentence was the literal `0.31` at every
+        # call, beside an `evidence` key carrying the posterior the engine had
+        # just computed. Measured on the example this round shipped: the
+        # message read `whether 0.31 is alarming` while the answer was 0.02.
+        # A decline is the engine explaining what it did NOT decide, so a
+        # constant standing where its own arithmetic belongs is the one place
+        # a reader has no way to catch it. Both now read the same variable.
+        reported = round(posterior, 6)
         declines.append(Decline(
             "no_report_probability", scope,
-            detail=("pass `report_above` to say which posterior is worth a "
-                    "finding; whether 0.31 is alarming is a fact about the "
-                    "engagement rather than about the arithmetic"),
-            evidence={"posterior": round(posterior, 6)}))
+            detail=(f"pass `report_above` to say which posterior is worth a "
+                    f"finding; whether {reported} is alarming is a fact about "
+                    f"the domain rather than about the arithmetic"),
+            evidence={"posterior": reported}))
     elif posterior >= report_above:
         findings.append(_posterior_finding(
             session, working, query, posterior, observed, unobserved,

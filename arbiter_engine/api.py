@@ -2461,6 +2461,15 @@ def infer(session: EngineSession, target: str,
     answer -- a posterior computed with six of ten nodes unseen is a different
     claim from one computed with all ten.
 
+    THE OTHER HALF OF THAT RULE, which this paragraph stated for six releases
+    without: only a HIGH or CRITICAL finding makes an entity faulty evidence.
+    An entity whose worst finding is a WARNING is observed CLEAN, not unknown
+    and not faulty. Measured while writing the example that finally runs this
+    verb: a supply sitting between its warning and critical floors left every
+    posterior in the model exactly where it was with the supply healthy, which
+    reads like a graph that is not wired up. Both halves are policy and both
+    are defensible; only one of them was written down.
+
     Without `report_above` there is no finding, on the same rule as `project`
     and `discover`: the posterior is computed and reported, and whether it is
     alarming is not the engine's to decide.

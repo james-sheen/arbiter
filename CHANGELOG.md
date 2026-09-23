@@ -36,6 +36,33 @@ useful-looking document and the less trustworthy one.
 
 ### Fixed
 
+- **`infer` declined with a number it had not computed.** The
+  `no_report_probability` message carried a fixed `0.31` while the `evidence`
+  beside it held the real posterior. Both now read the same value.
+- **The RDF loader declared a namespace naming a domain this engine does not
+  serve.** No graph in the project ever declared that URI, so the lookup could
+  never match and removing it changes nothing for any caller.
+- **`COMPATIBILITY.md` recommended a pin that resolves nothing.** It said a
+  `<0.2` ceiling does what you intend, and used one as its opening example.
+  That ceiling stops at 0.1.18 and never reaches the 0.2 series. Move it to
+  `<0.3` deliberately. It also predicted a version number that cannot exist;
+  the prediction is gone and the list it came from now has one home.
+- **`COMPATIBILITY.md` named six sub-envelope disciplines and the schema
+  declares eight.** `simulation` and `plan` -- returned by `rollout` and
+  `plan` -- were governed by nothing in the policy while the schema had them
+  right. The promises there apply to them as written.
+- **`infer` documented half its evidence rule.** It said an entity in
+  `not_checked` is left unobserved. It did not say that only a HIGH or
+  CRITICAL finding makes one faulty evidence, so a warning-level breach leaves
+  a node observed CLEAN and the posteriors do not move.
+
+### Added
+
+- **A seventh worked example, `substation_feeder.yaml`** -- the first declaring
+  `edge_direction: causal` edges, so `infer` has a model to run against for the
+  first time. Its header states one question answered three ways, because
+  observing a fault and intervening on it differ there by a factor of thirteen.
+
 - **The README said a durable prediction ledger was not here.**
   `SqlitePredictionLedger` shipped in 0.2.3, so every install since has carried
   the class its own README denied. The bullet now states the real boundary:

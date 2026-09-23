@@ -13,6 +13,16 @@ both unsuitable for an engine package:
     active-mode policy — platform concerns the engine has no use for, and
     roughly half the entire v0.1 line budget on its own.
 
+**BOTH FIGURES ARE AS MEASURED ON 2026-08-02**, the day this module was
+written, and neither is re-derived. They are the sizes that made a third loader
+the cheaper answer, so the number that matters is the one the decision was taken
+against; a figure silently tracking the file would stop being evidence for the
+paragraph it sits in. Read as current they are wrong, and were — an outside
+review measured the first at 860 against a docstring saying 720 and reported it
+as a stale number, correctly. Both files have grown since. A census of the whole
+`detection/` tree found exactly these two line-count claims and no others, and a
+test now refuses a third that carries no as-of marker.
+
 This module is the third thing: it reads exactly the three keys an axiom
 evaluator needs — entity types, relationship types, indicators — and returns
 them as plain typed objects. It imports `yaml` and the engine's own types, and

@@ -25,10 +25,35 @@ from ..types import Axiom, IndicatorType, Severity
 logger = logging.getLogger(__name__)
 
 # Define namespaces
+#
+# A THIRD constant stood here, and its URI ended in the name of one
+# vertical's platform -- a domain noun inside a component the project requires
+# to carry none. The name is described rather than written out: a comment
+# quoting the constant it removes is the same string to any checker as the
+# constant, which is the trap this project has already filed twice.
+#
+# It is gone rather than renamed, because the measurement that found
+# it also showed it could never match: NO graph in this project declares that
+# URI. The engine's own meta-ontology declares `health:` and `axiom:` and no
+# `k8s:` prefix at all, and the platform's Kubernetes ontology declares
+# `http://ontology.operational.io/domain/k8s#` -- a different URI entirely. The
+# lookup below tried it first against every graph and fell through every time.
+#
+# The other two keep these URIs deliberately. `example.org` reads like a
+# placeholder and is one, but `health_meta_ontology.ttl` declares exactly these
+# two prefixes, so renaming them to something tidier would break the only real
+# graph either name has ever had, to fix how a string looks.
+#
+# `AXIOM` is declared and read NOWHERE -- measured across the whole source tree,
+# not just this module. It stays because the meta-ontology does declare the
+# prefix, so this is an unused constant rather than a false one, and removing it
+# is a separate question from the one this round was asked. Recorded here so the
+# next reader knows it was measured rather than missed. The set of namespaces
+# this module may declare is pinned by a test, two-sided, so it cannot quietly
+# become three again.
 if HAS_RDFLIB:
     HEALTH = Namespace("http://example.org/health#")
     AXIOM = Namespace("http://example.org/axiom#")
-    K8S = Namespace("http://example.org/k8s#")
 
 
 # (implements): HOMEOSTASIS direction allow-list.
@@ -324,8 +349,8 @@ class OntologyLoader:
         if not HAS_RDFLIB:
             return None
 
-        # Try common namespaces
-        for ns in [K8S, HEALTH]:
+        # Try common namespaces. One entry, not two -- above.
+        for ns in [HEALTH]:
             uri = ns[entity_type]
             if (uri, RDF.type, OWL.Class) in self.graph:
                 return uri

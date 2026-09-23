@@ -1,0 +1,129 @@
+# A worked example that DECLARES A CAUSAL STRUCTURE.
+#
+# `infer` answers *how likely is this entity faulty, given what the
+# last check could see*, by variable elimination over edges the author marked
+# causal. It shipped with no model to run it against: a census of the six
+# examples found `edge_direction: causal` in none of them, so the one verb
+# whose input is a causal graph had no specimen -- the same gap that an internal ruling closed
+# for `rollout` and `plan`, one discipline over. An outside design review found
+# it by reading the verb list against this directory.
+#
+# WHAT IT MODELS. A substation supply feeds a feeder; the feeder feeds two
+# panels. When something downstream fails, the question is whether it failed or
+# whether the thing upstream of it did -- a question about the STRUCTURE, not
+# about any one reading.
+#
+# THE MEASUREMENT THIS FILE EXISTS FOR. Supply reading fine at 11.0 kV, both
+# panels fine at 230 V, and one question asked three ways:
+#
+# P(sub-1 faulty) with the feeder UNOBSERVED 0.014182
+# P(sub-1 faulty) with the feeder OBSERVED at 450 A 0.679054
+# P(sub-1 faulty) under `do fdr-1=1` 0.05
+#
+# The middle and the last put the feeder in the SAME state and disagree by a
+# factor of thirteen. Seeing a feeder fail is evidence about what feeds it;
+# breaking that feeder yourself is not, because the intervention cuts the
+# edge coming into it before the query is answered. That difference is the
+# whole reason this verb exists rather than being a filter over `traverse`,
+# and it is the number a reader should reproduce first.
+#
+# The first line is the one worth a second look: 0.014182 is BELOW the supply's
+# own 0.05 prior, because two healthy panels are evidence against a fault
+# upstream of both. Nothing was declared to make that happen; it falls out of
+# the graph.
+#
+# arbiter check -- what breached, and what the
+# engine could not see
+# arbiter infer --target sub-1 -- the posterior, given that
+# arbiter infer --target sub-1 --do fdr-1=1 -- the same question with the
+# feeder HELD faulty
+#
+# WHAT COUNTS AS EVIDENCE, BOTH HALVES. An entity in the check's `not_checked`
+# leg is left UNOBSERVED rather than assumed clean, and the count rides in
+# every answer. The other half is less obvious and is why the readings below
+# are CRITICAL rather than merely low: only a HIGH or CRITICAL finding makes an
+# entity faulty evidence. A warning-level breach leaves it observed CLEAN. Set
+# the supply to 10.1 kV instead of 9.5 and it warns, counts as healthy, and the
+# posteriors do not move -- which reads like a broken model and is not one.
+#
+# EVERY STRENGTH BELOW IS DECLARED. A posterior is a product of edge weights,
+# so a weight the engine chose would make the answer partly a statement about
+# the engine with no way to tell which part. Leave `causal:` off an edge the
+# query depends on and the engine declines `cpt_missing` by name and asks for
+# the number, rather than supplying a default that reads like knowledge.
+
+domain:
+  id: substation_feeder
+  name: Substation feeder, with a declared causal structure
+  description: >
+    A supply, one feeder and two panels: the smallest graph in which a shared
+    upstream cause and an independent failure are different explanations of
+    the same evidence, and small enough that every posterior can be checked by
+    hand from the two weights below.
+
+  entity_types:
+    - Supply
+    - Feeder
+    - Panel
+
+  relationship_types:
+    - powers
+
+  indicators:
+    Supply:
+      # An 11 kV distribution supply. Lower-is-worse, and these are LOWER
+      # bounds because a published limit gave them: a nominal 11 kV is held
+      # inside plus or minus 10 per cent, so 10.5 is the contractual floor and
+      # 9.9 is outside it. A floor is a specification, not a guess -- an
+      # indicator nobody published a line for belongs on HOMEOSTASIS instead,
+      # where the engine learns the band rather than being told a number the
+      # author invented.
+      - name: voltage_kv
+        type: NUMERIC
+        axioms: [BOUNDEDNESS]
+        lower_warning: 10.5
+        lower_critical: 9.9
+
+    Feeder:
+      # Upper bounds here: a feeder fails by carrying too much, not too little.
+      - name: current_a
+        type: NUMERIC
+        axioms: [BOUNDEDNESS]
+        warning: 380
+        critical: 420
+
+    Panel:
+      # 230 V nominal, same limit, same direction as the supply.
+      - name: voltage_v
+        type: NUMERIC
+        axioms: [BOUNDEDNESS]
+        lower_warning: 216
+        lower_critical: 207
+
+  relationship_rules:
+    # `edge_direction: causal` is what puts an edge into the graph `infer`
+    # eliminates over. An edge without it is still a topology edge and still
+    # traversable; it is simply not a claim about what causes what, and
+    # `infer` will say the target is on no causal edge rather than guess.
+    #
+    # `weight` is the probability this parent alone explains a faulty child.
+    # `leak` is the probability the child is faulty with no parent at fault.
+    # They are noisy-OR parameters, so two parents compose without anyone
+    # writing a full conditional table: forcing the feeder faulty gives a panel
+    # 1 - (1 - 0.70)(1 - 0.02) = 0.706, which is the third figure above with
+    # the query pointed the other way down the chain.
+    - type: powers
+      source_type: Supply
+      target_type: Feeder
+      edge_direction: causal
+      causal:
+        weight: 0.80
+        leak: 0.02
+
+    - type: powers
+      source_type: Feeder
+      target_type: Panel
+      edge_direction: causal
+      causal:
+        weight: 0.70
+        leak: 0.02

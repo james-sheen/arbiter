@@ -2,9 +2,15 @@
 
 What a release of `arbiter-engine` may change, and what waits.
 
-A consumer pinning `>=0.1.7,<0.2` is making a statement about the **wire shape** —
+A consumer pinning `>=0.2.4,<0.3` is making a statement about the **wire shape** —
 the envelope every tool returns and the YAML every model is written in. This
 document says what that pin is worth.
+
+The example pin above read `>=0.1.7,<0.2` until 2026-09-23, which was current
+when it was written and had since become the one ceiling this document warns
+about at the bottom. It was found by the test that now holds the two ends of
+this file together, not by a reader — and a stale pin in the opening line of
+the document a pin points at is worth more than the two words it took to fix.
 
 ## The motivating incident, stated first
 
@@ -23,7 +29,7 @@ it.
 
 | | Moves when | Where |
 |---|---|---|
-| **Package version** | anything ships — a fix, a docstring, a new axiom parameter | `arbiter-engine==0.1.7` |
+| **Package version** | anything ships — a fix, a docstring, a new axiom parameter | `arbiter-engine==0.2.4` |
 | **`meta.schema_version`** | a reader that worked stops working | `envelope["meta"]["schema_version"]` |
 
 They are separate because tying them would make every patch release look like a
@@ -34,13 +40,29 @@ The schema itself is at [`schema/envelope.schema.json`](schema/envelope.schema.j
 
 ## The sub-envelope
 
-A tool that runs a DISCIPLINE — forecasts, shadow, projection, entailment,
-inference, discovery — mounts its own report as a payload key beside the legs,
+A tool that runs a DISCIPLINE — `forecasts`, `shadow`, `projection`,
+`entailment`, `inference`, `discovery` — mounts its own report as a payload key
+beside the legs,
 in the same four-part shape: `checked`, `findings`, `not_checked`, `questions`,
 plus a `meta` carrying `source`. The shape is in the schema as
 [`$defs/sub_envelope`](schema/envelope.schema.json), so a consumer has
 something to validate against rather than a field list read out of the engine's
 source.
+
+**`simulation` and `plan` are two more, and this sentence did not say so.** The
+six named above are the ones built through the shared type; `rollout` and `plan`
+build theirs on another path and arrive in the same four-part shape with extra
+keys beside it — `per_step` and `tier` on one, `ranked`, `candidates`, `best`,
+`objective` and `direction` on the other, `assumptions` on both. The schema has
+declared all of that for two releases, as `$defs/simulation_envelope`,
+`$defs/plan_envelope`, `$defs/simulation_step` and `$defs/plan_candidate`, while
+this paragraph listed six disciplines and stopped. An outside review read the
+gap the way it reads — as the two verbs a consumer reaches `rollout` and `plan`
+through being governed by nothing here — and asked for the whole package to be
+marked experimental. The package under them is unpromised for the ordinary
+reason, two bullets down: it is deeper than the public API. **Their payloads are
+not**, they are returned by supported names, and the promises above apply to
+them exactly as written. Validate against the schema, which was right first.
 
 Three things about it are promises and not accidents:
 
@@ -206,15 +228,29 @@ Three things about it are promises and not accidents:
 - `AxiomParameters` defaults. They are calibration, they are tuned against real
   data, and a release that improved one would otherwise be breaking.
 
-## A number you cannot have
+## Numbers you cannot have, and what that does to your pin
 
-**0.2.0 is permanently reserved on PyPI** and was never published by this
-project — the index reserves any filename that has ever been used and deleted,
-including from an earlier owner of the name. The first release that breaks
-compatibility will therefore be **0.2.1**.
+**Several version numbers are permanently unavailable on PyPI** — the index
+reserves any filename that has ever been used and deleted, including from an
+earlier owner of the name. The list is in the changelog, under [Version numbers
+that do not exist](CHANGELOG.md#version-numbers-that-do-not-exist), and is
+deliberately not copied here for the reason the bullet above gives about the
+public API: a second copy of a list drifts from the first.
 
-A pin of `<0.2` still does exactly what you intend. Nothing will ever be
-published as 0.2.0, so nothing can slip under such a pin.
+**This section carried such a copy, and it drifted.** It named one reserved
+number and then PREDICTED which version the next breaking release would carry —
+an inference from measured numbers rather than a measurement. The release that
+needed that number found the prediction false at the upload. The changelog
+dropped it; this file kept it, and a pin points at this file, so the stale half
+was the half consumers read. The retired sentence is described here rather than
+quoted: this project runs absence tests over its own errata, and a correction
+that reproduces the string it corrects is the same string to the checker.
+
+**A pin of `<0.2` does NOT do what it looks like it does.** That ceiling stops
+at 0.1.18 and never resolves the 0.2 series at all, so a consumer holding it
+sees no release made since. If you want the 0.2 line, move the ceiling to
+`<0.3` deliberately — and read the changelog list first, because the gaps in it
+cannot be extrapolated.
 
 ## If something breaks anyway
 
