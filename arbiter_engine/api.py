@@ -80,7 +80,8 @@ class EngineSession:
     the tools be tested as plain functions.
     """
 
-    def __init__(self, history: Optional[Any] = None) -> None:
+    def __init__(self, history: Optional[Any] = None,
+                 ledger: Optional[Any] = None) -> None:
         self.model = None
         self.reasoner: Optional[UnifiedAxiomReasoner] = None
         # An injectable history, because the default one is a seven-day ring
@@ -105,7 +106,19 @@ class EngineSession:
         #
         # A session-owned ledger is unconditional and isolated. The module
         # singleton is untouched and still serves the gated Core callsite.
-        self.ledger = PredictionLedger()
+        #
+        # INJECTABLE, for the same reason `history` is. The durable
+        # ledger has shipped since 0.2.3 and the only way to reach it was
+        # `session.ledger = SqlitePredictionLedger(path)`: a deep import, not a
+        # supported name, and the README had to spend a paragraph saying so.
+        # Two outside reviews arrived at the same sentence about it. Calibration
+        # is the one number that grades this engine against a random walk, and
+        # it sat one unsupported import away from every caller.
+        #
+        # The default is unchanged, so a caller who passes nothing gets exactly
+        # what it got before: an in-memory ledger, and a one-shot process that
+        # correctly reports every rate null because nothing in that run matured.
+        self.ledger = ledger if ledger is not None else PredictionLedger()
         #: What `discover` last PROPOSED. Filled by the verb and read by
         #: `adopt_io_relationships`; nothing consumes it until a caller says so.
         self.proposed_io_relationships: List[Any] = []
@@ -2461,14 +2474,19 @@ def infer(session: EngineSession, target: str,
     answer -- a posterior computed with six of ten nodes unseen is a different
     claim from one computed with all ten.
 
-    THE OTHER HALF OF THAT RULE, which this paragraph stated for six releases
-    without: only a HIGH or CRITICAL finding makes an entity faulty evidence.
-    An entity whose worst finding is a WARNING is observed CLEAN, not unknown
-    and not faulty. Measured while writing the example that finally runs this
-    verb: a supply sitting between its warning and critical floors left every
-    posterior in the model exactly where it was with the supply healthy, which
-    reads like a graph that is not wired up. Both halves are policy and both
-    are defensible; only one of them was written down.
+    THE OTHER HALF OF THAT RULE is which findings make an entity FAULTY, and
+    it is a floor on severity. `causal.evidence_severity:` declares it. Absent,
+    this engine counts `high` and `critical` and no others -- so a model whose
+    breaches are all warnings returns every posterior sitting at its prior,
+    which reads like a graph that is not wired up. Measured while writing the
+    example that first ran this verb, and it was a silent default for six
+    releases: the answer does not say which floor produced it.
+
+    It says so now. An envelope computed against the engine's floor carries
+    `evidence_severity_not_declared`, on the same rule as every other number
+    this engine supplies rather than reads. A declaration it cannot use -- an
+    empty list, a severity that does not exist -- is treated as no declaration
+    and stamped the same way, rather than partly applied.
 
     Without `report_above` there is no finding, on the same rule as `project`
     and `discover`: the posterior is computed and reported, and whether it is

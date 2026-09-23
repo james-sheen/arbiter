@@ -17,6 +17,7 @@ from .history.sqlite_store import SqliteObservationHistory
 from .interfaces import Entity, Observation, Problem, RelationshipGraph
 from .ontology.domain_loader import DomainModel
 from .ontology.reasoner import UnifiedAxiomReasoner
+from .residual.sqlite_ledger import SqlitePredictionLedger
 from .twin.traverser import TopologyTraverser
 from .types import Axiom, Severity
 from .envelope import engine_version as _engine_version
@@ -39,6 +40,7 @@ __all__ = [
     "SessionCalendar",
     "Severity",
     "SqliteObservationHistory",
+    "SqlitePredictionLedger",
     "TopologyTraverser",
     "UnifiedAxiomReasoner",
     "api",

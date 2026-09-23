@@ -34,6 +34,31 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+### Added
+
+- **`EngineSession(ledger=...)`, and `SqlitePredictionLedger` is a supported
+  name.** The durable ledger has shipped since 0.2.3 and the only route to it
+  was a deep import assigned onto a session attribute, which left `calibration`
+  -- the figure grading this engine against a random walk -- outside the
+  surface while the envelope reported it. The default is unchanged.
+- **`causal.evidence_severity:` declares which findings count as faulty
+  evidence for `infer`.** Undeclared, the engine counts `high` and `critical`
+  as before, and now says so: the envelope carries
+  `evidence_severity_not_declared`. A model whose breaches are all warnings had
+  every posterior sitting at its prior with nothing to explain why.
+- **New public names.** `EVIDENCE_SEVERITY_NOT_DECLARED` joins `ASSUMPTION_STAMPS`,
+  and `SqlitePredictionLedger` is exported from the package root. A stamp is
+  matched on its VALUE on the wire; the constant is offered so a misspelling is
+  an import error rather than a disclosure that silently stops matching.
+- **The modelling guide documents causal input.** `edge_direction: causal`,
+  `causal.weight`, `causal.leak` and `latent_confounder` had no section in it,
+  so the one verb whose input is a causal graph was undocumented.
+- **`health_meta_ontology.ttl` ships.** The loader declares two RDF namespaces
+  and the comment justifying them named a graph that was in no published tree.
+  It is here now, holds all eight axioms, and a test derives its axiom set and
+  every observation minimum from the engine's own table. CI installs the `rdf`
+  extra, so the path runs on a lane for the first time.
+
 ### Fixed
 
 - **`infer` declined with a number it had not computed.** The

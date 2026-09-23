@@ -49,6 +49,19 @@ FIRST_ORDER_RESPONSE = "first_order_response"
 #: absent key and the number used in its place.
 TIME_COURSE_NOT_DECLARED = "time_course_not_declared"
 
+#: The severity floor deciding what counts as FAULTY evidence was the engine's
+#: and not the author's. `infer` reads the last `check()` and treats an entity
+#: as faulty only when it carries a HIGH or CRITICAL finding; a model declaring
+#: `causal.evidence_severity:` picks its own floor and this stamp is absent.
+#:
+#: Stamped because the default is INVISIBLE FROM THE ANSWER. A model whose
+#: breaches are all warnings returns every posterior sitting at its prior,
+#: which reads as a graph that is not wired up -- measured while writing the
+#: example that first ran this verb, and reported by an outside review as a
+#: place where the engine's own declare-don't-default rule was not applied to
+#: itself.
+EVIDENCE_SEVERITY_NOT_DECLARED = "evidence_severity_not_declared"
+
 #: The horizon was long enough that the transient had finished, so the value
 #: reported is the steady state rather than a point on the way to it.
 STEADY_STATE_REACHED = "steady_state_reached"
@@ -186,6 +199,7 @@ ACTION_PROPERTY_FROM_PARAMETER_NAME_PREFIX = "action_property_from_parameter_nam
 ASSUMPTION_STAMPS: Tuple[str, ...] = (
     FIRST_ORDER_RESPONSE,
     TIME_COURSE_NOT_DECLARED,
+    EVIDENCE_SEVERITY_NOT_DECLARED,
     STEADY_STATE_REACHED,
     SERIES_EDGES_COMPOSED_EXACTLY,
     SERIES_EDGES_COMPOSE_BY_PRODUCT,

@@ -285,7 +285,7 @@ says four, and the measurement says two.
 
 ## The public API
 
-**14 names.** Everything else in the package is importable and **unsupported** — reaching for a deeper
+**15 names.** Everything else in the package is importable and **unsupported** — reaching for a deeper
 path is legitimate and unpromised, and those paths may move without a major version.
 
 ```python
@@ -295,6 +295,7 @@ from arbiter_engine import (
     DomainModel,                # your YAML, loaded
     InMemoryObservationHistory, # a concrete history, so it runs without a store
     SqliteObservationHistory,   # the same contract, durable, for replaying history
+    SqlitePredictionLedger,     # the durable ledger, so calibration outlives the process
     SessionCalendar,            # when the modelled world is open
     CalendarHistory,            # windows measured in open time rather than wall clock
     Entity, Problem, RelationshipGraph, Observation, Axiom, Severity,
@@ -302,7 +303,7 @@ from arbiter_engine import (
 )
 ```
 
-**Thirteen of those are types and the kernel; the fourteenth is a module, and the split is
+**Fourteen of those are types and the kernel; the fifteenth is a module, and the split is
 deliberate.** `arbiter_engine.api` is the tool surface: eleven verbs over a session, each returning the
 envelope above. Five answer for the eight axioms; four answer for a DISCIPLINE — work of a different
 kind, with its own denominator and its own vocabulary of refusals, reported in a payload beside the
@@ -425,19 +426,30 @@ The engine is open. The knowledge and the operations are not.
   teaching model, deliberately not among them.
 - **The operator half.** Clinic, planning, the Kubernetes executor, the introspection layer. These
   are welded to a running deployment and are not v0.1.
-- **A prediction ledger wired in by default.** `SqliteObservationHistory` persists observations and
-  `SqlitePredictionLedger` persists forecasts and their grades, but nothing reaches for the second
-  one on your behalf. `EngineSession.__init__` takes no ledger argument, so a session keeps the
-  in-memory ledger until a caller assigns `session.ledger = SqlitePredictionLedger(path)` — a deep
-  import, and not one of the supported names. `grade_matured` scores a record when its horizon has
-  passed **and the record is still in the session's ledger**, so *did it beat a random walk* is
-  answerable only by a ledger outliving the horizon: a resident session, or a file somebody asked
-  for. A one-shot command that loads a model, ingests a feed and exits will report `calibration`
-  with every rate null, every time — correctly, because nothing in that run matured. Feeding
-  forecasts that have ALREADY matured is not the way around it either: on a model declaring
-  `max_age:` the forecasts leg declines them `stale_forecast`, since the leg is asking whether the
-  producer is current and cannot tell *late* from *here to be scored*. Written down because the
-  number's absence otherwise reads as a defect in the feed.
+- **A prediction ledger wired in by default.** It is still not wired for you — but as of this
+  release it is one argument away rather than one deep import away. `EngineSession(ledger=...)`
+  takes a ledger, `SqlitePredictionLedger` is a supported name, and passing nothing gets exactly
+  what it always got: an in-memory ledger that dies with the process. Until this release the only
+  route was assigning `session.ledger` from an unsupported path, which left `calibration` — the one
+  figure grading this engine against a parameter-free random walk — outside the surface while the
+  envelope reported it. Two outside reviews wrote the same sentence about that.
+  `grade_matured` scores a record when its horizon has passed **and the record is still in the
+  session's ledger**, so *did it beat a random walk* is answerable only by a ledger outliving the
+  horizon: a resident session, or a file you asked for. A one-shot command that loads a model,
+  ingests a feed and exits will report `calibration` with every rate null, every time — correctly,
+  because nothing in that run matured. Feeding forecasts that have ALREADY matured is not the way
+  around it either: on a model declaring `max_age:` the forecasts leg declines them
+  `stale_forecast`, since the leg is asking whether the producer is current and cannot tell *late*
+  from *here to be scored*. Written down because the number's absence otherwise reads as a defect
+  in the feed.
+- **Two facts about grading that cost an outside reviewer two attempts each**, and cost the author
+  three, so they are here rather than only in a docstring. **A record is not gradeable the instant
+  its horizon passes**: `grade_matured` returns nothing until `now` reaches `predicted_at +
+  horizon_s + grace_s`, and `grace_s` defaults to 60 seconds. Ask earlier and you get silence, not
+  a verdict. **And an observation outside the window grades nothing**: a reading taken after
+  `horizon_s + grace_s` leaves the record `ungradeable` rather than `falsified`, because not
+  looking at the right instant is not evidence about what was there. Neither is a defect; both are
+  discovered by trial unless somebody writes them down.
 - **Two lazy imports reach outside the cut, and they behave differently.** One root-cause wiring
   module and an LLM client are imported lazily and are not shipped, so the package still imports
   cleanly. The root-cause wiring **degrades to a no-op** — its callsite is guarded and the feature it
@@ -448,7 +460,7 @@ The engine is open. The knowledge and the operations are not.
 
 ## Status
 
-**v0.2.** 93 Python files, 91 modules importing on the declared dependencies alone, 14 supported
+**v0.2.** 93 Python files, 91 modules importing on the declared dependencies alone, 15 supported
 names — **counted in this repository**, which is the package you are holding.
 
 That basis is stated because it is easy to get wrong in a way nobody notices. The build adds one
@@ -460,11 +472,19 @@ project whose subject is checkable claims. Count the artifact, never an earlier 
 The import figure carries the same hazard one layer down, and it depends on what you have installed. Sweeping the package where `scipy` happens to be present imports 92; on the declared dependencies alone it is the 91 above, because `propagation.lp_confidence` is the one module that needs `scipy` and it is a deep path outside the supported surface. Count the artifact **in the state the reader will have it**, not in the state the person measuring happens to be standing in — this line quoted the with-`scipy` figure until 2026-08-12, which no reader installing normally could reproduce.
 
 **The supported-name count went stale in exactly the way this section warns about.** It read
-`11` for the release that added `SqliteObservationHistory`, `SessionCalendar` and
-`CalendarHistory` — three names listed eight paragraphs above, in the same document, under the
-heading **14 names**. One number stated twice will drift, and the copy that drifts is the one no
-reader is looking at while they read the other. It is now derived from `arbiter_engine.__all__`
-by a test rather than typed, which is the only version of this fix that stays fixed.
+three short for the release that added `SqliteObservationHistory`, `SessionCalendar` and
+`CalendarHistory` — three names listed eight paragraphs above, in the same document, under a
+heading that already had the right total. One number stated twice will drift, and the copy that
+drifts is the one no reader is looking at while they read the other. It is now derived from
+`arbiter_engine.__all__` by a test rather than typed, which is the only version of this fix that
+stays fixed.
+
+**This paragraph then became the third copy.** It quoted the heading's figure to make its point,
+so when the count moved to fifteen the erratum still said fourteen — and the test that derives the
+count found two different numbers in one document, which is the defect the paragraph is about,
+committed by the paragraph. The figures are described here now rather than quoted, on the same
+rule the changelog states for its own errata: a correction that reproduces the string it corrects
+is that string to a checker.
 
 **And the count is of SUBMODULES: the root package is not one of them.** Walking `arbiter_engine` for what it contains gives 91; adding the package you imported to reach them gives 92. Both are honest and they are answers to different questions, so a reader who recounts and gets one more has not found a defect — they have used the other convention. Stated because someone did exactly that from outside, and a number published without its predicate can only be agreed with or disagreed with, never checked. **Every figure in this paragraph moved by one when `assumptions` landed, and nothing went red for two rounds** -- the guard that compares them to the artifact only runs when a built tree exists, so it is silent in every session that does not build one. A check conditioned on an artifact is not a check that runs.
 

@@ -1,0 +1,260 @@
+@prefix health: <http://example.org/health#>.
+@prefix axiom: <http://example.org/axiom#>.
+@prefix owl: <http://www.w3.org/2002/07/owl#>.
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>.
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#>.
+
+# ==============================================================================
+# Health Meta-Ontology
+# The axiom families, the indicator kinds each applies to, and the
+# observation minimum each axiom needs before it can be evaluated.
+# ==============================================================================
+
+# Ontology declaration
+<http://example.org/health> a owl:Ontology;
+    rdfs:label "Health Meta-Ontology";
+    rdfs:comment "The axiom families this engine checks, the indicator kinds each applies to, and the observations each needs";
+    owl:versionInfo "1.0.0".
+
+# ==============================================================================
+# Axiom Definitions
+# ==============================================================================
+
+axiom:Axiom a owl:Class;
+    rdfs:label "System Health Axiom";
+    rdfs:comment "Universal property of healthy systems".
+
+axiom:Stability a axiom:Axiom;
+    rdfs:label "Stability";
+    rdfs:comment "System should tend toward equilibrium";
+    axiom:requiresHistory "true"^^xsd:boolean;
+    axiom:minimumObservations "10"^^xsd:integer;
+    axiom:detects "oscillation, chaos, instability".
+
+axiom:Boundedness a axiom:Axiom;
+    rdfs:label "Boundedness";
+    rdfs:comment "System should operate within limits";
+    axiom:requiresHistory "false"^^xsd:boolean;
+    axiom:minimumObservations "5"^^xsd:integer;
+    axiom:detects "threshold violations, capacity exhaustion, trends".
+
+axiom:Connectivity a axiom:Axiom;
+    rdfs:label "Connectivity";
+    rdfs:comment "System should maintain relationships";
+    axiom:requiresHistory "false"^^xsd:boolean;
+    axiom:minimumObservations "1"^^xsd:integer;
+    axiom:detects "orphans, missing relationships, fragmentation".
+
+axiom:Consistency a axiom:Axiom;
+    rdfs:label "Consistency";
+    rdfs:comment "System should maintain coherent state";
+    axiom:requiresHistory "false"^^xsd:boolean;
+    axiom:minimumObservations "1"^^xsd:integer;
+    axiom:detects "logical impossibilities, contradictions".
+
+axiom:Responsiveness a axiom:Axiom;
+    rdfs:label "Responsiveness";
+    rdfs:comment "System should respond to inputs";
+    axiom:requiresHistory "true"^^xsd:boolean;
+    axiom:minimumObservations "20"^^xsd:integer;
+    axiom:detects "unresponsive, latency, correlation breakdown".
+
+axiom:Homeostasis a axiom:Axiom;
+    rdfs:label "Homeostasis";
+    rdfs:comment "System properties should stay in normal range";
+    axiom:requiresHistory "true"^^xsd:boolean;
+    axiom:minimumObservations "30"^^xsd:integer;
+    axiom:detects "anomalies, drift, sudden changes".
+
+# CONSERVATION and MONOTONICITY were absent from this file until 2026-09-23,
+# while the engine had carried both of them for months. Both figures below are
+# READ FROM `AXIOM_MINIMUMS`, the table the other six were read from, rather
+# than chosen here -- and a test now derives the whole set from that table, so
+# a ninth axiom cannot reach the engine without reaching this file too. The
+# gap existed because nothing held the two together; shipping this file to
+# readers without that test would have moved the drift rather than ended it.
+
+axiom:Conservation a axiom:Axiom;
+    rdfs:label "Conservation";
+    rdfs:comment "Quantities should be preserved through transformations";
+    axiom:requiresHistory "false"^^xsd:boolean;
+    axiom:minimumObservations "1"^^xsd:integer;
+    axiom:detects "input/output imbalance, flow violations, unaccounted losses".
+
+axiom:Monotonicity a axiom:Axiom;
+    rdfs:label "Monotonicity";
+    rdfs:comment "Directional properties should maintain their trend";
+    axiom:requiresHistory "true"^^xsd:boolean;
+    axiom:minimumObservations "3"^^xsd:integer;
+    axiom:detects "unexpected reversals, dangerous rate of change, counter resets".
+
+# ==============================================================================
+# Indicator Types
+# ==============================================================================
+
+health:Indicator a owl:Class;
+    rdfs:label "Health Indicator";
+    rdfs:comment "A property that indicates system health".
+
+health:NumericIndicator a owl:Class;
+    rdfs:subClassOf health:Indicator;
+    rdfs:label "Numeric Indicator";
+    rdfs:comment "An indicator with numeric values";
+    health:relevantAxiom axiom:Boundedness, axiom:Homeostasis.
+
+health:StateIndicator a owl:Class;
+    rdfs:subClassOf health:Indicator;
+    rdfs:label "State Indicator";
+    rdfs:comment "An indicator with categorical states";
+    health:relevantAxiom axiom:Stability, axiom:Consistency.
+
+health:RelationshipIndicator a owl:Class;
+    rdfs:subClassOf health:Indicator;
+    rdfs:label "Relationship Indicator";
+    rdfs:comment "An indicator based on entity relationships";
+    health:relevantAxiom axiom:Connectivity.
+
+health:TimestampIndicator a owl:Class;
+    rdfs:subClassOf health:Indicator;
+    rdfs:label "Timestamp Indicator";
+    rdfs:comment "An indicator based on time/age";
+    health:relevantAxiom axiom:Stability.
+
+# ==============================================================================
+# Indicator Properties
+# ==============================================================================
+
+# General properties
+health:hasIndicator a owl:ObjectProperty;
+    rdfs:label "has indicator";
+    rdfs:comment "Links an entity type to its health indicators";
+    rdfs:range health:Indicator.
+
+health:relevantAxiom a owl:ObjectProperty;
+    rdfs:label "relevant axiom";
+    rdfs:comment "Axioms that can be checked with this indicator";
+    rdfs:domain health:Indicator;
+    rdfs:range axiom:Axiom.
+
+# Numeric indicator properties
+health:warningThreshold a owl:DatatypeProperty;
+    rdfs:label "warning threshold";
+    rdfs:comment "Value at which to generate warning";
+    rdfs:domain health:NumericIndicator;
+    rdfs:range xsd:float.
+
+health:criticalThreshold a owl:DatatypeProperty;
+    rdfs:label "critical threshold";
+    rdfs:comment "Value at which to generate critical alert";
+    rdfs:domain health:NumericIndicator;
+    rdfs:range xsd:float.
+
+# -- the same two thresholds pointing down. Both pairs may be declared
+# on one indicator, which makes the pair of pairs a band.
+health:lowerWarningThreshold a owl:DatatypeProperty;
+    rdfs:label "lower warning threshold";
+    rdfs:comment "Value at or below which to generate a warning";
+    rdfs:domain health:NumericIndicator;
+    rdfs:range xsd:float.
+
+health:lowerCriticalThreshold a owl:DatatypeProperty;
+    rdfs:label "lower critical threshold";
+    rdfs:comment "Value at or below which to generate a critical alert";
+    rdfs:domain health:NumericIndicator;
+    rdfs:range xsd:float.
+
+health:timeWindow a owl:DatatypeProperty;
+    rdfs:label "time window";
+    rdfs:comment "Time window for analysis";
+    rdfs:domain health:Indicator;
+    rdfs:range xsd:duration.
+
+# State indicator properties
+health:normalStates a owl:DatatypeProperty;
+    rdfs:label "normal states";
+    rdfs:comment "States considered healthy";
+    rdfs:domain health:StateIndicator.
+
+health:transientStates a owl:DatatypeProperty;
+    rdfs:label "transient states";
+    rdfs:comment "States that are acceptable temporarily";
+    rdfs:domain health:StateIndicator.
+
+health:problematicStates a owl:DatatypeProperty;
+    rdfs:label "problematic states";
+    rdfs:comment "States that indicate a problem";
+    rdfs:domain health:StateIndicator.
+
+health:transientTimeout a owl:DatatypeProperty;
+    rdfs:label "transient timeout";
+    rdfs:comment "Max time allowed in transient state";
+    rdfs:domain health:StateIndicator;
+    rdfs:range xsd:duration.
+
+# Relationship indicator properties
+health:targetType a owl:DatatypeProperty;
+    rdfs:label "target type";
+    rdfs:comment "Expected type of related entity";
+    rdfs:domain health:RelationshipIndicator;
+    rdfs:range xsd:string.
+
+health:minCardinality a owl:DatatypeProperty;
+    rdfs:label "minimum cardinality";
+    rdfs:comment "Minimum required relationships";
+    rdfs:domain health:RelationshipIndicator;
+    rdfs:range xsd:integer.
+
+health:maxCardinality a owl:DatatypeProperty;
+    rdfs:label "maximum cardinality";
+    rdfs:comment "Maximum allowed relationships";
+    rdfs:domain health:RelationshipIndicator;
+    rdfs:range xsd:integer.
+
+health:violationSeverity a owl:DatatypeProperty;
+    rdfs:label "violation severity";
+    rdfs:comment "Severity when constraint is violated";
+    rdfs:domain health:RelationshipIndicator;
+    rdfs:range xsd:string.
+
+# ==============================================================================
+# Problem Classification
+# ==============================================================================
+
+health:Problem a owl:Class;
+    rdfs:label "Detected Problem";
+    rdfs:comment "A problem detected by axiom reasoning".
+
+health:hasSeverity a owl:DatatypeProperty;
+    rdfs:label "has severity";
+    rdfs:domain health:Problem;
+    rdfs:range xsd:string.
+
+health:violatesAxiom a owl:ObjectProperty;
+    rdfs:label "violates axiom";
+    rdfs:domain health:Problem;
+    rdfs:range axiom:Axiom.
+
+health:affectsIndicator a owl:ObjectProperty;
+    rdfs:label "affects indicator";
+    rdfs:domain health:Problem;
+    rdfs:range health:Indicator.
+
+# ==============================================================================
+# Entity Health
+# ==============================================================================
+
+health:Entity a owl:Class;
+    rdfs:label "Monitored Entity";
+    rdfs:comment "An entity being monitored for health".
+
+health:hasHealthStatus a owl:DatatypeProperty;
+    rdfs:label "has health status";
+    rdfs:domain health:Entity;
+    rdfs:range xsd:string.
+
+health:observationCount a owl:DatatypeProperty;
+    rdfs:label "observation count";
+    rdfs:comment "Number of observations for this entity";
+    rdfs:domain health:Entity;
+    rdfs:range xsd:integer.

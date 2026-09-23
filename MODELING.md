@@ -1055,6 +1055,75 @@ is read first, and that ordering does not exist. Schedule them at different
 times and they become a sequence instead, where the later one supersedes the
 earlier and both develop on their own clocks.
 
+## Asking what caused what: `edge_direction` and `causal`
+
+`traverse` walks declared edges. `infer` asks a different question -- *how
+likely is this entity faulty, given what the last check could see* -- and it
+needs to know which of those edges are claims about CAUSE. An edge without
+`edge_direction: causal` stays traversable and is simply not such a claim.
+
+```yaml
+domain:
+  causal:
+    evidence_severity: [warning, high, critical]   # optional; see below
+
+  relationship_rules:
+    - type: powers
+      source_type: Supply
+      target_type: Feeder
+      edge_direction: causal
+      causal:
+        weight: 0.80        # P(this parent alone explains a faulty child)
+        leak: 0.02          # P(child faulty with no parent at fault)
+        # latent_confounder: shared_supply   # optional, and see below
+```
+
+`weight` and `leak` are noisy-OR parameters, so several parents compose without
+anyone writing a full conditional table: two parents at 0.80 and 0.70 with a
+0.02 leak give `1 - 0.20 x 0.30 x 0.98`. **A weight nobody declared stops the
+answer** rather than being supplied -- `infer` declines `cpt_missing`, names the
+edges, and asks for the number, because a posterior is a product of weights and
+one the engine chose would make the answer partly a statement about the engine
+with no way to tell which part. `examples/substation_feeder.yaml` is the worked
+specimen; its header states one question answered three ways.
+
+`latent_confounder` names an unobserved common cause on an edge. Under an
+intervention it makes the query unidentifiable, and `infer` says so
+(`not_identifiable`) instead of returning a number that ignores it.
+
+**`do` is an intervention and not an observation.** The intervened node's
+incoming edges are CUT before the query is answered, which is the whole reason
+this is a verb rather than a filter over `traverse`. On the shipped specimen,
+asking about the supply with the feeder OBSERVED faulty gives 0.679054 and with
+the feeder FORCED faulty gives 0.05 -- the same node in the same state, a factor
+of thirteen apart. Seeing a thing fail is evidence about what feeds it; breaking
+it yourself is not.
+
+### What counts as faulty evidence: `causal.evidence_severity`
+
+`infer` reads the last `check()`. An entity in its `not_checked` leg is left
+UNOBSERVED rather than assumed clean, and the count rides in every answer. The
+other half of that rule is which findings make an entity FAULTY, and it is a
+floor on severity:
+
+```yaml
+domain:
+  causal:
+    evidence_severity: [warning, high, critical]
+```
+
+**Undeclared, this engine counts `high` and `critical` and no others** -- so a
+model whose breaches are all warnings returns every posterior sitting at its
+prior, which reads like a graph that is not wired up. That default was
+invisible from the answer until 0.2.6: it is now disclosed as
+`evidence_severity_not_declared` on every envelope that used it, on the same
+rule as every other number this engine supplies rather than reads.
+
+A declaration this engine cannot use -- an empty list, or one naming a severity
+that does not exist -- is treated as NO declaration and stamped the same way,
+deliberately. Partially applying a list with a typo in it would leave an author
+reading a posterior computed against a floor they did not write and cannot see.
+
 ## Choosing between actions: `planning`
 
 `rollout` answers *what happens if I do this*. Ranking candidates needs an
@@ -1160,6 +1229,7 @@ the key being absent.
 |---|---|
 | `first_order_response` | the coupling was developed as dead time then an exponential approach -- the ordinary shape, and still a shape this engine chose |
 | `time_course_not_declared` | the time course crossed was not declared; this engine supplied a delay or a time constant, or both |
+| `evidence_severity_not_declared` | `infer` read the last check against THIS engine's severity floor, because the model declared none. Declare `causal.evidence_severity:` to choose it |
 | `steady_state_reached` | the horizon outlasted the transient, so the value reported is the settled one |
 | `series_edges_composed_exactly` | two couplings in series were composed by the exact cascade response |
 | `series_edges_compose_by_product` | two couplings in series were composed by multiplying response fractions, which is an approximation |

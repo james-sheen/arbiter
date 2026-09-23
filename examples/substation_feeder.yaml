@@ -40,11 +40,20 @@
 #
 # WHAT COUNTS AS EVIDENCE, BOTH HALVES. An entity in the check's `not_checked`
 # leg is left UNOBSERVED rather than assumed clean, and the count rides in
-# every answer. The other half is less obvious and is why the readings below
-# are CRITICAL rather than merely low: only a HIGH or CRITICAL finding makes an
-# entity faulty evidence. A warning-level breach leaves it observed CLEAN. Set
-# the supply to 10.1 kV instead of 9.5 and it warns, counts as healthy, and the
-# posteriors do not move -- which reads like a broken model and is not one.
+# every answer. The other half is a floor on SEVERITY, and this file does not
+# declare one on purpose: absent, the engine counts `high` and `critical` and
+# no others, so a panel at 212 V warns, counts as healthy, and the posteriors
+# do not move. That reads like a broken model and is not one.
+#
+# Which is why every answer from this file carries
+# `evidence_severity_not_declared` in its `assumptions`. Add
+#
+# causal:
+# evidence_severity: [warning, high, critical]
+#
+# under `domain:` and the same 212 V reading moves P(sub-1 faulty) from
+# 0.014182 to 0.670634, and the stamp goes away. The floor is the author's to
+# choose; what the engine owes is to say when it chose one.
 #
 # EVERY STRENGTH BELOW IS DECLARED. A posterior is a product of edge weights,
 # so a weight the engine chose would make the answer partly a statement about

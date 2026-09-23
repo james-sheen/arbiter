@@ -133,7 +133,8 @@ class TestTheThreeAnswersTheExampleAdvertises:
 
     def test_the_headers_figures_are_these_figures(self):
         """The second copy, held. A reader runs what the header says."""
-        header = _text().split("domain:")[0]
+        header = re.split(r"^domain:", _text(), maxsplit=1,
+                          flags=re.MULTILINE)[0]
         for label, value in EXPECTED.items():
             assert re.search(rf"(?<![\d.]){value}(?![\d])", header), (
                 f"the header does not state the {label} figure {value}")

@@ -42,7 +42,7 @@ enum stops being evidence about anything.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from .envelope import (
     SOURCE_LIVE,
@@ -372,6 +372,12 @@ class SubEnvelope:
     questions: List[Any] = field(default_factory=list)
     source: str = SOURCE_LIVE
     reason: Optional[str] = None
+    #: the approximations this leg's numbers rest on, by stamp. The
+    #: simulation and plan payloads have carried one for releases; a discipline
+    #: built through this type had nowhere to put one, so `infer` disclosed a
+    #: default it was making on every call by not mentioning it. Emitted only
+    #: when non-empty, so no existing payload gains a key.
+    assumptions: Tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.kind not in VOCABULARIES:
@@ -438,4 +444,5 @@ class SubEnvelope:
             "not_checked": [d.to_dict() for d in self.not_checked],
             "questions": [_question_to_dict(q) for q in self.questions],
             "meta": meta,
+            **({"assumptions": list(self.assumptions)} if self.assumptions else {}),
         }

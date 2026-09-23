@@ -39,10 +39,19 @@ logger = logging.getLogger(__name__)
 # `http://ontology.operational.io/domain/k8s#` -- a different URI entirely. The
 # lookup below tried it first against every graph and fell through every time.
 #
-# The other two keep these URIs deliberately. `example.org` reads like a
-# placeholder and is one, but `health_meta_ontology.ttl` declares exactly these
-# two prefixes, so renaming them to something tidier would break the only real
-# graph either name has ever had, to fix how a string looks.
+# The other two keep these URIs deliberately, and as of that sentence
+# is checkable where you are reading it. `ontology/schemas/health_meta_ontology.ttl`
+# declares exactly these two prefixes, so renaming them to something tidier
+# would break the only real graph either name has ever had, to fix how a string
+# looks.
+#
+# WHEN THIS COMMENT WAS FIRST WRITTEN THE FILE WAS NOT IN THE PUBLISHED TREE.
+# A second outside review measured it: zero TTL files in the repository, the
+# path a 404. So the justification named a graph the reader could not open --
+# a published sentence pointing at a tree they have not got, which is the class
+# an earlier round closed, committed in the round that closed it. The file
+# ships now rather than the sentence being softened, because the sentence was
+# true and only its evidence was missing.
 #
 # `AXIOM` is declared and read NOWHERE -- measured across the whole source tree,
 # not just this module. It stays because the meta-ontology does declare the

@@ -306,6 +306,12 @@ class DomainModel:
     #: and ranks nothing -- the same refusal `project` makes when it computes
     #: a breach probability and no `report_above:` says what counts.
     planning: Dict[str, Any] = field(default_factory=dict)
+    #: the domain-level `causal:` block. One key today,
+    #: `evidence_severity:`, naming which finding severities make an entity
+    #: FAULTY evidence for `infer`. Absent means the engine's own floor, and
+    #: the envelope is stamped to say so: everywhere else in this engine a
+    #: number nobody declared is disclosed, and this one was not.
+    causal: Dict[str, Any] = field(default_factory=dict)
     #: When the world this model describes is OPEN, as declared sessions and
     #: holidays. A domain that declares none is always open and behaves exactly
     #: as it did before this existed; one that declares sessions has its
@@ -570,6 +576,8 @@ class DomainModel:
                            spec, _KNOWN_ACTION_PARAM_KEYS, label)
         report("planning", getattr(self, "planning", None),
                _KNOWN_PLANNING_KEYS, "")
+        report("causal", getattr(self, "causal", None),
+               _KNOWN_CAUSAL_KEYS, "")
         return out
 
     def unreachable_declarations(self) -> List[Dict[str, Any]]:
@@ -820,6 +828,12 @@ _KNOWN_TRANSITION_KEYS = frozenset({
 _KNOWN_PLANNING_KEYS = frozenset({
     "objective", "min_severity", "max_rollouts", "max_depth",
 })
+
+#: The domain-level `causal:` block. One member, and it is here from the first
+#: day rather than after a typo reached somebody: a misspelled key in a block
+#: whose absence is legal would silently take the default it was written to
+#: replace.
+_KNOWN_CAUSAL_KEYS = frozenset({"evidence_severity"})
 
 #: `action_templates:` is mixed, which is why it is here rather than trusted.
 #: A mistyped `entity_property` is caught at rollout time -- the action is
@@ -1358,6 +1372,7 @@ def load_domain(source: Union[str, Path, Dict[str, Any]]) -> DomainModel:
                 domain.get("action_templates"), "action_templates")
             if isinstance(t, dict)],
         planning=dict(domain.get("planning") or {}),
+        causal=dict(domain.get("causal") or {}),
         indicators=indicators,
     )
 

@@ -19,8 +19,10 @@ and none of them is a number substituted quietly so the call can return one.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
+from typing import (Any, Dict, FrozenSet, List, Optional, Sequence, Set,
+                    Tuple)
 
+from ..assumptions import EVIDENCE_SEVERITY_NOT_DECLARED
 from ..subenvelope import Decline, SubEnvelope
 from ..twin.gap import GAP_CONFIDENCE_THRESHOLDS as _GAP_WEIGHT
 from ..twin.topology import GapType, TopologyGap, TopologyQuestion
@@ -62,12 +64,43 @@ def _question(gap_type, location, description, text):
         context_path=[])
 
 
-def evidence_from(session, graph: CausalGraph) -> Tuple[Dict[str, int], List[str]]:
+#: The floor this engine uses when a model declares none. It was a literal in
+#: the loop below and said so nowhere -- and the stamp it emits.
+DEFAULT_EVIDENCE_SEVERITIES: FrozenSet[str] = frozenset({"HIGH", "CRITICAL"})
+
+
+def evidence_severities(model) -> Tuple[FrozenSet[str], bool]:
+    """`(floor, declared)` -- which severities make an entity FAULTY evidence.
+
+    An unusable declaration is treated as NO declaration and reported the same
+    way, deliberately. Partially applying a list with a typo in it would leave
+    an author reading a posterior computed against a floor they did not write
+    and cannot see; the stamp says the floor was the engine's, which is then
+    true. So `[critical, hihg]` falls back and discloses, rather than quietly
+    becoming `[critical]`.
+    """
+    known = {member.value.upper() for member in Severity}
+    declared = (getattr(model, "causal", None) or {}).get("evidence_severity")
+    if not isinstance(declared, (list, tuple)) or not declared:
+        return DEFAULT_EVIDENCE_SEVERITIES, False
+    asked = {str(value).strip().upper() for value in declared}
+    if not asked or not asked <= known:
+        return DEFAULT_EVIDENCE_SEVERITIES, False
+    return frozenset(asked), True
+
+
+def evidence_from(session, graph: CausalGraph,
+                  severities: Optional[FrozenSet[str]] = None
+                  ) -> Tuple[Dict[str, int], List[str]]:
     """`(observed, unobserved)` from the last check.
 
     An entity in `not_checked` is left OUT, not set clean. Reporting the list
     is half the answer: a posterior computed with six of ten nodes unobserved
     is a different claim from one computed with all ten.
+
+    `severities` is the floor above which a finding makes an entity FAULTY.
+    Default when the caller supplies none, which is the shape this function had
+    before the floor was declarable at all.
     """
     result = getattr(session, "_last_result", None)
     if result is None:
@@ -77,7 +110,7 @@ def evidence_from(session, graph: CausalGraph) -> Tuple[Dict[str, int], List[str
     for problem in list(getattr(result, "problems", ()) or ()) + \
             list(getattr(result, "warnings", ()) or ()):
         severity = getattr(getattr(problem, "severity", None), "value", "")
-        if str(severity).upper() in ("HIGH", "CRITICAL"):
+        if str(severity).upper() in (severities or DEFAULT_EVIDENCE_SEVERITIES):
             faulty.add(str(getattr(problem, "entity_id", "")))
 
     declined: Set[str] = set()
@@ -191,12 +224,20 @@ def run_inference(session, query: Query,
             evidence={"latent": latent}))
         return SubEnvelope("inference", checked, findings, declines, questions)
 
-    observed, unobserved = evidence_from(session, working)
+    severities, floor_declared = evidence_severities(session.model)
+    observed, unobserved = evidence_from(session, working, severities)
     for node in query.do:
         observed[node] = query.do[node]
     observed.pop(query.target, None)
     checked["evidence"] = len(observed)
     checked["unobserved"] = len(unobserved)
+    # from here down the answer depends on WHICH severities counted
+    # as faulty, so every exit below carries the disclosure. The two returns
+    # above this line are refusals decided from the GRAPH alone -- a cycle, an
+    # open backdoor -- and read no evidence, so stamping them would name a
+    # choice that did not touch the answer.
+    stamps: Tuple[str, ...] = (
+        () if floor_declared else (EVIDENCE_SEVERITY_NOT_DECLARED,))
 
     relevant = _relevant_edges(working, query, observed)
     defaulted = sorted(f"{s}->{t}" for (s, t) in relevant
@@ -215,7 +256,8 @@ def run_inference(session, query: Query,
                 "no causal weight declared on an edge the query depends on",
                 f"How strongly does a fault at {edge.split('->')[0]} break "
                 f"{edge.split('->')[1]}? Declare `causal.weight`."))
-        return SubEnvelope("inference", checked, findings, declines, questions)
+        return SubEnvelope("inference", checked, findings, declines, questions,
+                           assumptions=stamps)
 
     try:
         posterior = eliminate(_factors(working), query.target, observed)
@@ -226,7 +268,8 @@ def run_inference(session, query: Query,
                     "this engine will build; the graph is a DAG and the answer "
                     "is well defined, but not by this method"),
             evidence={"variable": wide.variable, "width": wide.width}))
-        return SubEnvelope("inference", checked, findings, declines, questions)
+        return SubEnvelope("inference", checked, findings, declines, questions,
+                           assumptions=stamps)
 
     if posterior is None:
         declines.append(Decline(
@@ -235,7 +278,8 @@ def run_inference(session, query: Query,
                     "there is no posterior to report -- the model and the "
                     "observations disagree"),
             evidence={"observed": len(observed)}))
-        return SubEnvelope("inference", checked, findings, declines, questions)
+        return SubEnvelope("inference", checked, findings, declines, questions,
+                           assumptions=stamps)
 
     checked["answered"] = 1
     checked["posterior"] = round(posterior, 6)
@@ -263,7 +307,8 @@ def run_inference(session, query: Query,
             session, working, query, posterior, observed, unobserved,
             report_above))
 
-    return SubEnvelope("inference", checked, findings, declines, questions)
+    return SubEnvelope("inference", checked, findings, declines, questions,
+                       assumptions=stamps)
 
 
 def _posterior_finding(session, graph, query, posterior, observed,
