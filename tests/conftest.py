@@ -34,10 +34,51 @@ go untested, which is the failure mode a transcribed list in an enumerating
 position produces.
 """
 
+import tempfile
+
 import pytest
 
 from arbiter_engine.api import EngineSession
 from arbiter_engine.types import Axiom
+
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _temporary_files_land_where_something_removes_them(tmp_path_factory):
+    """Point `tempfile` at a directory the test runner prunes.
+
+    WHAT THIS FIXES. Seventeen places in this suite build a model file with
+    `tempfile.mktemp(suffix=".yaml")`, write it, hand the path to the engine
+    and never remove it -- `mktemp` only invents a name, so nothing was ever
+    going to. Each is correct in isolation and the suite leaves one file per
+    call per run. Measured on the development box before this landed:
+    **79,031 files, 88.4 MB, the oldest from 2026-08-17.**
+
+    THE COST WAS NOT DISK. It was paid by an unrelated test, in another
+    directory, which asks the orchestrator to load a domain file and gets back
+    a loop over every YAML beside it -- and *beside it* was the shared
+    temporary directory this suite had been filling for weeks. That test read
+    as broken on one machine and passed in a container, because a container
+    starts with none of these. A leak with no symptom of its own pays out
+    somewhere with no obvious connection to it.
+
+    WHY HERE RATHER THAN AT THE SEVENTEEN CALL SITES. Every one of them is
+    inside a function, so a session fixture reaches all of them, and it reaches
+    the eighteenth that someone writes next year without their having to know
+    this happened. `tmp_path_factory` hands back a directory the runner prunes
+    on a rolling basis, so the pile is bounded instead of permanent. The
+    previous value is restored on the way out so that nothing outside this
+    suite inherits the redirect.
+
+    `test_the_lane_cleans_up_after_itself.py` holds it: remove this fixture and
+    that test goes red rather than the suite going quietly back to leaking.
+    """
+    previous = tempfile.tempdir
+    tempfile.tempdir = str(tmp_path_factory.mktemp("engine_lane"))
+    try:
+        yield
+    finally:
+        tempfile.tempdir = previous
 
 
 #: One entity type per axiom, so a cell can never be answered by a sibling

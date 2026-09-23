@@ -59,7 +59,8 @@ import yaml
 
 from ..axiom_thresholds import THRESHOLD_FIELDS
 from ..interfaces import IndicatorSpec
-from ..types import Axiom, IndicatorType, Severity
+from ..types import (Axiom, IndicatorType, Severity,
+                     read_severity_floor)
 from .axioms.roles import (
     ROLES, explain_absence, normalise_role, unreachable_axioms,
 )
@@ -578,7 +579,72 @@ class DomainModel:
                _KNOWN_PLANNING_KEYS, "")
         report("causal", getattr(self, "causal", None),
                _KNOWN_CAUSAL_KEYS, "")
+        out.extend(self._unread_evidence_severity())
         return out
+
+    def _unread_evidence_severity(self) -> List[Dict[str, Any]]:
+        """The VALUE side of `causal.evidence_severity:`.
+
+        The comment beside `_KNOWN_CAUSAL_KEYS` says a misspelled key in a
+        block whose absence is legal silently takes the default it was written
+        to replace. That is just as true one level down, and the key side was
+        closed while the value side was not: `evidence_severity: [critical,
+        hihg]` fell back to the engine's floor and said so with a stamp that
+        an omission produces identically. An outside review measured four
+        different author actions collapsing into one bare disclosure, three of
+        them the author TRYING to declare the floor.
+
+        The stamp on the envelope now says a declaration was refused. This says
+        WHICH WORD, which is the half a stamp cannot carry.
+        """
+        read = read_severity_floor(getattr(self, "causal", None))
+        if not read.present or read.problem is None:
+            return []
+
+        field = "causal.evidence_severity"
+        valid = [member.value for member in Severity]
+        valid_text = ", ".join(valid)
+        rows: List[Dict[str, Any]] = []
+
+        if read.problem == "unknown_value":
+            for value in read.rejected:
+                near = _did_you_mean(value, valid, cutoff=0.7)
+                remedy = (
+                    f"`{field}: {value}` is not a severity this engine "
+                    f"recognises, so the whole floor was refused and the "
+                    f"engine's own was used; valid values are {valid_text}")
+                if near:
+                    remedy += f" -- did you mean `{near}`?"
+                rows.append({
+                    "field": field, "reason": "unknown_value",
+                    "value": value, "read_by": [], "did_you_mean": near,
+                    "remedy": remedy,
+                })
+            return rows
+
+        # NOT `unknown_value`: nothing here is an unrecognised severity. A
+        # scalar `critical` names a real one and a `[]` names none, so calling
+        # either an unknown value would misdescribe it confidently -- and
+        # `did_you_mean` would have nothing to say.
+        written = (self.causal or {}).get("evidence_severity")
+        if read.problem == "empty":
+            detail = "at least one severity; an empty list declares no floor"
+        elif written is None:
+            # `evidence_severity:` on its own line. The author DID write the
+            # key, so this is not an omission -- and telling them it is not a
+            # single value would describe something they did not do.
+            detail = "a list of severities; this key was written with none"
+        else:
+            detail = "a list of severities, not a single value"
+        rows.append({
+            "field": field, "reason": "malformed_value",
+            "value": written,
+            "read_by": [], "did_you_mean": None,
+            "remedy": (f"`{field}` takes {detail}, so the declaration was "
+                       f"refused and the engine's own floor was used; valid "
+                       f"values are {valid_text}"),
+        })
+        return rows
 
     def unreachable_declarations(self) -> List[Dict[str, Any]]:
         """Declared (indicator, axiom) pairs that can never produce an

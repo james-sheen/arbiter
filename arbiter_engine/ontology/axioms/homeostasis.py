@@ -34,7 +34,14 @@ from ...clock import as_naive_utc, now_utc
 # duration parser would accept a slightly different set of spellings and
 # the difference would only ever surface as a model that loads here and
 # not there.
-from ..domain_loader import parse_duration
+# imported AT THE USE SITE, not here. `domain_loader` imports
+# `.axioms.roles`, so this module-level line closed a cycle: domain_loader ->
+# axioms/__init__ -> homeostasis -> domain_loader. It resolved only because the
+# ontology package's `__init__` used to import `reasoner` and `loader` first
+# and finished `domain_loader` on the way, an ordering nothing declared and
+# nothing tested. Making that `__init__` lazy removed the accident and the
+# cycle surfaced at once. `forecast/envelope.py` already borrows this function
+# the same way, which is the precedent rather than a new convention.
 # Module-level rather than the local import used further down: the marker is a
 # decorator, so it has to exist when the class body runs.
 from .extensions import binder_must_supply
@@ -212,6 +219,7 @@ class HomeostasisChecker:
         if raw is None:
             return value_history, []
 
+        from ..domain_loader import parse_duration
         span = parse_duration(raw)
         if span is None or span.total_seconds() <= 0:
             logger.warning(

@@ -1119,10 +1119,28 @@ invisible from the answer until 0.2.6: it is now disclosed as
 `evidence_severity_not_declared` on every envelope that used it, on the same
 rule as every other number this engine supplies rather than reads.
 
-A declaration this engine cannot use -- an empty list, or one naming a severity
-that does not exist -- is treated as NO declaration and stamped the same way,
-deliberately. Partially applying a list with a typo in it would leave an author
-reading a posterior computed against a floor they did not write and cannot see.
+A declaration this engine cannot use -- an empty list, a single value where a
+list belongs, or one naming a severity that does not exist -- is treated as NO
+declaration, deliberately. Partially applying a list with a typo in it would
+leave an author reading a posterior computed against a floor they did not write
+and cannot see.
+
+**But trying and being refused is not the same as never trying**, and until
+0.2.6 it looked the same: `[critical, hihg]` and an absent block both returned
+the bare `evidence_severity_not_declared`, so an author who mistyped a severity
+read *not declared*, concluded the file had not loaded, and had nothing to pull
+on. A refused declaration now carries `evidence_severity_unusable` BESIDE the
+first stamp -- the floor really was this engine's, so that claim stands -- and
+`model_describe` names the word in `unread_fields`:
+
+```
+causal.evidence_severity   unknown_value   value: hihg   did_you_mean: high
+```
+
+A value of the wrong shape is reported there too, as `malformed_value` rather
+than `unknown_value`, because a scalar `critical` names a real severity and an
+empty list names none: calling either an unrecognised value would misdescribe
+it, and there would be no near-miss to offer.
 
 ## Choosing between actions: `planning`
 
@@ -1230,6 +1248,7 @@ the key being absent.
 | `first_order_response` | the coupling was developed as dead time then an exponential approach -- the ordinary shape, and still a shape this engine chose |
 | `time_course_not_declared` | the time course crossed was not declared; this engine supplied a delay or a time constant, or both |
 | `evidence_severity_not_declared` | `infer` read the last check against THIS engine's severity floor, because the model declared none. Declare `causal.evidence_severity:` to choose it |
+| `evidence_severity_unusable` | the model DID declare `causal.evidence_severity:` and this engine could not use it, so the floor above was its own. Carried beside the stamp above, never instead of it; `model_describe` names the value that was refused |
 | `steady_state_reached` | the horizon outlasted the transient, so the value reported is the settled one |
 | `series_edges_composed_exactly` | two couplings in series were composed by the exact cascade response |
 | `series_edges_compose_by_product` | two couplings in series were composed by multiplying response fractions, which is an approximation |

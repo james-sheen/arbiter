@@ -62,6 +62,29 @@ TIME_COURSE_NOT_DECLARED = "time_course_not_declared"
 #: itself.
 EVIDENCE_SEVERITY_NOT_DECLARED = "evidence_severity_not_declared"
 
+#: The model DID declare `causal.evidence_severity:` and the engine could not
+#: use what it said, so the floor above is the engine's and the declaration was
+#: not partially applied. Carried BESIDE `evidence_severity_not_declared`
+#: rather than instead of it: the first stamp's claim -- the floor was ours --
+#: stays exactly as true, and a consumer already matching on it keeps matching.
+#:
+#:, and it exists because four different author actions were one bare
+#: stamp. Writing `[critical, hihg]`, writing `[]`, writing `critical` as a
+#: scalar and writing nothing at all all returned the same disclosure, and
+#: three of the four are someone TRYING to declare the floor. An outside review
+#: measured it: a reader who mistyped a severity was told `not declared`,
+#: concluded the file had not loaded, and had no thread to pull. The engine's
+#: own comment beside `_KNOWN_CAUSAL_KEYS` describes this failure for a
+#: misspelled KEY -- the key side was closed in the round that shipped it, the
+#: value side was not.
+#:
+#: WHICH WORD WAS REFUSED IS NOT HERE. It is in `model_describe`, as an
+#: `unknown_value` row naming the value and the nearest severity to it, because
+#: `assumptions` is a list of strings and the row shape carrying a
+#: `did_you_mean` already existed. This stamp says LOOK THERE; it does not
+#: duplicate what is there.
+EVIDENCE_SEVERITY_UNUSABLE = "evidence_severity_unusable"
+
 #: The horizon was long enough that the transient had finished, so the value
 #: reported is the steady state rather than a point on the way to it.
 STEADY_STATE_REACHED = "steady_state_reached"
@@ -200,6 +223,7 @@ ASSUMPTION_STAMPS: Tuple[str, ...] = (
     FIRST_ORDER_RESPONSE,
     TIME_COURSE_NOT_DECLARED,
     EVIDENCE_SEVERITY_NOT_DECLARED,
+    EVIDENCE_SEVERITY_UNUSABLE,
     STEADY_STATE_REACHED,
     SERIES_EDGES_COMPOSED_EXACTLY,
     SERIES_EDGES_COMPOSE_BY_PRODUCT,

@@ -24,6 +24,16 @@ AN UNUSABLE DECLARATION IS NO DECLARATION, and that is a decision rather than a
 shortcut. Partially applying `[critical, hihg]` as `[critical]` would leave an
 author reading a posterior computed against a floor they did not write and
 cannot see -- the same defect one level down.
+
+- AND IT WAS INDISTINGUISHABLE FROM NEVER HAVING TRIED. The round that
+shipped the two things above closed the KEY side of this and left the VALUE
+side open: a third outside review measured four different author actions
+returning one bare stamp, three of them someone attempting to declare the
+floor. The reading it reproduced was *not declared*, therefore *my file did not
+load*, with no thread to pull. What lands below is the second half -- a stamp
+BESIDE the first rather than instead of it, so the original claim and anyone
+matching on it are untouched, and the refused word named in `model_describe`
+where a `did_you_mean` can live.
 """
 
 from __future__ import annotations
@@ -33,9 +43,12 @@ import re
 
 import pytest
 
-from arbiter_engine.api import EngineSession, check, infer
+from arbiter_engine.api import (EngineSession, check, infer,
+                                            model_describe)
 from arbiter_engine.assumptions import (
-    EVIDENCE_SEVERITY_NOT_DECLARED, is_known_stamp)
+    EVIDENCE_SEVERITY_NOT_DECLARED, EVIDENCE_SEVERITY_UNUSABLE,
+    is_known_stamp)
+from arbiter_engine.types import Severity
 
 #: Measured. Also written into the example's header, so the two move together.
 AT_WARNING_UNDECLARED = 0.014182
@@ -172,3 +185,105 @@ class TestAnUnusableDeclarationIsNoDeclaration:
         the answer would match the strict-floor run and carry no stamp."""
         leg = _leg(_declaring("[critical, hihg]"), 212.0)
         assert leg["assumptions"], "a typo was applied silently"
+
+
+def _rows(model: str) -> list:
+    """The `causal.` rows of `model_describe`'s unread-fields report."""
+    session = EngineSession()
+    session.load_model(model)
+    return [row for row
+            in model_describe(session).to_dict()["model"]["unread_fields"]
+            if str(row.get("field", "")).startswith("causal.")]
+
+
+class TestARefusedDeclarationIsDistinguishableFromAnOmission:
+    """The finding this class exists for, stated as the measurement that found
+    it: write four different things, read four different reports."""
+
+    def test_an_omission_carries_only_the_first_stamp(self):
+        leg = _leg(_base(), 212.0)
+        assert leg["assumptions"] == [EVIDENCE_SEVERITY_NOT_DECLARED]
+
+    @pytest.mark.parametrize("severities",
+                             ["[critical, hihg]", "[]", "[nonsense]",
+                              "critical"])
+    def test_a_refused_declaration_carries_both(self, severities):
+        leg = _leg(_declaring(severities), 212.0)
+        assert EVIDENCE_SEVERITY_UNUSABLE in leg["assumptions"], severities
+        assert EVIDENCE_SEVERITY_NOT_DECLARED in leg["assumptions"], severities
+
+    def test_a_usable_declaration_carries_neither(self):
+        leg = _leg(_declaring("[warning, high, critical]"), 212.0)
+        assert leg.get("assumptions", []) == []
+
+    def test_the_two_reports_are_not_the_same_report(self):
+        """The whole finding in one assertion: these were equal before."""
+        omitted = _leg(_base(), 212.0)["assumptions"]
+        refused = _leg(_declaring("[critical, hihg]"), 212.0)["assumptions"]
+        assert omitted != refused
+
+    def test_the_second_stamp_never_arrives_alone(self):
+        """`not_declared` stays true whenever `unusable` is emitted -- the
+        floor really was the engine's. A consumer matching only the first name
+        must not stop matching because the author tried and was refused."""
+        for severities in ("[critical, hihg]", "[]", "critical"):
+            leg = _leg(_declaring(severities), 212.0)
+            if EVIDENCE_SEVERITY_UNUSABLE in leg["assumptions"]:
+                assert EVIDENCE_SEVERITY_NOT_DECLARED in leg["assumptions"]
+
+    def test_the_stamp_is_in_the_published_vocabulary(self):
+        assert is_known_stamp(EVIDENCE_SEVERITY_UNUSABLE)
+
+    def test_the_guide_documents_it(self):
+        assert EVIDENCE_SEVERITY_UNUSABLE in _spec()
+
+
+class TestModelDescribeNamesTheWordThatWasRefused:
+    """A stamp cannot carry which value was rejected -- `assumptions` is a list
+    of strings. The row that can carry it already existed for indicators."""
+
+    def test_a_misspelled_severity_is_named_with_a_near_miss(self):
+        rows = _rows(_declaring("[critical, hihg]"))
+        assert len(rows) == 1, rows
+        assert rows[0]["reason"] == "unknown_value"
+        assert rows[0]["value"] == "hihg"
+        assert rows[0]["did_you_mean"] == "high"
+
+    def test_the_remedy_lists_the_severities_that_would_work(self):
+        remedy = _rows(_declaring("[critical, hihg]"))[0]["remedy"]
+        for member in Severity:
+            assert member.value in remedy, member
+
+    @pytest.mark.parametrize("severities,written",
+                             [("critical", "critical"), ("[]", []),
+                              ("", None)])
+    def test_a_wrong_shape_is_not_called_an_unknown_value(self, severities,
+                                                          written):
+        """`critical` names a real severity and `[]` names none, so
+        `unknown_value` would misdescribe both and offer no near-miss."""
+        rows = _rows(_declaring(severities))
+        assert len(rows) == 1, rows
+        assert rows[0]["reason"] == "malformed_value"
+        assert rows[0]["value"] == written
+        assert rows[0]["did_you_mean"] is None
+
+    def test_a_bare_key_is_told_it_was_written_with_no_value(self):
+        """`evidence_severity:` on its own line. The author DID write the key,
+        so `not a single value` would describe something they did not do."""
+        remedy = _rows(_declaring(""))[0]["remedy"]
+        assert "written with none" in remedy
+
+    def test_a_usable_declaration_reports_nothing(self):
+        assert _rows(_declaring("[warning, high, critical]")) == []
+
+    def test_an_omission_reports_nothing(self):
+        assert _rows(_base()) == []
+
+    def test_a_misspelled_key_still_reports_as_a_key(self):
+        """The key side closed a round earlier and must stay closed: a typo in
+        the KEY is an unknown key, not an unusable value."""
+        model = _base().replace(
+            "  entity_types:",
+            "  causal:\n    evidence_severty: [critical]\n\n  entity_types:", 1)
+        rows = _rows(model)
+        assert [r["reason"] for r in rows] == ["unknown_key"]

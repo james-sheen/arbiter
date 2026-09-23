@@ -37,6 +37,17 @@ from arbiter_engine.types import Axiom, AXIOM_MINIMUMS
 AXIOM_NS = "http://example.org/axiom#"
 
 
+#: BOTH TREES, FIRST MATCH WINS. The published package keeps these files under
+#: `arbiter_engine/`; the tree this package is derived from keeps them one
+#: level deeper under `detection/`, and the same test file runs in both. The
+#: second candidate is therefore the DERIVING tree's layout, not a foreign
+#: one --, after a review reading the published copy alone took it for
+#: the defect that an internal ruling closed. It is not that defect: the first
+#: candidate resolves where a reader is standing, and the file it names is
+#: right there beside it.
+#: The shape is the convention across this suite rather than local to
+#: here -- stated without a count, because an unpinned number in a
+#: comment is the drift was filed about one round ago.
 def _graph_path() -> pathlib.Path:
     here = pathlib.Path(__file__).resolve()
     for candidate in (
@@ -163,3 +174,59 @@ class TestTheRdfPathActuallyRuns:
                  for s, _, _ in loader.graph.triples(
                      (None, RDF.type, Namespace(AXIOM_NS).Axiom))}
         assert found == {a.name for a in Axiom}, sorted(found)
+
+
+def _readme() -> str:
+    here = pathlib.Path(__file__).resolve()
+    for candidate in (here.parents[1] / "README.md",
+                      here.parents[2] / "docs" / "publication"
+                      / "README-merged.md"):
+        if candidate.is_file():
+            return candidate.read_text(encoding="utf-8")
+    raise AssertionError("no README found in this tree")
+
+
+class TestTheGraphShipsAndTheEngineDoesNotReadIt:
+    """The third outside review measured the state this leaves: a
+    supported extra, a shipped graph, a loader that round-trips it under test,
+    and no runtime path that reads it. That is a DECISION -- the README now
+    says the RDF layer is an interchange format the engine does not read -- and
+    a decision recorded in prose alone rots the moment someone wires it in.
+
+    So both halves are pinned. If the reasoner starts loading the graph, the
+    first test fails and the README is wrong. If the README stops saying it,
+    the last test fails and the claim has quietly gone.
+    """
+
+    def test_a_default_reasoner_has_loaded_no_meta_ontology(self):
+        from arbiter_engine.ontology import UnifiedAxiomReasoner
+        assert UnifiedAxiomReasoner().loader.meta_loaded is False
+
+    def test_no_supported_verb_passes_a_meta_ontology_path(self):
+        """`load_meta_ontology` takes its path from a caller and the only
+        caller is guarded by a parameter nothing in the package supplies."""
+        from arbiter_engine.ontology import reasoner as mod
+        source = pathlib.Path(mod.__file__).read_text(encoding="utf-8")
+        assert "if meta_ontology_path:" in source
+
+    def test_loading_it_changes_no_indicator(self):
+        """The README's REASON, not just its sentence. `wiring it in would
+        change no answer` is a claim, and this is the measurement behind it:
+        the graph declares the vocabulary a DOMAIN ontology would use and
+        carries no entity class, so it cannot add an indicator to anything.
+        """
+        pytest.importorskip("rdflib")
+        from arbiter_engine.ontology.loader import OntologyLoader
+        plain, loaded = OntologyLoader(), OntologyLoader()
+        assert loaded.load_meta_ontology(str(_graph_path()))
+        assert loaded.meta_loaded is True
+        for entity_type in ("Supply", "Feeder", "Panel", "Node", "Anything"):
+            assert ([spec.name for spec in plain.get_indicators(entity_type)]
+                    == [spec.name for spec in loaded.get_indicators(entity_type)])
+
+    def test_the_readme_records_the_decision(self):
+        text = _readme()
+        assert "## What is not here, and why" in text
+        section = text.split("## What is not here, and why", 1)[1]
+        section = section.split("\n## ", 1)[0]
+        assert "RDF" in section, "the README stopped saying it"

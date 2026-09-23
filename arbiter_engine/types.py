@@ -8,7 +8,8 @@ the detection system.
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import (Any, Dict, FrozenSet, List, NamedTuple, Optional, Set,
+                    Tuple, Union)
 import uuid
 
 
@@ -97,6 +98,68 @@ class Severity(str, Enum):
             Severity.LOW: 4,
             Severity.INFO: 5,
         }[self]
+
+
+#: Sentinel for a key that is not in the block at all, kept distinct from a key
+#: written with nothing after it. `evidence_severity:` on its own line parses to
+#: None, and an author who typed it is in a different position from one who
+#: never heard of it: the first gets told their declaration was not used.
+_NOT_WRITTEN = object()
+
+
+class SeverityFloor(NamedTuple):
+    """What an author's declared severity floor came to.
+
+    Both surfaces that report on `causal.evidence_severity:` read it
+    from here -- `infer`, which stamps the envelope when the floor it used was
+    the engine's, and `model_describe`, which names the rejected word. They had
+    no shared source before this and the valid-severity set would have been
+    written twice, which is the shape this project has watched drift before.
+
+    `floor` is empty whenever the declaration is unusable. It is NOT the
+    engine's default: substituting that is the caller's decision and one of
+    the two callers is only describing the model, not running it.
+    """
+
+    #: The severities the author named, upper-cased. Empty unless every one of
+    #: them is a real severity -- a list is applied whole or not at all.
+    floor: FrozenSet[str]
+    #: The values that are not severities, in the order written, so a reader
+    #: is told which word to fix rather than that something was wrong.
+    rejected: Tuple[str, ...]
+    #: Did the author write the key at all.
+    present: bool
+    #: What made it unusable, or None when it is usable or absent. One of
+    #: `not_a_list`, `empty`, `unknown_value`.
+    problem: Optional[str]
+
+
+def read_severity_floor(block: Any,
+                        key: str = "evidence_severity") -> SeverityFloor:
+    """Read a declared severity floor out of a `causal:`-shaped block.
+
+    UNUSABLE IS NOT PARTIAL. `[critical, hihg]` yields an EMPTY floor and names
+    `hihg` as rejected, never a floor of `{CRITICAL}`. Applying the half that
+    parsed would leave an author reading a posterior computed against a floor
+    they did not write and cannot see -- the silence the envelope exists to end.
+    """
+    declared = block.get(key, _NOT_WRITTEN) \
+        if isinstance(block, dict) else _NOT_WRITTEN
+    if declared is _NOT_WRITTEN:
+        return SeverityFloor(frozenset(), (), False, None)
+    if not isinstance(declared, (list, tuple)):
+        return SeverityFloor(frozenset(), (), True, "not_a_list")
+    if not declared:
+        return SeverityFloor(frozenset(), (), True, "empty")
+
+    known = {member.value.upper() for member in Severity}
+    rejected = tuple(str(value) for value in declared
+                     if str(value).strip().upper() not in known)
+    if rejected:
+        return SeverityFloor(frozenset(), rejected, True, "unknown_value")
+    return SeverityFloor(
+        frozenset(str(value).strip().upper() for value in declared),
+        (), True, None)
 
 
 class PropertyType(Enum):

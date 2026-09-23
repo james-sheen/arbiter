@@ -22,11 +22,12 @@ from dataclasses import dataclass, field
 from typing import (Any, Dict, FrozenSet, List, Optional, Sequence, Set,
                     Tuple)
 
-from ..assumptions import EVIDENCE_SEVERITY_NOT_DECLARED
+from ..assumptions import (EVIDENCE_SEVERITY_NOT_DECLARED,
+                           EVIDENCE_SEVERITY_UNUSABLE)
 from ..subenvelope import Decline, SubEnvelope
 from ..twin.gap import GAP_CONFIDENCE_THRESHOLDS as _GAP_WEIGHT
 from ..twin.topology import GapType, TopologyGap, TopologyQuestion
-from ..types import Axiom, Severity
+from ..types import Axiom, Severity, read_severity_floor
 from .causal import SOURCE_DEFAULT, CausalGraph, causal_subgraph
 from .ve import Factor, FactorTooWide, eliminate, noisy_or_factor
 
@@ -69,24 +70,29 @@ def _question(gap_type, location, description, text):
 DEFAULT_EVIDENCE_SEVERITIES: FrozenSet[str] = frozenset({"HIGH", "CRITICAL"})
 
 
-def evidence_severities(model) -> Tuple[FrozenSet[str], bool]:
-    """`(floor, declared)` -- which severities make an entity FAULTY evidence.
+def evidence_severities(model) -> Tuple[FrozenSet[str], bool, bool]:
+    """`(floor, declared, unusable)` -- which severities make evidence FAULTY.
 
-    An unusable declaration is treated as NO declaration and reported the same
-    way, deliberately. Partially applying a list with a typo in it would leave
-    an author reading a posterior computed against a floor they did not write
-    and cannot see; the stamp says the floor was the engine's, which is then
-    true. So `[critical, hihg]` falls back and discloses, rather than quietly
+    An unusable declaration falls back to the engine's floor and is NOT
+    partially applied. Applying the half that parsed would leave an author
+    reading a posterior computed against a floor they did not write and cannot
+    see; `[critical, hihg]` therefore becomes the default rather than quietly
     becoming `[critical]`.
+
+    `unusable` SEPARATES TRYING FROM NOT TRYING. Until this returned
+    two values and an author who mistyped a severity got the same bare
+    `evidence_severity_not_declared` as one who declared nothing -- the reading
+    an outside review reproduced was *not declared*, therefore *my file did not
+    load*, and there was no thread to pull. The floor is still the engine's in
+    both cases, so the first stamp stays; the second says a declaration was
+    refused, and `model_describe` names the word.
     """
-    known = {member.value.upper() for member in Severity}
-    declared = (getattr(model, "causal", None) or {}).get("evidence_severity")
-    if not isinstance(declared, (list, tuple)) or not declared:
-        return DEFAULT_EVIDENCE_SEVERITIES, False
-    asked = {str(value).strip().upper() for value in declared}
-    if not asked or not asked <= known:
-        return DEFAULT_EVIDENCE_SEVERITIES, False
-    return frozenset(asked), True
+    read = read_severity_floor(getattr(model, "causal", None))
+    if read.floor:
+        return read.floor, True, False
+    # `present` can only be True here if the declaration was unusable -- a
+    # usable one returned above with a non-empty floor.
+    return DEFAULT_EVIDENCE_SEVERITIES, False, read.present
 
 
 def evidence_from(session, graph: CausalGraph,
@@ -224,7 +230,8 @@ def run_inference(session, query: Query,
             evidence={"latent": latent}))
         return SubEnvelope("inference", checked, findings, declines, questions)
 
-    severities, floor_declared = evidence_severities(session.model)
+    severities, floor_declared, floor_unusable = \
+        evidence_severities(session.model)
     observed, unobserved = evidence_from(session, working, severities)
     for node in query.do:
         observed[node] = query.do[node]
@@ -236,8 +243,9 @@ def run_inference(session, query: Query,
     # above this line are refusals decided from the GRAPH alone -- a cycle, an
     # open backdoor -- and read no evidence, so stamping them would name a
     # choice that did not touch the answer.
-    stamps: Tuple[str, ...] = (
-        () if floor_declared else (EVIDENCE_SEVERITY_NOT_DECLARED,))
+    stamps: Tuple[str, ...] = () if floor_declared else (
+        (EVIDENCE_SEVERITY_NOT_DECLARED,)
+        + ((EVIDENCE_SEVERITY_UNUSABLE,) if floor_unusable else ()))
 
     relevant = _relevant_edges(working, query, observed)
     defaulted = sorted(f"{s}->{t}" for (s, t) in relevant

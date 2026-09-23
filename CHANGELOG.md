@@ -46,7 +46,15 @@ useful-looking document and the less trustworthy one.
   as before, and now says so: the envelope carries
   `evidence_severity_not_declared`. A model whose breaches are all warnings had
   every posterior sitting at its prior with nothing to explain why.
-- **New public names.** `EVIDENCE_SEVERITY_NOT_DECLARED` joins `ASSUMPTION_STAMPS`,
+- **A refused `causal.evidence_severity:` says so.** A declaration the engine
+  cannot use still falls back to its own floor and is still not applied in
+  part, but the envelope now carries `evidence_severity_unusable` beside
+  `evidence_severity_not_declared`, and `model_describe` names the value in
+  `unread_fields` -- `unknown_value` with a `did_you_mean` for a misspelled
+  severity, `malformed_value` for one of the wrong shape. Writing
+  `[critical, hihg]` and writing nothing were previously the same disclosure.
+- **New public names.** `EVIDENCE_SEVERITY_NOT_DECLARED` and
+  `EVIDENCE_SEVERITY_UNUSABLE` join `ASSUMPTION_STAMPS`,
   and `SqlitePredictionLedger` is exported from the package root. A stamp is
   matched on its VALUE on the wire; the constant is offered so a misspelling is
   an import error rather than a disclosure that silently stops matching.

@@ -450,6 +450,16 @@ The engine is open. The knowledge and the operations are not.
   `horizon_s + grace_s` leaves the record `ungradeable` rather than `falsified`, because not
   looking at the right instant is not evidence about what was there. Neither is a defect; both are
   discovered by trial unless somebody writes them down.
+- **The RDF layer, as something the engine reads.** `rdf` is a supported extra and
+  `health_meta_ontology.ttl` ships inside the package, so the graph the loader's namespaces point at
+  is one you can open. Nothing in the engine loads it. `OntologyLoader.load_meta_ontology` takes a
+  path from its caller, `UnifiedAxiomReasoner` calls it only when one is passed, and no supported
+  verb passes one. **Wiring it in was measured and declined, not deferred**: the graph declares the
+  vocabulary a DOMAIN ontology would use and carries no entity class of its own, so a loader with it
+  parsed resolves the same indicators as one without — loading it by default would cost a parse at
+  startup and change no answer. It is an interchange format kept for one platform; the extra exists
+  so a caller who wants to read the graph themselves gets a declared dependency rather than a guess,
+  and the file ships so that the comment naming it can be checked from where you are standing.
 - **Two lazy imports reach outside the cut, and they behave differently.** One root-cause wiring
   module and an LLM client are imported lazily and are not shipped, so the package still imports
   cleanly. The root-cause wiring **degrades to a no-op** — its callsite is guarded and the feature it
