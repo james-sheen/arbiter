@@ -78,7 +78,7 @@ useful-looking document and the less trustworthy one.
   `Literal`, `RDF`, `RDFS`, `OWL`, `XSD`. A first version of this change bound
   them to `None` at import and said so here. That was wrong in three ways and
   none of them reached a release: a `from ... import` took the `None`
-  permanently, six names that had raised `ImportError` without the extra began
+  permanently, the names that had raised `ImportError` without the extra began
   answering `None` instead, and `HAS_RDFLIB` answered `None` rather than a bool
   in both states. They resolve exactly as they did before. None is a supported
   name; they are listed because a reader who imports one would otherwise have

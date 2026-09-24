@@ -12,8 +12,13 @@ else, in three separate ways, all measured against the previous release:
   - `...ontology.loader import HEALTH` takes a COPY of the binding at
     import time. It stayed `None` in the caller's namespace permanently, no
     matter what was loaded afterwards. Before, it was the namespace.
-  - WITHOUT the extra, six names that had correctly raised `ImportError` began
-    answering `None`. A name that does not exist started existing, as nothing.
+  - WITHOUT the extra, seven names that had correctly raised `ImportError`
+    began answering `None`. A name that does not exist started existing, as
+    nothing. (SEVEN, and this sentence said six until an outside round counted
+    the tuple below and found the prose beside it disagreeing. The count is
+    checked against that tuple now -- see the last test in this file -- because
+    a file whose subject is *a fix must not move a name* had a number in its own
+    docstring that nothing held.)
   - `HAS_RDFLIB` answered `None` in BOTH states -- not a bool -- so a caller
     writing `if HAS_RDFLIB:` took the wrong branch with rdflib INSTALLED.
 
@@ -37,9 +42,15 @@ import textwrap
 
 import pytest
 
-# Rewritten to the published package name by the build, so one file states the
-# claim for both trees.
-PACKAGE = "arbiter_engine"
+# -- DERIVED, not written down. This used to be a string literal naming
+# the source package, which the build substitutes in place: correct in effect,
+# and indistinguishable to a checker from the prose leaks that substitution
+# destroys. Reading it off an imported module's `__package__` puts the only
+# mention of the name on an import line, where the rewrite is meant to act, and
+# makes the value a derivation rather than a second copy of it.
+from arbiter_engine import types as _anchor
+
+PACKAGE = _anchor.__package__
 LOADER = f"{PACKAGE}.ontology.loader"
 EXTRA = "rdflib"
 
@@ -211,3 +222,36 @@ class TestTheLazinessIsStillReal:
                 raise AssertionError("a missing name resolved")
         """)
         assert r.returncode == 0, r.stderr[-1500:]
+
+
+class TestThisFileHoldsItsOwnDocstring:
+    """The smallest thing this round found, and the one with the shortest route
+    from prose to proof: the counts above are stated in English and defined in
+    Python four lines apart, and they disagreed."""
+
+    def test_the_docstring_count_matches_the_tuple_it_describes(self):
+        import re
+        words = {w: i for i, w in enumerate(
+            "zero one two three four five six seven eight nine ten".split())}
+        doc = __doc__ or ""
+        said = re.search(r"\b(" + "|".join(words) + r"|\d+)\s+names that had",
+                         doc, re.I)
+        assert said, "the docstring no longer states a count; drop this test too"
+        raw = said.group(1).lower()
+        stated = words.get(raw, None)
+        if stated is None:
+            stated = int(raw)
+        assert stated == len(ABSENT_WITHOUT_EXTRA), (
+            f"the docstring says {raw} and ABSENT_WITHOUT_EXTRA holds "
+            f"{len(ABSENT_WITHOUT_EXTRA)}")
+
+    def test_the_two_groups_account_for_every_name_the_module_exposes(self):
+        """Two-sided: the counts can also drift by a name leaving the module
+        entirely, which the test above would not see."""
+        from importlib import import_module
+        loader = import_module(LOADER)
+        exposed = set(loader._RDFLIB_NAMES) | {"HAS_RDFLIB"}
+        described = set(ABSENT_WITHOUT_EXTRA) | set(NONE_WITHOUT_EXTRA) | {"HAS_RDFLIB"}
+        assert described == exposed, (
+            f"described but not exposed: {described - exposed}; "
+            f"exposed but not described: {exposed - described}")

@@ -36,10 +36,15 @@ import sys
 
 import pytest
 
-# Rewritten to the published package name by build-engine.sh, which is what
-# makes this file dual-runnable: it names the orchestrator's copy here and the
-# published one there, and the claim is the same claim in both.
-PACKAGE = "arbiter_engine"
+# -- DERIVED, not written down. This used to be a string literal naming
+# the source package, which the build substitutes in place: correct in effect,
+# and indistinguishable to a checker from the prose leaks that substitution
+# destroys. Reading it off an imported module's `__package__` puts the only
+# mention of the name on an import line, where the rewrite is meant to act, and
+# makes the value a derivation rather than a second copy of it.
+from arbiter_engine import types as _anchor
+
+PACKAGE = _anchor.__package__
 
 OPTIONAL_EXTRA = "rdflib"
 

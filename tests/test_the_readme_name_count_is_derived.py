@@ -178,18 +178,26 @@ _ORDINALS = {
 def _mcp_server():
     """The MCP shim, in whichever tree this runs in.
 
-    The two trees differ in SHAPE and not only in prefix -- `arbiter_mcp` sits
-    beside the engine package in the repository and is folded in as
-    `<root>.mcp` by the build -- so this tries both rather than deriving one
-    from the anchor.
+    The two trees differ in SHAPE and not only in prefix -- the shim sits beside
+    the engine package in one and is folded into it in the other -- so the path
+    cannot be built from the anchor the rest of this file uses.
+
+    IT USED TO TRY A TUPLE OF TWO PATHS, and the derivation
+    substituted one into the other, so the published copy read
+
+        for path in ("<root>.mcp.server", "<root>.mcp.server"):
+
+    and tried a single module twice while this docstring said it tried both. A
+    plain import is correct in both trees for the same reason the tuple was
+    not: the substitution reaches an import statement and gets it right. The
+    guard that would have caught this had been failing on an unrelated file,
+    and a check that is already red cannot report the next thing.
     """
-    for path in ("arbiter_engine.mcp.server",
-                 "arbiter_engine.mcp.server"):
-        try:
-            return importlib.import_module(path)
-        except ImportError:
-            continue
-    return None
+    try:
+        from arbiter_engine.mcp import server
+    except ImportError:
+        return None
+    return server
 
 
 class TestTheProseFormsAreCheckedToo:

@@ -279,14 +279,19 @@ class TestTheKeySetsMatchWhatTheParsersRead:
 def _keys_read(varname: str) -> frozenset:
     """Literal keys read off `varname` in the topology builder, by AST.
 
-    DOTTED, and that is not a style choice. `build-engine.sh` rewrites
-    absolute imports with a regex anchored on a DOT after the package name, so
-    `from arbiter_engine import detection` passes through unrewritten and the
-    scrub then refuses the built tree for naming the source package.
-    `test_every_declared_tool_has_a_wrapper` records the same trap refusing the
-    0.2.4 build; this file refused the next one the same way, which is the
-    second instance and the reason the note is repeated where it bit rather
-    than left in one file.
+    THE ABSOLUTE IMPORTS IN THIS FILE ARE DOTTED, and that is not a style
+    choice. This suite is derived: one file runs against two package roots, and
+    the derivation recognises an absolute import by the DOT that follows the
+    package name. An import written without that dot is carried across
+    untouched, and then names a package that does not exist on the other side.
+
+    THE PARAGRAPH THAT USED TO STAND HERE explained the same trap by
+    naming the tool that performs the derivation and quoting a dotless import as
+    an example. Neither survives the crossing: the tool is not in this tree, and
+    the example is itself an absolute import, so it was rewritten in place and
+    the published sentence gave a reader an import that does not resolve. It is
+    stated as a property of this file now, which is the form that is true on
+    both sides.
     """
     import ast
     import pathlib

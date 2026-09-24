@@ -33,11 +33,18 @@ import pathlib
 
 import pytest
 
-# DOTTED, and that is not a style choice. `build-engine.sh` rewrites absolute
-# imports with a regex anchored on `arbiter_engine\.` -- a DOT is required --
-# so `from arbiter_engine import arbiter_mcp` passes through unrewritten and
-# the scrub then refuses the built tree for naming the source package. Measured:
-# that exact line refused the 0.2.4 build.
+# THE ABSOLUTE IMPORT BELOW IS DOTTED, and that is not a style choice. This
+# suite is derived: one file runs against two package roots, and the derivation
+# recognises an absolute import by the DOT that follows the package name. An
+# import written without that dot is carried across untouched and then names a
+# package that does not exist on the other side -- measured, it refused a
+# release build.
+#
+# -- the note that stood here said the same thing by naming the tool
+# that performs the derivation and quoting a dotless import as the example.
+# Neither survives the crossing: the tool is not in this tree, and the example
+# is an absolute import, so it was substituted in place and the published
+# sentence warned against an import it had itself just made valid-looking.
 from arbiter_engine.mcp import server as _server
 from arbiter_engine.mcp.server import TOOL_SPECS
 
