@@ -11,11 +11,10 @@ v1 instrumentation; this module lands the dedicated v2 tracker with:
 - The cadence WARN on suspiciously high fire rates.
 
 An internal ruling landed that migration: the mixin is gone, and the reasoner records
-every axiom's fires into the shared tracker at its dispatch boundary. This
-module moved from ``reflection/`` to ``detection/`` at the same time, so the
-eight checkers can be counted without ``detection`` importing ``reflection`` —
-the two packages are otherwise decoupled, and ``detection`` is what becomes
-the extracted engine.
+every axiom's fires into the shared tracker at its dispatch boundary. This module
+moved in beside the checkers at the same time, so the eight can be counted
+without the package that used to hold it being imported to do it — the two
+were otherwise decoupled, and this side is what became the extracted engine.
 
 API contract:
 

@@ -403,7 +403,7 @@ DEFAULT_PRODUCTION_TEMPORAL_SEVERITY_FLOOR: str = PRODUCTION_TEMPORAL_SEVERITY_M
 
 # Higher integer = more severe (matches Severity enum ordering used by
 # downstream gates). Numeric mapping is a substrate-local concern; we do
-# NOT depend on detection.types.Severity here to keep this module
+# NOT depend on this package's `types.Severity` here to keep this module
 # domain-opaque.
 _SEVERITY_RANK: Dict[str, int] = {
     PRODUCTION_TEMPORAL_SEVERITY_LOW: 1,

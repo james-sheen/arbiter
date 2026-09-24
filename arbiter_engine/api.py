@@ -6,7 +6,7 @@ These are engine-level, not transport-level. Every import below is inside the
  Option B cut, so this module ships with ``arbiter-engine`` and
 depends on no protocol.
 
-An internal ruling moved it here from ``arbiter_mcp/tools.py``, where it was filed
+An internal ruling moved it here from the protocol shim's own module, where it was filed
 because MCP is where it was first needed. The misfiling was visible from
 outside: an engine demo had to import from a package named for a protocol it
 does not use, and the leak pin fired on exactly that. Left alone,
@@ -14,7 +14,7 @@ The extraction would have had to either ship a transport's name inside
 the engine package or rename during the cut itself — the riskiest moment
 available.
 
-``arbiter_mcp/server.py`` imports these and adds a transport. That is the
+The shim's server imports these and adds a transport. That is the
 whole relationship, and it points one way only.
 """
 

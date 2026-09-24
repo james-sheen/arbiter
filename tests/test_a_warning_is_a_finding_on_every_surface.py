@@ -19,7 +19,7 @@ to something*:
   nothing*.
 
 WHY THIS FILE IS BEHAVIOURAL AND NOT A GREP. A structural test for
-`.warnings` beside every `.problems` would flag `layered_detector.py`, which
+`.warnings` beside every `.problems` would flag a platform detector that
 reads `problems` to count them in a debug log and collects warnings separately
 and correctly. The property worth pinning is not the spelling; it is that a
 declared warning threshold, crossed, is reported. So each surface is driven

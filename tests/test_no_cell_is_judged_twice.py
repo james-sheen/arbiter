@@ -248,7 +248,8 @@ class TestTheWalkIsGone:
 class TestBothLoadersReadTheDeclaredRole:
     """The defect the guess was masking, and the reason it stayed invisible.
 
-    `settlement.yaml` declares `role: percentage` on `exposure_percent`. The
+    A settlement domain declares `role: percentage` on `exposure_percent`,
+    rebuilt inline below rather than read from a file. The
     engine-shaped loader read it; `OntologyLoader._parse_yaml_indicator` did
     not, so the spec came out with no role and the declared path declined. The
     raw walk then supplied the percentage rule from the `percent` token, and a

@@ -154,9 +154,9 @@ jobs:
   # upload is the one that cannot be taken back, and a version number on this
   # index can never be reused.
   #
-  # That division is the repository's own. `build-engine.sh` says it in as many
-  # words: it builds and verifies, it does not push, because the irreversible
-  # step stays with the operator. Automating the upload would have removed that
+  # That division is the repository's own, and the tooling that derives this
+  # package says it in as many words: it builds and verifies, it does not
+  # push, because the irreversible step stays with the operator. Automating the upload would have removed that
   # division; the approval gate is what puts it back.
   # -------------------------------------------------------------------------
   publish:

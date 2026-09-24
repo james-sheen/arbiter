@@ -26,7 +26,7 @@ that one.
 was also judging keys that ARE declared indicators, which put a finding and a
 `missing_role` decline on one cell. It now skips keys the declared path already
 judged, so envelope-level parity DOES hold for an indicator declaring
-CONSISTENCY -- pinned in `test_no_cell_is_judged_twice_cd1770.py`. What survives
+CONSISTENCY -- pinned in `test_no_cell_is_judged_twice.py`. What survives
 is the undeclared population, which is and still open.
 """
 from __future__ import annotations

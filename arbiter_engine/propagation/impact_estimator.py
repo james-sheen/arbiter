@@ -55,7 +55,7 @@ class DownstreamImpact:
 
     def __post_init__(self):
         # normalize severity at construction. Same archetype
-        # as ``detection.interfaces.Problem.__post_init__`` — type
+        # as ``Problem.__post_init__`` in ``interfaces`` — type
         # hint alone doesn't enforce; downstream serialization had
         # to duck-type. Now ``DownstreamImpact.severity`` is
         # guaranteed ``Severity`` enum, and the API surface can use

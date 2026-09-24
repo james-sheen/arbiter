@@ -199,16 +199,18 @@ def shadow_entities(session: Any) -> Tuple[List[Entity], List[Decline]]:
         # `not_checked []`. A zero denominator and no reason beside it is the
         # one shape this envelope is built to never emit.
         #
-        # THIS IS NOT HYPOTHETICAL. `arbiter-world-model-design-note.md`
-        # Sec. 6.2 instructs a bridge to call `ingest_forecasts` "with a
-        # `source=` naming the producer" -- the exact inversion of the rule,
-        # since `source=` names who is NOT a producer. Measured on a book
+        # THIS IS NOT HYPOTHETICAL. A design note written for a bridge author
+        # instructs them to call `ingest_forecasts` "with a `source=` naming
+        # the producer" -- the exact inversion of the rule, since `source=`
+        # names who is NOT a producer. That note is not in this tree, so it is
+        # described rather than cited: what a reader here can check is the
+        # measurement. Taken on a book
         # declaring a `role: count` indicator and a forecast of -3 for it:
         # `source=None` checked 1 entity / 2 properties and found
         # `forecast_impossible_value`; `source="learned-producer"` checked 0
         # and 0, found nothing, and said nothing. A bridge following that
-        # sentence loses the coherence pass Sec. 6.3 advertises as the whole
-        # reason to route a learned model through this engine, and the
+        # sentence loses the coherence pass that is the whole reason to route
+        # a learned model through this engine, and the
         # envelope it reads back looks exactly like a clean one.
         #
         # NAMED, NOT JUST COUNTED. The count alone says *some records were set

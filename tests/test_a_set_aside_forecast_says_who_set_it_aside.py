@@ -15,9 +15,9 @@ returned nothing at all. So a batch whose every record carried one produced
 `checked {entities: 0}` beside `not_checked []` -- a zero denominator with
 nothing saying why, which a reader cannot tell from a clean run.
 
-WHY THIS IS NOT HYPOTHETICAL. `arbiter-world-model-design-note.md` Sec. 6.2
-instructs a bridge to call `ingest_forecasts` "with a `source=` naming the
-producer" -- the exact inversion -- and its Sec. 6.3 then advertises the shadow
+WHY THIS IS NOT HYPOTHETICAL. A design note written for bridge authors, not in
+this tree, instructs them to call `ingest_forecasts` "with a `source=` naming
+the producer" -- the exact inversion -- and then advertises the shadow
 pass as the reason to route a learned model through this engine. A bridge
 following both would switch the second off with the first and read back an
 envelope indistinguishable from a clean one.

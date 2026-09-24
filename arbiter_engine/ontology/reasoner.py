@@ -39,18 +39,21 @@ from ..types import (
 # weight dict that diverged from it.
 #
 # this imported a constants module from the surrounding distribution
-# — the engine's only module-level import reaching outside `detection/`, and
+# — the engine's only module-level import reaching outside this package, and
 # enough on its own to make the package non-extractable. The originating
 # package was named here verbatim until an internal ruling, which is how a comment
 # recording a leak becomes the last copy of it: the build's stray scan matches
 # import statements only, deliberately, so prose naming it passes every net.
-# `detection.types.Severity` already carries
+# This package's own `types.Severity` already carries
 # `priority_score` and documents itself as mirroring the canonical one.
 # Verified equal before switching, not assumed: identical members, and
 # identical scores for all six (CRITICAL 1, HIGH 2, MEDIUM 3, WARNING 3,
 # LOW 4, INFO 5). If the two ever diverge, this dedup silently changes which
-# problem survives a merge — so `test_engine_standalone_import_cd1555.py`
-# pins the parity rather than trusting the mirror comment.
+# problem survives a merge. THIS SENTENCE USED TO NAME A TEST THAT PINS THE
+# PARITY, and that test is not in the published tree: the name was the one it
+# carries where this file is authored. The parity is what the paragraph above
+# records measuring; there is no checker here to point a reader at, and saying
+# so is better than pointing them at a file they cannot open.
 _CanonicalSeverity = Severity
 from .loader import OntologyLoader
 from .axioms import (

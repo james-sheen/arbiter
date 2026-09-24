@@ -6,7 +6,7 @@ checkers import `resolve_axiom_threshold`, and none of them have anything to
 do with Monte Carlo simulation — they were reaching across the package into a
 1,080-line predictor to fetch eighty lines of dictionary lookup.
 
-That coupling had a concrete cost: `arbiter-oss-strategy.md` puts the Monte
+That coupling had a concrete cost: the extraction decision puts the Monte
 Carlo predictor out of the v0.1 engine extraction, and executing that cut as
 written would have taken six checkers with it. Moving the resolver here makes
 the predictor deletable without touching `ontology/axioms/` at all.

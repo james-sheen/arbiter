@@ -313,9 +313,9 @@ class Problem:
         # previously ``severity: Severity = Severity.MEDIUM`` was a
         # type hint only — dataclasses don't enforce annotations at
         # runtime, so producer sites could (and historically did)
-        # pass a bare string. Downstream serializers (``to_dict`` at
-        # line 262 below, ``api/topology_api.py`` _serialize_traversal_
-        # result) had to duck-type ``X.value if hasattr(X, 'value')
+        # pass a bare string. Downstream serializers -- ``to_dict``
+        # below, and the platform's traversal serializer -- had to
+        # duck-type ``X.value if hasattr(X, 'value')
         # else str(X)`` to defend against both shapes — cruft that
         # masked the real bug (silent string-typed severity could
         # carry a typo like ``"hight"`` and survive through the

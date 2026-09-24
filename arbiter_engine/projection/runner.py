@@ -217,7 +217,7 @@ def run_projection(session, horizon_s: float = 3600.0,
             # reference, Decline)` below used to drop a refused fit on the
             # floor: the forecast was filed, later graded, and raced against
             # nothing, with no leg of the envelope carrying the fact. That is
-            # the shape `bridge-guide.md` names in its own words -- *nothing
+            # the shape `BRIDGES.md` names in its own words -- *nothing
             # declines, because a race with one runner still has a winner* --
             # sitting on the verb whose own reference exists to prevent it.
             # `ingest_forecasts` has reported this per record since it gained

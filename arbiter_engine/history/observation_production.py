@@ -126,9 +126,28 @@ DT_INGEST_CALLER_TAG_ENABLED: bool = (
 )
 
 # Frames inside the ingest funnel itself; the interesting caller is above these.
+#
+# -- DERIVED FROM THIS MODULE, and it used to be two written-out paths
+# that named the tree this file was AUTHORED in rather than the one it is
+# running in. The package is published under a different root, and a path
+# written without that root's prefix is not rewritten on the way out, so the
+# two strings arrived naming modules that do not exist there. The walk below
+# climbs while a frame's module CONTAINS one of these, so with neither string
+# ever matching it stopped at the first frame it saw -- its own -- and every
+# ingest was attributed to the funnel instead of to the caller.
+#
+# MEASURED, gate on, ingesting from a function called `a_reader_ingesting_
+# something`: the published package reported
+# `...observation_production:_bump_ingest_heartbeat` and named the real caller
+# only once these were derived. The feature had no test and no second reader,
+# which is why six rounds of review over the prose above it never reached it.
+#
+# `__name__` is the funnel's own module wherever it runs; the sibling is the
+# one other module in the funnel and is named relative to it for the same
+# reason. Nothing here is a literal that a rename or a re-root can leave behind.
 _FUNNEL_MODULES = (
-    "detection.history.observation_production",
-    "detection.history.observation",
+    __name__,
+    __name__.rsplit(".", 1)[0] + ".observation",
 )
 
 _INGEST_CALLER_TAGS: Dict[str, int] = {}

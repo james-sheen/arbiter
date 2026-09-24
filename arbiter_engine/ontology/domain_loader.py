@@ -1,13 +1,13 @@
 """Engine-shaped domain loader — YAML in, typed indicators out, nothing else.
 
-`arbiter-oss-strategy.md` listed "a plain YAML loader" as in-scope for
-the v0.1 extraction. No such module existed. The two loaders that do exist are
+The decision that scoped this package listed "a plain YAML loader" as
+in-scope for the v0.1 extraction. No such module existed. The two loaders that do exist are
 both unsuitable for an engine package:
 
   *`ontology/loader.py` (720 lines) is primarily an RDF/TTL reader built on
     `rdflib`, with the YAML path grafted on and a hardcoded Kubernetes
     indicator seed reachable through its fallback path.
-  *`orchestration/domain_registry.py` (2,266 lines) is the real
+  *the platform's own domain registry (2,266 lines) is the real
     domain-YAML-to-typed-object path, but it also parses goals, cross-domain
     references, evidence sources, observation mappings, section templates and
     active-mode policy — platform concerns the engine has no use for, and
@@ -19,9 +19,10 @@ the cheaper answer, so the number that matters is the one the decision was taken
 against; a figure silently tracking the file would stop being evidence for the
 paragraph it sits in. Read as current they are wrong, and were — an outside
 review measured the first at 860 against a docstring saying 720 and reported it
-as a stale number, correctly. Both files have grown since. A census of the whole
-`detection/` tree found exactly these two line-count claims and no others, and a
-test now refuses a third that carries no as-of marker.
+as a stale number, correctly. Both files have grown since. A census run where
+this module is authored found exactly these two line-count claims and no
+others; the checker that refuses an undated third lives there too, and is not
+in this tree.
 
 This module is the third thing: it reads exactly the three keys an axiom
 evaluator needs — entity types, relationship types, indicators — and returns
@@ -231,7 +232,7 @@ def canonical_domain_id(value: Any,
                         domains_dir: Optional[Union[str, Path]] = None) -> Any:
     """Resolve an alias to the declared domain id; pass anything else through.
 
-    `domains/k8s.yaml` declares `id: kubernetes`, so a caller
+    A Kubernetes domain file declares `id: kubernetes`, so a caller
     saying `k8s` and a cluster reporting `kubernetes` were treated as different
     domains and the scoped query came back silently empty. Comparing canonical
     forms on both sides is what makes those the same namespace.
@@ -257,8 +258,9 @@ class DomainModel:
     entity_types: List[str] = field(default_factory=list)
     relationship_types: List[str] = field(default_factory=list)
     #: alternate names this domain answers to. Exists because a
-    #: file's stem and its declared id can differ (`k8s.yaml` declares
-    #: `kubernetes`; `docker.yaml` declares `docker-swarm`), and six shared
+    #: file's stem and its declared id can differ -- a file stemmed `k8s`
+    #: declaring `kubernetes`, one stemmed `docker` declaring `docker-swarm`,
+    #: neither of them shipped here -- and six shared
     #: sites carry the stem as a literal. Declaring the alias in the file that
     #: causes the split beats an alias table in shared code, which the project's design guidance
     #: forbids anyway. Absent means no aliases.
@@ -1104,11 +1106,14 @@ def _resolve_threshold(raw: Any) -> Optional[float]:
 
     **The premise was audited and does not hold.** No consumer performs
     unguarded arithmetic on these fields: every read is either ``is not
-    None`` (``boundedness``, the full system, the discovery router) or
-    truthiness (``responsiveness``), and the one multiplication site in
-    ``integration/pattern_converter.py`` assigns the value on the line above.
-    The batch-ingest path in the full system already reads the
-    raw dict and already gets ``None``.
+    None`` (``boundedness``, the platform's composition root, the discovery
+    router) or truthiness (``responsiveness``), and the one multiplication
+    site anywhere assigns the value on the line above. The platform's
+    batch-ingest path already reads the raw dict and already gets ``None``.
+
+    The audit above spans both this package and the platform that derives it;
+    the platform-side readers are named by what they do rather than by path,
+    because a reader here cannot open them to check.
 
     **The cost of the old default was not hypothetical.** ``boundedness``
     tests ``if critical_threshold is not None``, so ``0.0`` meant *every

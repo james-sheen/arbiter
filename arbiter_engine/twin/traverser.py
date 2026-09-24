@@ -2132,7 +2132,7 @@ class NLTraversalTranslator:
 
     # THE LLM FALLBACK IS NOT PART OF THIS CLASS ANY MORE, AND NOT PART OF
     # THE PUBLISHED ENGINE. Shipped, its env gate was inert and silent: the
-    # path it enabled imports `shared.llm`, which the distribution does not
+    # path it enabled imports an LLM client the distribution does not
     # carry, and the failure was swallowed -- so `true` and `false` both
     # returned None, with no error and no log. Enabling the feature and
     # leaving it off were indistinguishable.

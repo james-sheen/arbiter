@@ -53,10 +53,17 @@ def _tree_root() -> pathlib.Path:
     """The directory to put on `PYTHONPATH` so `PACKAGE` imports.
 
     Derived by walking up rather than counting parents, because this file sits
-    at `tests/engine/` in the source repository and at `tests/` in the derived
-    one -- two different depths for one claim. The walk asks the question that
-    actually matters (from where is this package importable?) instead of
-    encoding an answer that is right in exactly one tree.
+    at a DIFFERENT DEPTH in each of the two trees it runs in -- one claim, two
+    layouts. The walk asks the question that actually matters (from where is
+    this package importable?) instead of encoding an answer that is right in
+    exactly one of them.
+
+    The sentence here used to say which depth in which tree, and named one of
+    the two by a phrase that means nothing to a reader holding the other. A
+    published gate bans that phrase outright; it had been red since this file
+    was first pushed, because the gate was run BEFORE that push and never after
+    -- which is half of a two-sided procedure, and the half that catches what
+    the push itself introduces.
     """
     top = PACKAGE.split(".")[0]
     for parent in pathlib.Path(__file__).resolve().parents:
