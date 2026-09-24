@@ -58,17 +58,23 @@ logger = logging.getLogger(__name__)
 # The guards keep their meaning exactly: each method that needs a graph still
 # asks whether rdflib is here, and still takes the built-in path when it is
 # not. They ask a function now rather than read a constant, and it decides once.
-HAS_RDFLIB = None
-Graph = None
-Namespace = None
-URIRef = None
-Literal = None
-RDF = None
-RDFS = None
-OWL = None
-XSD = None
-HEALTH = None
-AXIOM = None
+#
+# -- AND THE NAMES ARE NOT PRE-BOUND TO `None`, which is how the first
+# version of this block got them wrong. Binding them here made the lazy import
+# invisible to the module's own code and VISIBLE, wrongly, to everyone else:
+# `from ...ontology.loader import HEALTH` takes a COPY at import time, so it
+# stayed `None` in the caller's namespace no matter what was loaded afterwards,
+# and without the extra six names that had correctly raised `ImportError`
+# started answering `None` instead. `HAS_RDFLIB` itself answered `None` -- not
+# a bool -- in both states, so a caller's `if HAS_RDFLIB:` took the wrong branch
+# with rdflib INSTALLED. Measured against the previous release in all four
+# combinations before and after.
+#
+# Leaving them undefined is what lets the module `__getattr__` below answer for
+# them, and `from X import Y` IS attribute access on the module object -- so it
+# is served, unlike the in-function global lookups that forced the function in
+# the first place. The same mechanism, correct for one job and not the other.
+_have_rdflib = None
 
 # Define namespaces
 #
@@ -121,18 +127,56 @@ def _rdflib_ready() -> bool:
     the import sat at module scope. Decides once: every call after the first
     returns the cached answer without reaching `import` again.
     """
-    global HAS_RDFLIB, Graph, Namespace, URIRef, Literal
+    global _have_rdflib, Graph, Namespace, URIRef, Literal
     global RDF, RDFS, OWL, XSD, HEALTH, AXIOM
-    if HAS_RDFLIB is None:
+    if _have_rdflib is None:
         try:
             from rdflib import Graph, Namespace, URIRef, Literal
             from rdflib.namespace import RDF, RDFS, OWL, XSD
             HEALTH = Namespace("http://example.org/health#")
             AXIOM = Namespace("http://example.org/axiom#")
-            HAS_RDFLIB = True
+            _have_rdflib = True
         except ImportError:
-            HAS_RDFLIB = False
-    return HAS_RDFLIB
+            # EXACTLY the three the pre-lazy module bound when the import
+            # failed, and no more. The asymmetry is inherited rather than
+            # chosen -- the other eight stayed undefined, so asking for one
+            # raised ImportError, and that is a better answer than `None` for a
+            # class. Preserved as measured rather than tidied, because tidying
+            # it would be an unannounced change to a published surface.
+            Graph = Namespace = URIRef = None
+            _have_rdflib = False
+    return _have_rdflib
+
+
+#: The names this module re-exports from rdflib, plus the two namespaces built
+#: from them. Not a supported surface -- but they RESOLVED before the import
+#: became lazy, and a lazy import is not a licence to change what a name means.
+_RDFLIB_NAMES = ("Graph", "Namespace", "URIRef", "Literal",
+                 "RDF", "RDFS", "OWL", "XSD", "HEALTH", "AXIOM")
+
+
+def __getattr__(name: str):
+    """Resolve the rdflib names on first access, importing if nobody has yet.
+
+    PEP 562, used here for the job it can do: a module `__getattr__`
+    serves attribute access on the module object, and `from X import Y` is
+    exactly that. It does NOT serve a bare global lookup inside a function of
+    this module, which is why `_rdflib_ready()` exists and is not replaced by
+    this. Both are needed and neither substitutes for the other.
+
+    After `_rdflib_ready()` has run, every name it binds is in globals and this
+    hook stops being consulted for them.
+    """
+    if name == "HAS_RDFLIB":
+        return _rdflib_ready()
+    if name in _RDFLIB_NAMES:
+        _rdflib_ready()
+        if name in globals():
+            return globals()[name]
+        raise AttributeError(
+            f"{name} comes from rdflib, which is not installed. Install the "
+            f"rdf extra to use it.")
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 # (implements): HOMEOSTASIS direction allow-list.

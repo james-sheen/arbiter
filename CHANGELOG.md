@@ -73,12 +73,16 @@ useful-looking document and the less trustworthy one.
   at module scope and the package root binds the reasoner eagerly, so every
   import -- reading a YAML domain model included -- paid for 50 modules of an
   extra this engine does not read. It is imported on first use now. Behaviour
-  is unchanged with the extra and without it. The RDF names on that module --
-  `HAS_RDFLIB`, `HEALTH`, `AXIOM`, `Graph`, `Namespace`, `URIRef`, `Literal`,
-  `RDF`, `RDFS`, `OWL`, `XSD` -- now read `None` until something asks for a
-  graph. None of them is a supported name; they are listed because a reader who
-  imported one from `arbiter_engine.ontology.loader` would otherwise find it
-  changed with nothing saying so.
+  is unchanged with the extra and without it, and so is every RDF name on that
+  module -- `HAS_RDFLIB`, `HEALTH`, `AXIOM`, `Graph`, `Namespace`, `URIRef`,
+  `Literal`, `RDF`, `RDFS`, `OWL`, `XSD`. A first version of this change bound
+  them to `None` at import and said so here. That was wrong in three ways and
+  none of them reached a release: a `from ... import` took the `None`
+  permanently, six names that had raised `ImportError` without the extra began
+  answering `None` instead, and `HAS_RDFLIB` answered `None` rather than a bool
+  in both states. They resolve exactly as they did before. None is a supported
+  name; they are listed because a reader who imports one would otherwise have
+  no way to tell.
 - **`infer` declined with a number it had not computed.** The
   `no_report_probability` message carried a fixed `0.31` while the `evidence`
   beside it held the real posterior. Both now read the same value.
