@@ -4,25 +4,71 @@ Ontology loader for RDF/TTL files.
 This module handles loading and parsing ontologies using rdflib.
 """
 
+# -- annotations are not evaluated at definition time, so the rdflib
+# names may stay unbound until something actually wants a graph. Eight
+# signatures below annotate `URIRef`; without this line every one of those
+# `def`s would resolve that name during import, which is the single thing the
+# lazy import beneath it exists to avoid.
+from __future__ import annotations
+
 import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 from datetime import timedelta
 
-try:
-    from rdflib import Graph, Namespace, URIRef, Literal
-    from rdflib.namespace import RDF, RDFS, OWL, XSD
-    HAS_RDFLIB = True
-except ImportError:
-    HAS_RDFLIB = False
-    Graph = None
-    Namespace = None
-    URIRef = None
-
 from ..interfaces import IndicatorSpec
 from ..types import Axiom, IndicatorType, Severity
 
 logger = logging.getLogger(__name__)
+
+# -- `rdflib` IS IMPORTED ON FIRST USE, NOT AT MODULE SCOPE.
+#
+# It stood here as a `try`/`except ImportError` pair, which reads as the right
+# way to hold an optional dependency and is, for a module nobody reaches unless
+# they want it. This one is not that. The DERIVED package binds its public API
+# eagerly at the package root -- the exports are its declared contract, so that
+# root is generated and cannot be made lazy -- and the chain ran root -> `api`
+# -> `reasoner` -> here. Importing the package paid for 50 rdflib modules
+# before anyone had asked for a graph, and reading a YAML domain model, which
+# is the default path and the one every engine user takes, pulled the whole RDF
+# stack with it.
+#
+# An internal ruling made the `ontology` package bind ITS two names lazily and measured
+# that reading a model no longer pulled rdflib. That was true where it was
+# measured and false one level up: this tree has a lazy root of its own
+# and the derived tree has a generated one. A fix whose truth depends
+# on which tree you are standing in is not a fix, and the sentence claiming it
+# shipped in a commit message that a reader of the other tree could not
+# reproduce.
+#
+# SO IT IS FIXED AT THE IMPORT, the one place both trees share. Measured on the
+# derived tree before the change: importing the package, importing `DomainModel`
+# from it, importing `DomainModel` from `ontology.domain_loader`, and importing
+# `EngineSession` from `api` ALL pulled rdflib -- four doors. Making the root
+# lazy would have shut two.
+#
+# WHY A FUNCTION AND NOT PEP 562. A module-level `__getattr__` is what
+# and used for exactly this, and it does not work here. It fires for
+# attribute access ON the module object, and NOT for a global-name lookup
+# inside a function defined in that same module -- measured, and the failure is
+# a `NameError` rather than a fallback. Every use below is that kind of lookup,
+# so the names must be in globals before the first one runs, and a function the
+# existing guards already call is where that happens.
+#
+# The guards keep their meaning exactly: each method that needs a graph still
+# asks whether rdflib is here, and still takes the built-in path when it is
+# not. They ask a function now rather than read a constant, and it decides once.
+HAS_RDFLIB = None
+Graph = None
+Namespace = None
+URIRef = None
+Literal = None
+RDF = None
+RDFS = None
+OWL = None
+XSD = None
+HEALTH = None
+AXIOM = None
 
 # Define namespaces
 #
@@ -60,9 +106,33 @@ logger = logging.getLogger(__name__)
 # next reader knows it was measured rather than missed. The set of namespaces
 # this module may declare is pinned by a test, two-sided, so it cannot quietly
 # become three again.
-if HAS_RDFLIB:
-    HEALTH = Namespace("http://example.org/health#")
-    AXIOM = Namespace("http://example.org/axiom#")
+#
+# -- they are BUILT inside `_rdflib_ready()` below rather than standing
+# here, because `Namespace(...)` is an rdflib call and this module no longer
+# makes one at import. Both URIs are unchanged, and the two-sided test that
+# pins the set reads this file as text, so it still sees exactly two.
+
+
+def _rdflib_ready() -> bool:
+    """Import rdflib on first call; report whether it is available.
+
+    Binds every rdflib name this module uses, and the two namespaces built from
+    them, into module globals -- so the code below reads exactly as it did when
+    the import sat at module scope. Decides once: every call after the first
+    returns the cached answer without reaching `import` again.
+    """
+    global HAS_RDFLIB, Graph, Namespace, URIRef, Literal
+    global RDF, RDFS, OWL, XSD, HEALTH, AXIOM
+    if HAS_RDFLIB is None:
+        try:
+            from rdflib import Graph, Namespace, URIRef, Literal
+            from rdflib.namespace import RDF, RDFS, OWL, XSD
+            HEALTH = Namespace("http://example.org/health#")
+            AXIOM = Namespace("http://example.org/axiom#")
+            HAS_RDFLIB = True
+        except ImportError:
+            HAS_RDFLIB = False
+    return HAS_RDFLIB
 
 
 # (implements): HOMEOSTASIS direction allow-list.
@@ -105,7 +175,7 @@ class OntologyLoader:
                 protecting a dependency that did not exist and creating a
                 misattribution that did.
         """
-        if not HAS_RDFLIB:
+        if not _rdflib_ready():
             # `info`, not `warning`, and worded as a configuration
             # rather than a failure. `rdflib` is an optional dependency and is
             # deliberately OUT of the extracted engine's scope, so its absence
@@ -186,7 +256,7 @@ class OntologyLoader:
 
     def load_meta_ontology(self, path: str) -> bool:
         """Load the health meta-ontology."""
-        if not HAS_RDFLIB:
+        if not _rdflib_ready():
             return self._load_fallback_meta()
 
         try:
@@ -205,7 +275,7 @@ class OntologyLoader:
 
     def load_domain_ontology(self, path: str) -> bool:
         """Load a domain-specific ontology."""
-        if not HAS_RDFLIB:
+        if not _rdflib_ready():
             return self._load_fallback_domain()
 
         try:
@@ -328,7 +398,7 @@ class OntologyLoader:
         if union:
             return union
 
-        if not HAS_RDFLIB or not self.graph:
+        if not _rdflib_ready() or not self.graph:
             return self._get_fallback_indicators(entity_type)
 
         indicators = []
@@ -355,7 +425,7 @@ class OntologyLoader:
 
     def _get_entity_class(self, entity_type: str) -> Optional[URIRef]:
         """Look up entity class in ontology by type name."""
-        if not HAS_RDFLIB:
+        if not _rdflib_ready():
             return None
 
         # Try common namespaces. One entry, not two -- above.
@@ -375,7 +445,7 @@ class OntologyLoader:
 
     def _parse_indicator(self, indicator_uri: URIRef) -> Optional[IndicatorSpec]:
         """Parse indicator specification from ontology."""
-        if not HAS_RDFLIB:
+        if not _rdflib_ready():
             return None
 
         try:
@@ -439,7 +509,7 @@ class OntologyLoader:
 
     def _get_indicator_type(self, indicator_uri: URIRef) -> IndicatorType:
         """Determine indicator type from ontology."""
-        if not HAS_RDFLIB:
+        if not _rdflib_ready():
             return IndicatorType.NUMERIC
 
         # Check explicit type
@@ -473,7 +543,7 @@ class OntologyLoader:
 
     def _get_float(self, uri: URIRef, predicate: URIRef) -> Optional[float]:
         """Extract float value from ontology."""
-        if not HAS_RDFLIB:
+        if not _rdflib_ready():
             return None
         for obj in self.graph.objects(uri, predicate):
             try:
@@ -484,7 +554,7 @@ class OntologyLoader:
 
     def _get_int(self, uri: URIRef, predicate: URIRef) -> Optional[int]:
         """Extract int value from ontology."""
-        if not HAS_RDFLIB:
+        if not _rdflib_ready():
             return None
         for obj in self.graph.objects(uri, predicate):
             try:
@@ -495,7 +565,7 @@ class OntologyLoader:
 
     def _get_string(self, uri: URIRef, predicate: URIRef) -> Optional[str]:
         """Extract string value from ontology."""
-        if not HAS_RDFLIB:
+        if not _rdflib_ready():
             return None
         for obj in self.graph.objects(uri, predicate):
             return str(obj)
@@ -503,7 +573,7 @@ class OntologyLoader:
 
     def _get_list(self, uri: URIRef, predicate: URIRef) -> List[str]:
         """Extract list value from ontology (RDF collection or multiple values)."""
-        if not HAS_RDFLIB:
+        if not _rdflib_ready():
             return []
 
         values = []
@@ -519,7 +589,7 @@ class OntologyLoader:
 
     def _get_duration(self, uri: URIRef, predicate: URIRef) -> Optional[timedelta]:
         """Parse xsd:duration to Python timedelta."""
-        if not HAS_RDFLIB:
+        if not _rdflib_ready():
             return None
 
         for obj in self.graph.objects(uri, predicate):
@@ -785,7 +855,8 @@ class OntologyLoader:
         indicators for ``Pod`` still got ``restartCount`` and ``phase``
         evaluated against it. Reached in the default configuration, not a rare
         one — ``rdflib`` is not installed, so the caller's
-        ``if not HAS_RDFLIB`` branch routes here for every undeclared type.
+        ``if not _rdflib_ready()`` branch routes here for every undeclared
+        type.
 
         Inventing indicators the user never declared is the opposite of what
         this engine claims to do, and it is domain-specific behaviour living in

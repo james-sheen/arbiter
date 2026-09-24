@@ -22,11 +22,26 @@ Key Features:
 #: behaviour is identical either way. It simply made `optional` mean less than
 #: it says, and cost the import on every consumer that never wanted the graph.
 #:
-#: THE GUARD AGAINST THIS EXISTED AND WAS VACUOUS. `test_rdflib_not_pulled_in
-#: _transitively` asserts rdflib is absent from `sys.modules`, which
-#: is true for free on any box where rdflib is NOT INSTALLED -- every box it had
-#: ever run on. It measured the absence of a package rather than the shape of
-#: this import graph, and went red the day the extra became real.
+#: THE GUARD AGAINST THIS EXISTED AND WAS VACUOUS. It asserted rdflib was
+#: absent from `sys.modules`, which is true for free on any box where rdflib is
+#: NOT INSTALLED -- every box it had ever run on. It measured the absence of a
+#: package rather than the shape of this import graph, and went red the day the
+#: extra became real.
+#:
+#: -- AND THIS BLOCK WAS NOT THE WHOLE CHAIN, though it says so above.
+#: The sentence is kept rather than quietly corrected, because what was wrong
+#: with it is the point: it is true of THIS tree, whose package root binds its
+#: re-exports lazily too, and false of the derived one, whose root is
+#: generated from a declared export list and cannot be lazy. There the chain ran
+#: root -> `api` -> `reasoner` -> `loader` and reached rdflib without passing
+#: through here at all. A claim measured on one side of a transform is a claim
+#: about that side.
+#:
+#: The fix that holds in both is in `loader.py`, which now imports rdflib on
+#: first use. The guard that catches it is a test in this package's own suite,
+#: so it ships with the derived tree and runs on the lane that installs the
+#: extra -- named by its subject rather than by a path, because the last comment
+#: to name a file here named one that does not ship.
 #:
 #: WHAT A CALLER SEES IS UNCHANGED. `from ... import OntologyLoader` and
 #: `UnifiedAxiomReasoner` both resolve, here or through the package, and a
