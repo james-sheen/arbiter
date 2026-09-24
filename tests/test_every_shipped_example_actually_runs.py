@@ -29,6 +29,8 @@ from datetime import datetime, timedelta
 
 import pytest
 
+from arbiter_engine.ontology.domain_loader import (
+    is_domain_model)
 from arbiter_engine.api import (
     EngineSession, check, model_describe, plan, project, rollout)
 from arbiter_engine.clock import as_of
@@ -49,7 +51,22 @@ def _examples_dir() -> pathlib.Path:
     raise AssertionError("no examples directory found in this tree")
 
 
-EXAMPLES = sorted(p.name for p in _examples_dir().glob("*.yaml"))
+#: THE MODELS IN THAT DIRECTORY, not every file in it. The class below is
+#: titled for what it asserts -- each example IS a model the engine can read --
+#: and it was parametrised over a glob, so the first companion shipped there
+#: turned three of its cases red for being a companion. That is the test
+#: reporting its own predicate as a defect in the subject.
+#:
+#: `is_domain_model` is what the engine publishes to tell the two apart, and
+#: `test_every_companion_is_still_reachable_here` below keeps the narrowing from
+#: hiding anything: a file dropped from this list has to be a file something
+#: else in this suite covers.
+EXAMPLES = sorted(p.name for p in _examples_dir().glob("*.yaml")
+                  if is_domain_model(str(p)))
+
+#: Everything in the directory, models and companions alike. The denominator
+#: the narrowing above is measured against.
+EVERY_FILE = sorted(p.name for p in _examples_dir().glob("*.yaml"))
 
 
 def _loaded(name: str) -> EngineSession:
@@ -63,6 +80,23 @@ def test_there_are_examples_to_check():
     every parametrised test below vacuous, and a suite of zero tests is the
     same green as a suite that passed."""
     assert len(EXAMPLES) >= 5, EXAMPLES
+
+
+def test_the_narrowing_drops_only_companions_and_says_which():
+    """The cost of filtering, made visible.
+
+    Narrowing a parametrisation is how a case stops being run without anything
+    going red, so the difference between the two lists is asserted to be
+    exactly the files that are not models -- and the models list is asserted to
+    be most of the directory, so a filter that started refusing real models
+    would fail here rather than quietly shrinking the suite."""
+    dropped = sorted(set(EVERY_FILE) - set(EXAMPLES))
+    for name in dropped:
+        assert not is_domain_model(
+            str(_examples_dir() / name)), f"{name} is a model and was dropped"
+    assert len(EXAMPLES) > len(dropped), (
+        f"more files were dropped ({dropped}) than kept ({EXAMPLES}); the "
+        f"filter is refusing models, not companions")
 
 
 @pytest.mark.parametrize("name", EXAMPLES)

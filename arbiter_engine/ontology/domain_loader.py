@@ -861,6 +861,25 @@ _NON_AXIOM_KEYS = frozenset({"plausible_range"})
 #: typed was accepted and consumed by nothing. A misspelled `expected_from` did
 #: not report an unknown key -- it reported `missing_property` on
 #: `forecasts_expected`, which sends the author to look at their feed.
+#: the top-level names a domain model may declare, and the test for
+#: whether a document IS one. Not a validation set: an unknown key here is not
+#: refused, because `domain:` has never checked its own top level and making it
+#: do so would refuse models that load today. What this answers is narrower and
+#: is the question `is_domain_model` exists to answer -- does this document
+#: declare ANYTHING this loader reads.
+#:
+#: Every member is read by `load_domain` below. A name added there and not here
+#: makes this filter narrower than the loader, which turns a real model into a
+#: companion; `test_a_companion_beside_the_models_is_not_one` re-derives the set
+#: from the loader's own source and fails on the difference rather than trusting
+#: this list to have been updated.
+_MODEL_KEYS = frozenset({
+    "id", "domain_id", "name", "description", "entity_types",
+    "relationship_types", "aliases", "rules", "closure", "relationship_rules",
+    "calendar", "action_templates", "planning", "causal", "indicators",
+    "property_mapping",
+})
+
 _KNOWN_FORECAST_KEYS = frozenset({
     "expected", "models", "expected_from", "max_age",
 })
@@ -1400,6 +1419,44 @@ def load_domain(source: Union[str, Path, Dict[str, Any]]) -> DomainModel:
             "this looks like a constraints companion (a file that names the "
             "domain it extends rather than defining one). Use is_domain_model() "
             "to filter these when scanning a directory."
+        )
+
+    # A MAPPING IS NOT A MODEL, and this used to be the whole test.
+    #
+    # `is_domain_model` is published as the filter a directory scan uses so it
+    # does not need exceptions for control flow. It answered TRUE for any
+    # mapping at all, including `{"anything": 1}`: with no `domain:` key the
+    # line above falls back to the document itself, and every field below reads
+    # through `.get(...)` with a default, so a file sharing nothing with this
+    # vocabulary loaded as a model with no entity types, no indicators and an
+    # empty id. Nothing raised and nothing was checked.
+    #
+    # It went unnoticed because the only companions in front of it were the
+    # `*_constraints.yaml` files, whose `domain:` IS present and is a string --
+    # caught one line up. The first companion of a different shape to be shipped
+    # beside the examples, a surprise corpus, was accepted, and the two censuses
+    # that walk that directory then read it as a model: one subscripted
+    # `["domain"]` and raised `KeyError`, the other silently contributed
+    # nothing, which is the worse of the two.
+    #
+    # THE TEST IS *DOES THIS DECLARE ANYTHING THE LOADER READS*, not the
+    # presence of one chosen key. A model with only `indicators:` is degenerate
+    # and is still a model; a document sharing NO key with this vocabulary is
+    # not one, whatever else it contains. Derived from the key set below rather
+    # than written out, so a field added there is covered here for free.
+    if "domain" not in data and not (set(domain) & _MODEL_KEYS):
+        # THE WHOLE SET, not a slice of it. The first draft printed
+        # `sorted(_MODEL_KEYS)[:6]`, which is an alphabetical accident: it named
+        # `action_templates` and `aliases` and stopped before `entity_types`,
+        # so the remedy an author most needs was the one the message cut off.
+        # Sixteen names fit in an error; a truncation that hides the important
+        # one does not save anybody anything.
+        raise NotADomainModelError(
+            f"no `domain:` key and nothing this loader reads: "
+            f"{sorted(domain)[:8]}. A domain model declares at least one of "
+            f"{sorted(_MODEL_KEYS)} — this looks like a companion (a file "
+            f"whose subject is a model rather than being one). Use "
+            f"is_domain_model() to filter these when scanning a directory."
         )
 
     property_mapping = domain.get("property_mapping") or {}

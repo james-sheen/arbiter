@@ -46,6 +46,8 @@ import tempfile
 import pytest
 
 from arbiter_engine import api
+from arbiter_engine.ontology.domain_loader import (
+    is_domain_model)
 
 MODEL = """
 domain:
@@ -242,7 +244,16 @@ class TestNoShippedExampleStartsAskingThis:
     def test_no_example_declares_a_coupling_it_then_refuses(self):
         import yaml
         offenders = {}
-        for path in sorted(_examples_dir().glob("*.yaml")):
+        # FILTERED, and the filter is the point. A companion in this directory
+        # -- a file whose subject is a model rather than being one -- loaded
+        # here as a model with no entity types and no rules, so it contributed
+        # nothing and the loop passed over it in silence. A census that cannot
+        # see a member it should have skipped is one edit away from a census
+        # that cannot see a member it should have read.
+        models = [path for path in sorted(_examples_dir().glob("*.yaml"))
+                  if is_domain_model(str(path))]
+        assert models, "no shipped example is a domain model at all"
+        for path in models:
             document = yaml.safe_load(path.read_text())
             domain = document.get("domain", document)
             session = api.EngineSession()

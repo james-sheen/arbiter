@@ -36,6 +36,8 @@ import re
 import pytest
 import yaml
 
+from arbiter_engine.ontology.domain_loader import (
+    is_domain_model)
 from arbiter_engine.api import EngineSession, check, infer
 
 EXAMPLE = "substation_feeder.yaml"
@@ -88,8 +90,23 @@ class TestSomeShippedExampleDeclaresACausalStructure:
     deleted AND it fails if the key it turns on is renamed away."""
 
     def test_at_least_one_example_declares_a_causal_edge(self):
+        """NOT every `*.yaml` beside a model IS one.
+
+        This globbed the directory and subscripted `["domain"]` on each file,
+        which held for exactly as long as every example was a domain model. The
+        first companion shipped there -- a surprise corpus, whose whole shape is
+        a set of claims ABOUT a model -- raised `KeyError: 'domain'` and the
+        census reported nothing rather than nothing causal.
+
+        `is_domain_model` is the filter the engine publishes for this, in as
+        many words: *provided so directory scans do not need exceptions for
+        control flow*. Using it here rather than a key check keeps one answer to
+        *is this a model* instead of two that can disagree."""
+        models = [path for path in sorted(_examples_dir().glob("*.yaml"))
+                  if is_domain_model(str(path))]
+        assert models, "no shipped example is a domain model at all"
         declaring = [
-            path.name for path in sorted(_examples_dir().glob("*.yaml"))
+            path.name for path in models
             if any(str(rule.get("edge_direction", "")) == "causal"
                    for rule in (yaml.safe_load(path.read_text(encoding="utf-8"))
                                 ["domain"].get("relationship_rules") or ()))]

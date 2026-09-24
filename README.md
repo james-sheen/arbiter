@@ -399,6 +399,12 @@ coupling and withholds the number; the fit is reported under `model_describe` wi
 `discover` proposes edges and never adopts one. The rule is the same in both: measuring and
 proposing are the engine's, declaring is the author's.
 
+**Who counts as a producer, and what this engine owes one, is
+[`STANCE.md`](STANCE.md).** That page answers the question this section raises and does not
+answer: what a *submission* is, what `source=` withdraws, and why the engine sets its own
+records aside from its own audit. It is deliberately narrow and does not restate the argument
+below.
+
 **Where a learned model fits — as the producer, with this engine keeping the books.** Declare
 `forecast:` on an indicator and feed predictions through `ingest_forecasts`. The eight axioms then
 run over the forecast itself; a forecast that never arrives is a finding, because `expected_from`
@@ -470,7 +476,7 @@ The engine is open. The knowledge and the operations are not.
 
 ## Status
 
-**v0.2.** 93 Python files, 91 modules importing on the declared dependencies alone, 15 supported
+**v0.2.** 95 Python files, 93 modules importing on the declared dependencies alone, 15 supported
 names — **counted in this repository**, which is the package you are holding.
 
 That basis is stated because it is easy to get wrong in a way nobody notices. The build adds one
@@ -479,7 +485,7 @@ are holding — and this line published the smaller figure until 2026-08-12, whe
 falsify it with `find . -name '*.py' | wc -l`. A checkable false claim, in the Status section of a
 project whose subject is checkable claims. Count the artifact, never an earlier stage of it.
 
-The import figure carries the same hazard one layer down, and it depends on what you have installed. Sweeping the package where `scipy` happens to be present imports 92; on the declared dependencies alone it is the 91 above, because `propagation.lp_confidence` is the one module that needs `scipy` and it is a deep path outside the supported surface. Count the artifact **in the state the reader will have it**, not in the state the person measuring happens to be standing in — this line quoted the with-`scipy` figure until 2026-08-12, which no reader installing normally could reproduce.
+The import figure carries the same hazard one layer down, and it depends on what you have installed. Sweeping the package where `scipy` happens to be present imports 94; on the declared dependencies alone it is the 93 above, because `propagation.lp_confidence` is the one module that needs `scipy` and it is a deep path outside the supported surface. Count the artifact **in the state the reader will have it**, not in the state the person measuring happens to be standing in — this line quoted the with-`scipy` figure until 2026-08-12, which no reader installing normally could reproduce.
 
 **The supported-name count went stale in exactly the way this section warns about.** It read
 three short for the release that added `SqliteObservationHistory`, `SessionCalendar` and
@@ -496,7 +502,7 @@ committed by the paragraph. The figures are described here now rather than quote
 rule the changelog states for its own errata: a correction that reproduces the string it corrects
 is that string to a checker.
 
-**And the count is of SUBMODULES: the root package is not one of them.** Walking `arbiter_engine` for what it contains gives 91; adding the package you imported to reach them gives 92. Both are honest and they are answers to different questions, so a reader who recounts and gets one more has not found a defect — they have used the other convention. Stated because someone did exactly that from outside, and a number published without its predicate can only be agreed with or disagreed with, never checked. **Every figure in this paragraph moved by one when `assumptions` landed, and nothing went red for two rounds** -- the guard that compares them to the artifact only runs when a built tree exists, so it is silent in every session that does not build one. A check conditioned on an artifact is not a check that runs.
+**And the count is of SUBMODULES: the root package is not one of them.** Walking `arbiter_engine` for what it contains gives 93; adding the package you imported to reach them gives 94. Both are honest and they are answers to different questions, so a reader who recounts and gets one more has not found a defect — they have used the other convention. Stated because someone did exactly that from outside, and a number published without its predicate can only be agreed with or disagreed with, never checked. **Every figure in this paragraph moved by one when `assumptions` landed, and nothing went red for two rounds** -- the guard that compares them to the artifact only runs when a built tree exists, so it is silent in every session that does not build one. A check conditioned on an artifact is not a check that runs.
 
 Honest boundaries, stated because you would otherwise find them yourself:
 
@@ -563,6 +569,7 @@ python3 -m arbiter_engine.scripts.benchmark_check --sizes 10,100,1000 --model-si
 |---|---|
 | [`MODELING.md`](MODELING.md) | how to write a domain model, and the rule that is easy to get wrong |
 | [`BRIDGES.md`](BRIDGES.md) | how to write the program that feeds one, starting from the reasons this engine refuses to answer |
+| [`STANCE.md`](STANCE.md) | who counts as a producer, what a submission is, and what this engine owes one |
 | [`CHANGELOG.md`](CHANGELOG.md) | what changed, and which version numbers do not exist |
 | [`COMPATIBILITY.md`](COMPATIBILITY.md) | what a patch release may change, and what waits |
 | [`schema/envelope.schema.json`](schema/envelope.schema.json) | the response shape, machine-readable |
@@ -583,6 +590,35 @@ causal` edges with noisy-OR strengths, so it is the only model the causal verb c
 Its header states one question answered three ways -- a feeder unobserved, observed, and intervened
 on with `do` -- because the last two put that feeder in the same state and the answers differ by a
 factor of thirteen, which is the whole reason `infer` is a verb rather than a filter over `traverse`.
+
+`substation_feeder_surprises.yaml` is beside it and is **not a model**: it is a worked SURPRISE
+CORPUS, the companion format the benchmark below reads. Four entries against the model above, chosen
+so that between them they produce every verdict the scorer can reach — one the declared model
+catches, one it provably cannot, one nobody was recording for, and one that was never confirmed.
+
+## Scoring this engine against things that actually happened
+
+A test count is not a score. `python3 -m arbiter_engine.scripts.surprise_benchmark` replays a model
+over a store and asks, of each event a human confirmed afterwards, whether this engine said so at the
+time.
+
+**The figure comes in two senses and they do not travel apart.** Of the sixteen observations from
+this project's own closed-loop alpha, SIXTEEN surprised the operator at first sight and NONE were
+anticipated by the design of the probes — which is favourable, and is a statement about foresight —
+and NONE were surfaced by the detector at the time, with three reached on a later replay — which is
+unfavourable, and is a statement about the detector. Both are `0 of 16`. `SurpriseScore` therefore
+has no single rate to quote: it carries counts, and it names its denominator in a sentence.
+
+**A window with no data is a refusal, not a miss.** An entry whose span holds no observation of its
+subject declines `not_replayable` and leaves the denominator, because scoring it zero would measure
+whether anyone was recording rather than whether this engine noticed. A predicate that declares
+nothing is refused outright — it would match the first finding of any kind on that entity, and credit
+the engine for seeing something else.
+
+**No number is published here yet, and that is the honest state.** The one real corpus this project
+holds is an observation record of a platform that is not this package, and its store is not in this
+tree — so the benchmark's own `not_replayable` is the correct answer to asking it today. What ships
+is the instrument and a worked corpus, not a score.
 
 **Built on this engine**: [`bmc-sensor-audit`](https://github.com/james-sheen/bmc-sensor-audit)
 audits firmware sensor coverage, and

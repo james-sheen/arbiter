@@ -28,11 +28,24 @@ Until 2026-08-24 this file carried both of these under a *Next* heading — it d
 
 A checkable false claim, in the status document of a project whose subject is checkable claims. It survived because the release-day checks that hold `README.md` and `CITATION.cff` to the artifact did not reach this file. They do now — though not here: the check runs in the derivation this repository is published from, so a reader holding only this tree cannot run it and should not take the sentence on trust. It is a plain absence test, which is why the two retired sentences are described above rather than quoted. A quoted correction and the mistake it corrects are the same string to a checker, and a project that files this defect class cannot also be the one whose tripwire fires on its own erratum.
 
-## A declared world model — landed September 2026
+## Declared dynamics, and a ledger that grades them — landed September 2026
 
 The engine carries dynamics an author declares and steps a model forward through them. A `transition:` on a relationship rule says which property drives which and by how much; a `temporal:` block says how long a change takes to arrive and how quickly it settles once it does. `rollout` walks a model across a horizon under scheduled actions and returns the trajectory rather than an endpoint; `plan` ranks declared candidate settings against a declared objective; `model_describe` reports the gains the observations imply. A durable prediction ledger keeps what was projected, so a projection can be graded once the world has caught up with it.
 
 The line here is the one the rest of the engine holds. Nothing fits a coupling nobody declared, a gain the observations imply is a proposal until an author adopts it, and the delays and time constants are read from the model rather than learned from the series. An indicator with no declared model is refused by name instead of having a curve fitted to it.
+
+**Until 2026-09-24 this heading claimed the term that `README.md` spends a section
+declining.** A reader who searched for that phrase found it asserted as landed here and refused
+there, so the two documents pointed one word in opposite directions while agreeing completely
+about the substance. Neither sentence was false; the word was doing opposite work in each. The
+heading now names what actually landed, and `STANCE.md` carries the part neither page stated:
+who counts as a producer and what the engine owes one. A third correction on this file, and the
+same shape as the two above — a claim that survived because nothing compared it against its
+sibling.
+
+**The retired heading is described here and not quoted**, for the reason the section above
+gives: a plain absence test cannot tell an erratum from a relapse, and the check that now holds
+this file went red on the first draft of this very paragraph for quoting what it retired.
 
 This section was written the day after the release it describes, rather than months later. That is the entire content of the two corrections recorded above, and it is easier to state as a rule than to keep.
 

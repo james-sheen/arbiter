@@ -1,0 +1,120 @@
+# A worked SURPRISE CORPUS: things that happened, and what would have counted
+# as catching them.
+#
+# The companion to `substation_feeder.yaml`. A domain model says what to check;
+# this says what a human later confirmed was true, and leaves the engine to be
+# graded on whether it said so at the time.
+#
+# WHAT THE FOUR ENTRIES ARE FOR. Between them they produce every verdict the
+# scorer can reach, which is the only way to read a benchmark honestly: a
+# corpus in which everything is catchable measures the corpus.
+#
+# panel-a-undervoltage DETECTED -- the model declares the line it crossed
+# feeder-oscillation MISSED -- real, and this model has no indicator
+# that could ever have said so
+# supply-sag-overnight DECLINED -- nobody was recording; grading this as a
+# miss would grade the store
+# panel-b-flicker neither -- never confirmed, so there is no fact to
+# have caught
+#
+# TWO SENSES, AND THEY DO NOT TRAVEL APART. `confirmed:` feeds the DETECTOR
+# column -- did the engine surface it. `anticipated:` feeds the FORESIGHT
+# column -- was it inside the surface the probes were designed to cover. The
+# project's own record carries both because the first can be bad while the
+# second is good, and quoting either bare was ruled a defect here.
+#
+# THE PREDICATES BELOW ARE FROZEN. Each says what a detector would have had to
+# emit, and was written from the record rather than from a run. A corpus whose
+# predicates are widened until the score improves is measuring the widening,
+# and it will look exactly like progress.
+
+surprises:
+  domain: substation_feeder
+
+  entries:
+    # The one the declared model can reach. 212 V is inside the warning band
+    # `lower_warning: 216` draws and above `lower_critical: 207`, so a check at
+    # any instant in the window emits BOUNDEDNESS at `warning` on pnl-a.
+    - id: panel-a-undervoltage
+      description: >
+        Panel A sat in the undervoltage warning band for most of a shift while
+        the supply read healthy, which is the shape a feeder fault makes.
+      subject:
+        entity: pnl-a
+        type: Panel
+        property: voltage_v
+      window:
+        start: 2026-06-10T08:00:00
+        end: 2026-06-10T16:00:00
+      counts_as_detected_when:
+        axiom: BOUNDEDNESS
+        severity_in: [warning, high, critical]
+      confirmed: true
+      anticipated: true
+      source: worked example, not a field record
+
+    # Real, and outside anything this model declares. `current_a` carries
+    # BOUNDEDNESS and nothing else, so no amount of oscillation below 380 A can
+    # produce a finding -- STABILITY is not declared on it. This is the entry
+    # that keeps the corpus from being a list of things the engine already
+    # does: a benchmark with no reachable miss cannot report one.
+    - id: feeder-oscillation
+      description: >
+        The feeder current swung between 300 A and 370 A on a two-minute
+        period for an hour. Every reading was inside the declared band and the
+        oscillation itself was the fault.
+      subject:
+        entity: fdr-1
+        type: Feeder
+        property: current_a
+      window:
+        start: 2026-06-10T09:00:00
+        end: 2026-06-10T10:00:00
+      counts_as_detected_when:
+        axiom: STABILITY
+        severity_in: [warning, high, critical]
+      confirmed: true
+      anticipated: false
+      source: worked example, not a field record
+
+    # Confirmed afterwards from a paper log. Nothing was recording, so the
+    # engine was never shown the data -- and a miss recorded here would be a
+    # statement about the store rather than about the detector.
+    - id: supply-sag-overnight
+      description: >
+        The supply sagged below 10.5 kV for about forty minutes overnight,
+        confirmed later from the substation's own paper log.
+      subject:
+        entity: sub-1
+        type: Supply
+        property: voltage_kv
+      window:
+        start: 2026-06-09T02:00:00
+        end: 2026-06-09T03:00:00
+      counts_as_detected_when:
+        axiom: BOUNDEDNESS
+        severity_in: [warning, high, critical]
+      confirmed: true
+      anticipated: false
+      source: worked example, not a field record
+
+    # Reported, never confirmed. Outside BOTH denominators: with no fact to
+    # have caught, neither a hit nor a miss is available to report, and
+    # counting it either way would put an unverified report into a score.
+    - id: panel-b-flicker
+      description: >
+        An operator reported Panel B flickering. No reading supports it and no
+        later inspection confirmed it.
+      subject:
+        entity: pnl-b
+        type: Panel
+        property: voltage_v
+      window:
+        start: 2026-06-10T08:00:00
+        end: 2026-06-10T16:00:00
+      counts_as_detected_when:
+        axiom: BOUNDEDNESS
+        severity_in: [warning, high, critical]
+      confirmed: false
+      anticipated: false
+      source: worked example, not a field record

@@ -61,6 +61,21 @@ useful-looking document and the less trustworthy one.
 - **The modelling guide documents causal input.** `edge_direction: causal`,
   `causal.weight`, `causal.leak` and `latent_confounder` had no section in it,
   so the one verb whose input is a causal graph was undocumented.
+- **`STANCE.md`: who counts as a producer, and what this engine owes one.** A
+  submission is a forecast filed as a claim to be audited, and `source=` withdraws
+  that claim -- measured, the only thing it changes is whether the eight axioms run
+  over the record, which is why the engine stamps its own projections and baselines
+  the same way. Deliberately narrow: the declared-versus-learned argument stays in
+  `README.md` and the record mechanics stay in `BRIDGES.md`, and a test holds the
+  division in both directions. `ROADMAP.md`'s heading no longer claims a term the
+  README declines.
+- **A surprise benchmark: `python3 -m arbiter_engine.scripts.surprise_benchmark`.**
+  A `surprises:` companion declares events a human confirmed afterwards and what
+  a detector would have had to emit to have caught each one; the scorer replays a
+  model over a store and reports both senses of the result, never a single rate.
+  An entry whose window holds no observation of its subject declines
+  `not_replayable` rather than counting as a miss. `substation_feeder_surprises
+.yaml` ships beside the model it grades.
 - **`health_meta_ontology.ttl` ships.** The loader declares two RDF namespaces
   and the comment justifying them named a graph that was in no published tree.
   It is here now, holds all eight axioms, and a test derives its axiom set and
@@ -83,6 +98,14 @@ useful-looking document and the less trustworthy one.
   in both states. They resolve exactly as they did before. None is a supported
   name; they are listed because a reader who imports one would otherwise have
   no way to tell.
+- **`is_domain_model` accepted anything that parsed to a mapping.** It is
+  published as the filter a directory scan uses to skip the companions shipped
+  beside the models, and it answered true for `{"anything": 1}`: with no
+  `domain:` key the loader falls back to the document itself and every field is
+  read through a default, so such a file loaded as a model declaring nothing. A
+  document carrying no `domain:` key and none of the names this loader reads is
+  now refused with `NotADomainModelError`, which is what the constraints
+  companions have always got. Every shipped example still loads.
 - **`infer` declined with a number it had not computed.** The
   `no_report_probability` message carried a fixed `0.31` while the `evidence`
   beside it held the real posterior. Both now read the same value.
