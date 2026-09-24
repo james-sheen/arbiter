@@ -569,10 +569,18 @@ performance.
 
 **So a derivation rule MAY quantify a join variable**, which the shorthand appears to forbid. In
 `body: [holds(A, B), clears_at(B, C)]` the variable `B` is existential: it says *there is some B*.
-That is allowed because the two bounds on a rule — at most three body atoms, and the head predicate
-absent from its own body — make evaluation a nested-loop join over a non-recursive conjunctive
-query, which is polynomial. What stays forbidden is what leaves polynomial time: recursion, an
-unbounded body, and a constraint whose subject is another constraint.
+That is allowed because the bounds on a rule — at most three body atoms, the head predicate absent
+from its own body, and no cycle among the declared rules — make evaluation a nested-loop join over a
+non-recursive conjunctive query, which is polynomial. What stays forbidden is what leaves polynomial
+time: recursion, an unbounded body, and a constraint whose subject is another constraint.
+
+**The third bound is about the rule SET, and the first two cannot supply it.** A head in its own body
+is recursion visible in one rule. Two rules close a loop while neither is recursive alone —
+`p(A, C) :- q(A, B), link(B, C)` beside `q(A, C) :- p(A, B), link(B, C)` — and since `adopt` writes
+derived edges back, the next call joins against them and the depth becomes a property of the data.
+Such a rule is declined `recursion_unsupported` with the cycle named. An acyclic chain, where one
+rule consumes an earlier rule's head, is a finite unrolling bounded by the number of rules and stays
+legal.
 
 **Polynomial is not the same as affordable**, and the engine says so rather than implying otherwise.
 Three body atoms sharing no variables is the full cross product, cubic in the facts; the engine
@@ -1267,6 +1275,7 @@ the key being absent.
 | `objective_evaluated_at_median` | `expected_findings` was evaluated on the median trajectory, and it is a step function -- rank on `clearance_probability` when the question is how likely the candidate is to stay clear |
 | `ties_break_toward_fewer_actions` | candidates equal on the objective were ordered by acting less |
 | `ties_break_toward_the_wider_margin` | candidates still equal were ordered by the wider signed headroom, and only where a declared spread reached a trajectory |
+| `search_depth_not_declared` | the model declared no `planning.max_depth:`, so every candidate was scored alone and no combination was tried -- absent the moment the key is declared, including at 1, because the claim is that the engine chose rather than that the depth is low |
 
 One stamp carries a value rather than standing alone:
 `action_property_from_parameter_name:<property>` says that an action template

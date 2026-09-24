@@ -510,7 +510,7 @@ Honest boundaries, stated because you would otherwise find them yourself:
   projected values from a declared `dynamics:` block, and the `forecasts` leg scores predictions an
   outside model sends. What is deliberately absent is a model that knows which indicators matter
   here -- that is domain knowledge, and it belongs on your side of the line.
-- **Seven worked examples ship, not a library of them.** Modelling a real system is your work.
+- **Eight worked examples ship, not a library of them.** Modelling a real system is your work.
 - Stage I and Stage II of this project are **archived, not running**. Anything describing them as
   production is out of date.
 
@@ -574,7 +574,7 @@ python3 -m arbiter_engine.scripts.benchmark_check --sizes 10,100,1000 --model-si
 | [`COMPATIBILITY.md`](COMPATIBILITY.md) | what a patch release may change, and what waits |
 | [`schema/envelope.schema.json`](schema/envelope.schema.json) | the response shape, machine-readable |
 
-Seven worked models ship in `examples/`: `water_tank.yaml` declares all eight axioms and doubles as
+Eight worked models ship in `examples/`: `water_tank.yaml` declares all eight axioms and doubles as
 the schema reference, `kubernetes_node.yaml` is the smallest domain where a band matters,
 `battery_pack.yaml` is one where nearly every bound is a floor somebody published,
 `factory_line.yaml` is a manufacturing cell whose vocabulary shares no nouns with the other three,
@@ -590,6 +590,14 @@ causal` edges with noisy-OR strengths, so it is the only model the causal verb c
 Its header states one question answered three ways -- a feeder unobserved, observed, and intervened
 on with `do` -- because the last two put that feeder in the same state and the answers differ by a
 factor of thirteen, which is the whole reason `infer` is a verb rather than a filter over `traverse`.
+
+`pump_tank_planning.yaml` is the eighth, and the only one that declares `planning.max_depth:` above
+1. `plan` has searched COMBINATIONS of actions since 0.2.3 -- the depth defaults to 1, so nothing
+searched unless a model asked, and no shipped model asked. This one is the same tank with a drain
+valve beside the pump: two independent levers on one level, where the best plan is a PAIR of
+settings and beats every single action, and where opening the drain too far costs more than leaving
+it shut. It is a sibling of `pump_tank_dynamics.yaml` rather than an extension of it, because that
+file declares one action template on purpose and a deeper search over one lever finds only refusals.
 
 `substation_feeder_surprises.yaml` is beside it and is **not a model**: it is a worked SURPRISE
 CORPUS, the companion format the benchmark below reads. Four entries against the model above, chosen
@@ -608,6 +616,15 @@ anticipated by the design of the probes — which is favourable, and is a statem
 and NONE were surfaced by the detector at the time, with three reached on a later replay — which is
 unfavourable, and is a statement about the detector. Both are `0 of 16`. `SurpriseScore` therefore
 has no single rate to quote: it carries counts, and it names its denominator in a sentence.
+
+**Why the detector column reads as it does, which is a question about REACH rather than sensitivity.**
+Most of those sixteen have no property whose reading could have revealed them: they are observations
+about the collection pipeline, about the fault instrument that was supposed to be exercising the
+system, or about a relation between two endpoints over time. A detector reading a domain model could
+not have surfaced them however sensitive it was, because their subject is not in the model. That is
+also why they cannot simply be written up as a corpus for the benchmark above — an entry needs a
+subject, a window and an axiom that could have fired, and inventing those for an observation that has
+none would score the invention.
 
 **A window with no data is a refusal, not a miss.** An entry whose span holds no observation of its
 subject declines `not_replayable` and leaves the denominator, because scoring it zero would measure

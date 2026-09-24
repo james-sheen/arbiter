@@ -202,6 +202,21 @@ TIES_BREAK_TOWARD_FEWER_ACTIONS = "ties_break_toward_fewer_actions"
 #: trajectory, so a model that declares no spread keeps the order it had.
 TIES_BREAK_TOWARD_THE_WIDER_MARGIN = "ties_break_toward_the_wider_margin"
 
+#: The plan field was NOT searched, because the model declared no
+#: `planning.max_depth:` and the engine's default is 1 -- each declared action
+#: scored on its own, no combination tried.
+#:
+#: Stamped for the same reason as `evidence_severity_not_declared`, and it is
+#: the same defect one verb over: THE DEFAULT IS INVISIBLE FROM THE ANSWER. A
+#: depth-1 field and a depth-2 field in which every pair was refused are the
+#: same shape on the wire -- single-action rows, a ranking, no complaint -- so
+#: a reader cannot tell a search that found nothing from a search that never
+#: ran. Two outside documents read this engine as lacking combination search
+#: altogether; it has had one since 0.2.3, switched off by a default nothing
+#: announced. Absent the moment a model declares the key, whatever it declares,
+#: including 1: the claim is that the ENGINE chose, not that the depth is low.
+SEARCH_DEPTH_NOT_DECLARED = "search_depth_not_declared"
+
 # ---------------------------------------------------------------------------
 # The one stamp that carries a value.
 # ---------------------------------------------------------------------------
@@ -242,6 +257,7 @@ ASSUMPTION_STAMPS: Tuple[str, ...] = (
     OBJECTIVE_EVALUATED_AT_MEDIAN,
     TIES_BREAK_TOWARD_FEWER_ACTIONS,
     TIES_BREAK_TOWARD_THE_WIDER_MARGIN,
+    SEARCH_DEPTH_NOT_DECLARED,
 )
 
 #: The prefixes a stamp may carry a value behind. Kept separate from the tuple

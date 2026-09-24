@@ -44,6 +44,55 @@ class ResponseModel(Enum):
     LOGARITHMIC = "logarithmic"  # y(t) = y_final × ln(1+t/τ) / ln(2)
 
 
+#: The accepted spellings, canonical, owned HERE beside the enum. --
+#: the reporter must not keep its own copy; that is the number-written-twice
+#: defect, and it would go stale the first time a member was added.
+RESPONSE_MODEL_NAMES: Tuple[str, ...] = tuple(m.value for m in ResponseModel)
+
+
+def resolve_response_model(raw: Any) -> Tuple[ResponseModel, Optional[str]]:
+    """`(model, unresolved)` -- never raises, and never resolves by accident.
+
+    Three call sites parsed this with `ResponseModel(raw)` inside a
+    `try/except ValueError` that fell back to exponential and said nothing, so
+    an unrecognised value was not refused, not declined and not reported.
+    Measured on the shipped `pump_tank_planning` model, one edge varied:
+    `exponential` scores 8.667 and `linear` 7.333, while `LINEAR`, `Linear`
+    and `lienar` ALL scored 8.667 -- a capitalised member of the vocabulary
+    quietly returning a different number than the author asked for.
+
+    Two separate repairs, and they are not the same repair:
+
+      *CASE is resolved, as the other closed vocabularies here resolve it.
+        `LINEAR` is the author naming a member this engine has, and lowering
+        it is the entire fix.
+      *ANYTHING ELSE is returned as `unresolved` for the caller to report.
+        The fallback still happens, because a whole domain failing to load
+        over one word is the outcome this loader exists to avoid -- what
+        changes is that the fallback is now visible.
+
+    ABSENT IS NOT UNRESOLVED. An omitted `response_model:` legitimately
+    defaults, and conflating the two would report every edge that never
+    declared one -- the distinction `_resolve_indicator_type` already draws.
+
+    SHOULD AN UNRECOGNISED VALUE STOP THE EDGE BEING BUILT? An internal ruling asked and
+    the answer is NO, recorded here rather than in a document beside the code.
+    The loader's stated posture is that a typo should be visible without being
+    fatal, because the alternative is a whole domain failing to load over one
+    word; every other closed vocabulary here falls back and reports, and
+    refusing the edge would stop a model that currently runs. The defect was
+    never the fallback -- it was that the fallback was SILENT, and that is
+    what changed.
+    """
+    if raw is None or raw == "":
+        return ResponseModel.EXPONENTIAL, None
+    canonical = {name.lower(): name for name in RESPONSE_MODEL_NAMES}
+    match = canonical.get(str(raw).strip().lower())
+    if match is not None:
+        return ResponseModel(match), None
+    return ResponseModel.EXPONENTIAL, str(raw)
+
+
 @dataclass
 class TemporalEdge:
     """Time-annotated relationship edge."""
@@ -134,11 +183,12 @@ class TemporalAnnotationStore:
             temporal = rule.get('temporal')
             if not temporal:
                 continue
-            model_str = temporal.get('response_model', 'exponential')
-            try:
-                model = ResponseModel(model_str)
-            except ValueError:
-                model = ResponseModel.EXPONENTIAL
+            # -- resolves case, and does not resolve a typo by
+            # accident. The unresolved value is reported by the domain
+            # loader, which is the layer that owns reporting; this one is
+            # here so the VALUE is not silently wrong either way.
+            model, _unresolved = resolve_response_model(
+                temporal.get('response_model'))
 
             edge = TemporalEdge(
                 source_type=rule.get('source_type', ''),

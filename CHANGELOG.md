@@ -34,7 +34,44 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.2.6] — 2026-09-24
+
+**Everything since 0.2.4.** 0.2.5 was cut and pushed and never reached the
+index; see its section below. A reader installing from PyPI moves from 0.2.4
+to this, so the entries under 0.2.5 describe changes this release also
+carries -- they are kept in their own section because that is where they were
+written and a released section is not tidied.
+
+### Changed
+
+- **A `temporal.response_model:` this engine does not recognise is now reported
+  rather than swallowed**, with the accepted set and a did-you-mean, and one it
+  recognises in another case is now honoured: `LINEAR` is `linear`. Previously
+  both fell back to exponential in silence, so a capitalised member of the
+  vocabulary returned a different number than the author declared. The fallback
+  itself is unchanged -- a typo stays non-fatal.
+
+- **`entail` now declines `recursion_unsupported` for a CYCLE across rules, not
+  only for a head in its own body.** Two rules can be mutually recursive while
+  neither is recursive alone, and `adopt` writes derived edges back, so the next
+  call joins against them. An acyclic chain of rules is unaffected.
+
 ### Added
+
+- **`plan` reports its own search limits: `max_depth` and `max_rollouts` are
+  now in the sub-envelope's `checked`.** `rollouts_run` alone could not say
+  whether the budget was reached, and a one-level field looks the same as a
+  two-level one whose every pair was refused.
+- **`search_depth_not_declared` is a new assumption stamp**
+  (`SEARCH_DEPTH_NOT_DECLARED`). It says the model declared no
+  `planning.max_depth:`, so each action was scored alone and no combination was
+  tried. Absent the moment the key is declared, including at 1.
+- **`examples/pump_tank_planning.yaml`, the first shipped model that declares
+  `planning.max_depth:` above 1.** Two independent levers on one level, where
+  the best plan is a pair and beats every single action. The default depth is
+  unchanged at 1.
 
 - **`EngineSession(ledger=...)`, and `SqlitePredictionLedger` is a supported
   name.** The durable ledger has shipped since 0.2.3 and the only route to it
@@ -239,6 +276,14 @@ useful-looking document and the less trustworthy one.
   vocabulary is `LocalLevel`, `RandomWalk` and `TrendCurve`.
 
 ## [0.2.5] — 2026-09-20
+
+**PREPARED, NOT PUBLISHED — and now permanently so.** Superseded by 0.2.6 above,
+which carries everything this section describes. 0.2.5 exists as a release COMMIT
+and as nothing else: no `v0.2.5` tag was ever cut, no artifact was ever uploaded,
+and none will be. The paragraphs below are kept exactly as written rather than
+folded upward, because a released section is not tidied and this one's whole
+subject is the gap between what a file says shipped and what a reader can
+install. Read it as history of a release that did not happen.
 
 **PREPARED, NOT PUBLISHED.** No `v0.2.5` tag exists and no artifact was uploaded:
 the newest release on PyPI is 0.2.4, and the work below is on `master` only. The

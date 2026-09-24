@@ -1,0 +1,162 @@
+# A worked example that SEARCHES COMBINATIONS.
+#
+# `plan` has run a greedy receding-horizon search over combinations of
+# actions since 0.2.3 -- `planning.max_depth` rounds, `max_rollouts` as the
+# budget. Two outside documents read this engine as having no such search, and
+# both were reading the shipped tree correctly: `max_depth` defaults to 1, so
+# nothing searches unless a model asks, and no shipped example asked.
+#
+# WHY THIS IS A SECOND FILE. Its sibling `pump_tank_dynamics.yaml` is the
+# smallest model that declares a time course, and it declares ONE action
+# template. That is not an oversight -- with one lever every two-action plan
+# sets one property twice at one instant, which the engine refuses, so a
+# deeper search there produces refusals and nothing else. Two independent
+# levers is the smallest arrangement on which searching COMBINATIONS is a
+# different question from ranking single actions, and the difference is what
+# this file exists to show. Same tank, one more valve, and its own file so the
+# sibling stays the smallest thing that answers the sibling's question.
+#
+# arbiter plan -- which COMBINATION of settings keeps the level in band
+
+domain:
+  id: pump_tank_planning
+  name: Pump, tank and drain -- two levers on one level
+  description: >
+    A pump fills a tank and a drain empties it. Both reach the same level and
+    they pull opposite ways, so the best thing to do is a pair of settings
+    rather than either setting alone.
+
+  entity_types: [Pump, Tank, Valve]
+  relationship_types: [feeds, drains]
+
+  indicators:
+    Pump:
+      - name: speed_rpm
+        type: NUMERIC
+        axioms: [BOUNDEDNESS]
+        dynamics: {model: local_level}
+        lower_critical: 100      # nameplate: below this the pump stalls
+        lower_warning: 400       # nameplate: continuous-duty minimum
+        warning: 3600            # nameplate: continuous-duty maximum
+        critical: 4000           # nameplate: mechanical limit
+
+    Valve:
+      # THE SECOND LEVER. Everything below it is here to make one point: the
+      # drain is an INDEPENDENT way to move the tank's level, so a plan may
+      # use it and the pump together without setting one property twice.
+      - name: open_pct
+        type: NUMERIC
+        axioms: [BOUNDEDNESS]
+        # The DRIVING side of a coupling needs its own dynamics, or a rollout
+        # that lets the valve drift completes no steps at all.
+        dynamics: {model: local_level}
+        # A valve cannot open past its stop, so this is a mechanical limit
+        # rather than a preference -- which is what makes declaring the line
+        # legitimate. There is deliberately no `warning:` beside it: a fully
+        # open valve is a valve doing its job, not a fault approaching one.
+        critical: 100
+
+    Tank:
+      - name: level_pct
+        type: NUMERIC
+        axioms: [BOUNDEDNESS, HOMEOSTASIS]
+        warning: 85
+        critical: 95
+        window: 30m
+        # The level is SUPPOSED to sit near half full. No datasheet gives a
+        # floor for `how full is acceptable`, so this is HOMEOSTASIS rather
+        # than a lower bound.
+        homeostasis:
+          setpoint: 50
+          tolerance: 10
+
+  relationship_rules:
+    - type: feeds
+      source_type: Pump
+      target_type: Tank
+      temporal:
+        propagation_delay_s: 120
+        time_constant_s: 600
+        response_model: exponential
+      transition:
+        from: speed_rpm
+        to: level_pct
+        gain: 0.02             # +100 rpm settles the level 2 points higher
+        source: datasheet
+        gain_sigma: 0.002
+
+    - type: drains
+      source_type: Valve
+      target_type: Tank
+
+      # A drain answers FASTER than the feed does: it sits under the tank
+      # rather than two minutes of pipe away from it.
+      temporal:
+        propagation_delay_s: 60
+        time_constant_s: 300
+        response_model: exponential
+
+      # NEGATIVE, because opening the drain lowers the level. The sign is the
+      # whole reason two actions can be worth more than either alone: the
+      # levers pull opposite ways, so a plan using both can land the level
+      # where neither on its own does.
+      transition:
+        from: open_pct
+        to: level_pct
+        gain: -0.35            # +10 % open settles the level 3.5 points lower
+        source: datasheet
+        gain_sigma: 0.035
+
+  action_templates:
+    - name: throttle_pump
+      applies_to: Pump
+      description: Set the pump to a specific speed.
+      parameters_schema:
+        speed_rpm:
+          type: number
+          entity_property: speed_rpm
+          candidates: [800, 1500, 2200, 3000]
+      effect: set
+      settle_s: 30
+      source: runbook
+
+    - name: set_valve
+      applies_to: Valve
+      description: Set the drain valve to a specific opening.
+      parameters_schema:
+        open_pct:
+          type: number
+          entity_property: open_pct
+          candidates: [0, 25, 50, 75]
+      effect: set
+      settle_s: 30
+      source: runbook
+
+  planning:
+    objective: expected_findings
+
+    # HOW MANY ACTIONS MAY BE COMBINED. The default is 1, which scores every
+    # declared setting on its own and ranks them. That is useful and it is not
+    # a search. At 2 the planner keeps the best single action and tries each
+    # remaining one beside it, so pairs enter the field.
+    #
+    # MEASURED on this model, from pump 3700 rpm / level 88 % / valve shut,
+    # over a 30-minute horizon -- these numbers belong to that starting state
+    # and to no other:
+    #
+    # 50.00 do nothing
+    # 50.00 the drain set to shut, which is the same thing and scores it
+    # 9.33 throttle to 1500 rpm -- the best SINGLE action
+    # 8.67 throttle to 1500 rpm AND open the drain a quarter <- the plan
+    # 12.33 throttle to 1500 rpm and open the drain half way
+    #
+    # The last row is the reason `max_depth` is here. The second lever has an
+    # OPTIMUM rather than a direction: a quarter open helps, half open
+    # overshoots and costs more than the throttle alone. A ranking of single
+    # actions cannot find that, however carefully it ranks them.
+    #
+    # Pairs that set ONE property twice at one instant are refused and come
+    # back carrying `contradictory_actions`. Three do here, which is the
+    # engine declining to add two settings of the same thing rather than a
+    # fault in this file.
+    max_depth: 2

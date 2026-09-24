@@ -143,8 +143,17 @@ class TestTheHeadline:
 class TestTheWorkedCorpusReachesEveryVerdict:
     """A corpus in which everything is catchable measures the corpus."""
 
+    # `@classmethod` is REQUIRED, not stylistic. pytest 9.1 deprecates a
+    # class-scoped fixture written as an instance method
+    # (`PytestRemovedIn10Warning`), the published `pyproject.toml` sets
+    # `filterwarnings = ["error::DeprecationWarning"]`, and the workflow
+    # installs pytest unpinned -- so the three together turned a style note
+    # into four setup ERRORS on the published lane the day a fresh runner
+    # resolved 9.1. Reproduced on a clean clone of the published tree:
+    # 2662 passed, 7 skipped, 4 errors.
     @pytest.fixture(scope="class")
-    def result(self):
+    @classmethod
+    def result(cls):
         corpus, declines = load_surprises(str(CORPUS))
         assert not declines, f"the shipped corpus has unread keys: {declines}"
         return score(_session_with_the_shift(), corpus)

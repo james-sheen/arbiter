@@ -491,6 +491,68 @@ class DomainModel:
                             "remedy": remedy,
                         })
         out.extend(self._unread_coupling_keys())
+        out.extend(self._unresolved_coupling_values())
+        return out
+
+    def _unresolved_coupling_values(self) -> List[Dict[str, Any]]:
+        """ -- the VALUE half of the block above, which had none.
+
+        `_unread_coupling_keys` catches `response_modle:`. It cannot catch
+        `response_model: lienar`, and that one is worse: the key is read, the
+        value is not recognised, and three call sites fell back to exponential
+        without a word. Measured on the shipped `pump_tank_planning` model,
+        `exponential` scores 8.667 and `linear` 7.333 -- so a misspelling
+        returned a different number than the author asked for, quietly. The
+        engine already reports an unrecognised value this way for the closed
+        vocabularies on an INDICATOR; a coupling block simply had no such
+        check.
+
+        The accepted set is imported, never transcribed: the resolver owns it,
+        for the reason `_record_unresolved` already states.
+        """
+        from ..temporal.temporal_edge import (
+            RESPONSE_MODEL_NAMES, resolve_response_model,
+        )
+
+        #: `(block, key, resolver, valid)`. One row today; a tuple because the
+        #: next closed vocabulary inside a coupling block should be added here
+        #: rather than beside it.
+        vocabularies = (
+            ("temporal", "response_model", resolve_response_model,
+             list(RESPONSE_MODEL_NAMES)),
+        )
+
+        out: List[Dict[str, Any]] = []
+        for rule in (getattr(self, "relationship_rules", None) or ()):
+            if not isinstance(rule, dict):
+                continue
+            label = (f"{rule.get('source_type', '?')}"
+                     f"-{rule.get('type', '?')}->"
+                     f"{rule.get('target_type', '?')}")
+            for where, key, resolve, valid in vocabularies:
+                block = rule.get(where)
+                if not isinstance(block, dict) or key not in block:
+                    continue
+                _model, unresolved = resolve(block.get(key))
+                if unresolved is None:
+                    continue
+                near = _did_you_mean(unresolved, valid, cutoff=0.7)
+                remedy = (
+                    f"`{where}.{key}: {unresolved}` is not a value this "
+                    f"engine recognises, so the declaration was not applied "
+                    f"and the engine's own default was used instead; valid "
+                    f"values are {', '.join(valid)}")
+                if near:
+                    remedy += f" — did you mean `{near}`?"
+                out.append({
+                    "field": f"{where}.{key}",
+                    "reason": "unknown_value",
+                    "value": unresolved,
+                    "read_by": [],
+                    "did_you_mean": near,
+                    "remedy": remedy,
+                    "rule": label,
+                })
         return out
 
     def _unread_coupling_keys(self) -> List[Dict[str, Any]]:

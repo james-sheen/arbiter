@@ -2074,6 +2074,15 @@ def plan(session: EngineSession,
             "candidates_evaluated": len(result.candidates),
             "rollouts_run": result.rollouts_run,
             "plans_untested": result.plans_untested,
+            # THE LIMITS BESIDE THE COUNTS. `rollouts_run: 5`
+            # cannot say whether the budget was 5 or 200, and `max_depth` is
+            # the one a reader most needs: a field of single-action rows looks
+            # the same whether the search was one level deep or two levels
+            # deep with every pair refused. Named exactly as the model
+            # declares them, so a reader who wants to change one already knows
+            # the key.
+            "max_rollouts": result.max_rollouts,
+            "max_depth": result.max_depth,
             "ranked": int(bool(result.ranked)),
             "couplings_declared": couplings_declared,
             "couplings_instantiated": couplings_instantiated,

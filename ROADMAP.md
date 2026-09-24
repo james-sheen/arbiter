@@ -18,11 +18,11 @@ This section read *"Next — open the engine. The current work is extracting..."
 
 ## Published to an index — landed August 2026
 
-`arbiter-engine` installs from PyPI with `pip install arbiter-engine`, and seven worked domain models ship in `examples/`.
+`arbiter-engine` installs from PyPI with `pip install arbiter-engine`, and eight worked domain models ship in `examples/`.
 
 The count above read *five* until 2026-09-20, when the sixth example had already shipped — the same failure a third time, and caught by the release-day tripwire rather than by a reader. It is recorded here on the rule the paragraph below states: dated, not corrected quietly.
 
-It read *six* until 2026-09-23, and the seventh example is the one the count was moved WITH rather than after — the tripwire fired in the same session that added the file, before anything was built. That is the first time this line has been right at the moment it was written, which is worth a sentence only because the three before it were not.
+It read *six* until 2026-09-23, and the seventh example is the one the count was moved WITH rather than after — the tripwire fired in the same session that added the file, before anything was built. That is the first time this line has been right at the moment it was written, which is worth a sentence only because the three before it were not. The eighth, 2026-09-24, was weaker and is recorded as such: the file was written first and this line went stale for the length of one test run, which the tripwire then caught. Same session, and not the same standard.
 
 Until 2026-08-24 this file carried both of these under a *Next* heading — it denied the package was on any index, and it counted the examples at one. Both were false when they were read: the package had been on the index since 0.1.0, and the third example shipped alongside it. The corrections are dated rather than made quietly, because this is the second time this file has described a shipped thing as forthcoming — the section above records the first — and the pattern matters more than either instance.
 

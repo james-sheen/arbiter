@@ -42,6 +42,7 @@ from ..assumptions import (
     DECLARED_GAIN_SPREAD_SAMPLED,
     DETERMINISTIC_TRANSITIONS,
     OBJECTIVE_EVALUATED_AT_MEDIAN,
+    SEARCH_DEPTH_NOT_DECLARED,
     TIES_BREAK_TOWARD_FEWER_ACTIONS,
     TIES_BREAK_TOWARD_THE_WIDER_MARGIN,
     WORST_STEP_BINDS_THE_HORIZON,
@@ -60,6 +61,17 @@ OBJECTIVES = {
 #: guarantee is genuinely at risk, and `inference/ve.py` states the rule --
 #: an engine that does not return is worse than one that refuses.
 DEFAULT_MAX_ROLLOUTS = 200
+#: An internal ruling asked whether this should move to 2 and the answer is NO, recorded
+#: here rather than in a document nobody reads beside the constant.
+#:
+#: Raising it changes the cost AND the answer for every caller who never asked
+#: for a search: roughly double the rollouts, and a `best` that may now be a
+#: pair where a caller's runbook expects one action. The complaint
+#: actually landed was not that the default is low -- it is that the default
+#: was UNDISCOVERABLE, because nothing on the envelope said how deep the search
+#: went. That is fixed by `max_depth` in `checked` and the
+#: `search_depth_not_declared` stamp, and fixing it by widening the default
+#: instead would have hidden the same defect behind a better answer.
 DEFAULT_MAX_DEPTH = 1
 
 
@@ -147,6 +159,13 @@ class PlanResult:
     assumptions: List[str] = field(default_factory=list)
     rollouts_run: int = 0
     plans_untested: int = 0
+    #:. THE LIMITS, beside the counts that were measured against them.
+    #: `rollouts_run: 5` alone cannot say whether the budget was 5 or 200, and
+    #: `max_depth` is the one a reader most needs: without it a field of
+    #: single-action rows is indistinguishable from a search that ran two deep
+    #: and had every pair refused.
+    max_rollouts: int = 0
+    max_depth: int = 0
     invariants: int = 0
     #:. The no-action row's filing, and only its own. Every other
     #: candidate is a counterfactual and is never asked to file, so these
@@ -570,6 +589,8 @@ def search(session: Any, topology: Any, *,
 
     max_rollouts = int(block.get("max_rollouts", DEFAULT_MAX_ROLLOUTS))
     max_depth = max(1, int(block.get("max_depth", DEFAULT_MAX_DEPTH)))
+    result.max_rollouts = max_rollouts
+    result.max_depth = max_depth
 
     pool: List[ActionInstance] = list(candidates or ())
     if not pool:
@@ -584,6 +605,19 @@ def search(session: Any, topology: Any, *,
             "there is nothing to choose between: no candidate actions were "
             "supplied and no action template declares `candidates:`"))
         return result
+
+    # -- STAMPED HERE, not where the limit was read, and gated on the
+    # field being wide enough for the limit to bite.
+    #
+    # Keyed on the KEY BEING ABSENT rather than on the value being 1: a model
+    # declaring `max_depth: 1` has made a choice and is not stamped. And
+    # withheld when the pool holds one action, because there is then no pair
+    # to try and a deeper search would change nothing -- the same rule
+    # `ties_break_toward_the_wider_margin` follows two screens down. A stamp
+    # describing a limit that cannot fire is noise wearing a disclosure's
+    # clothes.
+    if "max_depth" not in block and len(pool) > 1:
+        result.assumptions.append(SEARCH_DEPTH_NOT_DECLARED)
 
     def roll(actions: Sequence[ActionInstance],
              filing: bool = False) -> Optional[PlanCandidate]:

@@ -100,11 +100,30 @@ jobs:
       # graph the loader's namespaces refer to was never loaded by anything.
       # That is the same defect this step already carries a paragraph about:
       # a dependency a caller is invited to install, exercised on no lane.
+      #
+      # 4. pytest IS RANGE-PINNED, and the range is a claim this lane has
+      # tested. It was unpinned until 2026-09-24, so a fresh runner resolved
+      # whatever was newest that morning. pytest 9.1 deprecated a class-scoped
+      # fixture written as an instance method; `filterwarnings =
+      # error:DeprecationWarning` in pyproject.toml turns that into an ERROR;
+      # and one file in this suite used the pattern. The three together made
+      # the published lane go red with nothing in the tree having changed --
+      # green on a runner with an older cached pytest, red on a fresh one. The
+      # same *true where I stood, false where it is read* shape the release
+      # checks already close on the tree, arriving on the test RUNNER instead.
+      # The floor is where the suite is verified; the ceiling is the next
+      # major, which the canary job below reaches on purpose.
       - name: Install the package and the suite's requirements
         run: |
           python -m pip install --upgrade pip
           python -m pip install .[mcp,rdf]
-          python -m pip install pytest jsonschema
+          python -m pip install 'pytest>=8,<10' jsonschema
+
+      # NAMES THE VERSION IT MEASURED. A range says what is allowed; the log
+      # has to say what actually ran, or a reader of a green check cannot tell
+      # which end of the range produced it.
+      - name: Say which pytest this run used
+        run: python -m pytest --version
 
       # `set +e` is load-bearing, not tidiness. GitHub runs `run:` steps under
       # `bash -e`, so a failing pytest would end the step at that line and the
@@ -237,3 +256,37 @@ jobs:
             diff <(printf '%s\n' "$EXPECTED") <(printf '%s\n' "$ACTUAL")
             exit 1
           fi
+
+  # THE CEILING, REACHED ON PURPOSE RATHER THAN HIT BY SURPRISE.
+  #
+  # The job above pins pytest below the next major so the gate is a gate. That
+  # alone would reproduce the defect it was written for one major later: a
+  # lane that never sees a new pytest cannot tell you a new pytest breaks it,
+  # and the reason the 9.1 errors arrived unannounced is that nothing here had
+  # ever run anything but whatever was newest.
+  #
+  # So one job installs the newest, on one interpreter, and is ALLOWED TO
+  # FAIL. Its red is a notice, not a gate: it says the range in the job above
+  # is now a claim about the past, and somebody should widen it deliberately
+  # after reading what moved. A gate that goes red for a reason nobody chose
+  # gets switched off; a notice that does is doing its job.
+  newest-pytest:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: |
+          python -m pip install --upgrade pip
+          python -m pip install .[mcp,rdf]
+          python -m pip install --upgrade pytest jsonschema
+      - name: Say which pytest this run used
+        run: python -m pytest --version
+      # No exit-5 handling and no skip-set comparison: this lane is not the
+      # grade. It answers one question -- does the suite still pass on a
+      # pytest the pinned range excludes -- and anything more would be a
+      # second copy of the job above, drifting from it.
+      - name: The suite, on a pytest the gate does not admit
+        run: python -m pytest tests/ -q

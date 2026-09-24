@@ -13,7 +13,9 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from ..interfaces import Entity, RelationshipGraph
 from ..types import Axiom, Severity
-from ..temporal.temporal_edge import TemporalAnnotationStore, ResponseModel
+from ..temporal.temporal_edge import (
+    TemporalAnnotationStore, ResponseModel, resolve_response_model,
+)
 from ..propagation.weight_learner import LearnedWeight
 
 from .topology import (
@@ -426,12 +428,12 @@ class TopologyBuilder:
                 'time_constant_s', edge.time_constant_s))
             edge.coupling_strength = float(temporal_block.get(
                 'coupling_strength', edge.coupling_strength))
-            try:
-                edge.response_model = ResponseModel(
-                    temporal_block.get('response_model',
-                                       edge.response_model.value))
-            except ValueError:
-                pass
+            # -- see `resolve_response_model`. An absent key keeps
+            # whatever the edge already carries; a present one resolves by
+            # case or falls back visibly rather than silently.
+            if temporal_block.get('response_model') not in (None, ""):
+                edge.response_model, _unresolved = resolve_response_model(
+                    temporal_block.get('response_model'))
         transitions, gaps = self._transitions_from_rule(
             rule, edge.source_id, edge.target_id)
         edge.transitions = transitions
@@ -696,11 +698,10 @@ class TopologyBuilder:
             coupling = float(
                 temporal_block.get('coupling_strength', coupling)
             )
-            rm_str = temporal_block.get('response_model', resp_model.value)
-            try:
-                resp_model = ResponseModel(rm_str)
-            except ValueError:
-                pass
+            # -- as above.
+            if temporal_block.get('response_model') not in (None, ""):
+                resp_model, _unresolved = resolve_response_model(
+                    temporal_block.get('response_model'))
 
         # Learned weights
         prop_prob = 0.3

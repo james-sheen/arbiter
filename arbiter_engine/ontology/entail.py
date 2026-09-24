@@ -8,11 +8,23 @@ WHAT A RULE MAY BE, AND WHY THE LIMIT IS A COMPLEXITY LIMIT
         head: exposed_to(A, C)
         body: [holds(A, B), clears_at(B, C)]
 
-Three atoms at most, and the head predicate may not appear in the body. Those
-two bounds are one bound: a non-recursive conjunctive query over `n` facts
-evaluates by nested-loop join in O(n^k) for `k` body atoms, so capping `k`
-caps the cost as a polynomial, and forbidding recursion stops the join being
-iterated to a fixed point whose depth is not bounded by the rule.
+Three atoms at most, the head predicate may not appear in the body, and no
+CYCLE among the declared rules. Those bounds are one bound: a non-recursive
+conjunctive query over `n` facts evaluates by nested-loop join in O(n^k) for
+`k` body atoms, so capping `k` caps the cost as a polynomial, and forbidding
+recursion stops the join being iterated to a fixed point whose depth is not
+bounded by the rule.
+
+THE THIRD BOUND WAS MISSING AND THE FIRST TWO COULD NOT SUPPLY IT. A head in
+its own body is recursion visible in ONE rule, which is the only kind a
+per-rule check can see. Two rules close a loop while neither is recursive
+alone, and because `adopt` writes derived edges back into the graph, the next
+call joins against them: measured before this bound existed, the derived count
+over six adopting passes ran 1, 2, 3, 4, 5 with no decline, stopping only when
+the chain ran out of entities. `predicate_cycles` below is the same check at
+the level the defect lives at. An ACYCLIC chain of rules is a finite
+unrolling, bounded by the rule count rather than the graph, and stays legal --
+a finite union of conjunctive queries is still in P.
 
 The project rule this satisfies is stated as *verification stays in P*, and
 `first-order` is its shorthand. A body DOES quantify its join variable -- `B`
@@ -122,6 +134,59 @@ def parse_rule(raw: Dict[str, Any]) -> Tuple[Optional[Rule], Optional[str]]:
     return Rule(name=name, head=head, body=tuple(body)), None
 
 
+def predicate_cycles(rules: Sequence[Rule]) -> List[Tuple[str, ...]]:
+    """Predicate cycles across the declared rule SET, shortest first.
+
+    THE PER-RULE CHECK IS THIS CHECK ON A ONE-NODE GRAPH. Refusing a head that
+    appears in its own body catches a rule that is recursive BY ITSELF, which
+    is the only shape a rule can have when you look at one rule at a time. Two
+    rules can be mutually recursive while neither is recursive alone:
+
+        p(A, C) :- q(A, B), link(B, C)
+        q(A, C) :- p(A, B), link(B, C)
+
+    Neither head is in its own body, both bodies are inside the atom cap, and
+    every static check passes. `entail(adopt=True)` writes derived edges into
+    the graph, so the NEXT call joins against them -- and the derived count
+    measured over six passes on a seven-entity chain went 1, 2, 3, 4, 5 with
+    no decline at all. That is a fixed point whose depth is bounded by the
+    DATA rather than by the rules, which is the precise thing the atom cap and
+    the recursion refusal exist together to prevent. The single-call guarantee
+    was never wrong; it just was not the guarantee anybody needed.
+
+    An acyclic chain is NOT a cycle and stays legal: a rule consuming an
+    earlier rule's head is a finite unrolling, its depth bounded by the number
+    of rules, and a finite union of conjunctive queries is still in P. Only a
+    cycle can iterate, so only a cycle is refused.
+    """
+    edges: Dict[str, Set[str]] = {}
+    for rule in rules:
+        for atom in rule.body:
+            edges.setdefault(atom.pred, set()).add(rule.head.pred)
+        edges.setdefault(rule.head.pred, set())
+
+    found: List[Tuple[str, ...]] = []
+    seen: Set[frozenset] = set()
+    # Depth-first over a graph whose node count is the number of distinct
+    # predicates a model declares -- tens, not thousands. Reporting the PATH
+    # rather than a boolean, because *these two rules close a loop* is the
+    # only form of this finding an author can act on.
+    def walk(node: str, path: List[str], on_path: Set[str]) -> None:
+        for nxt in sorted(edges.get(node, ())):
+            if nxt in on_path:
+                cycle = tuple(path[path.index(nxt):])
+                key = frozenset(cycle)
+                if key not in seen:
+                    seen.add(key)
+                    found.append(cycle)
+                continue
+            walk(nxt, path + [nxt], on_path | {nxt})
+
+    for start in sorted(edges):
+        walk(start, [start], {start})
+    return sorted(found, key=lambda c: (len(c), c))
+
+
 def _facts(graph) -> Set[Tuple[str, str, str]]:
     """Every declared edge, as `(predicate, source, target)`."""
     out: Set[Tuple[str, str, str]] = set()
@@ -223,6 +288,19 @@ def entail(model, graph, entities) -> Tuple[SubEnvelope, List[Tuple[str, str, st
     declared_predicates = set(model.relationship_types or ())
     closed = set(model.closure or ())
 
+    # THE RULE SET IS THE SUBJECT, not the rule. Built from the rules that
+    # would actually RUN -- one that fails to parse or busts the atom cap is
+    # refused below and cannot close a loop it never joins. Computed before
+    # the loop because a cycle is not a property any single pass through it
+    # can see.
+    runnable: List[Rule] = []
+    for raw in model.rules or ():
+        candidate, _why = parse_rule(raw)
+        if candidate is not None and len(candidate.body) <= MAX_BODY_ATOMS:
+            runnable.append(candidate)
+    cycles = predicate_cycles(runnable)
+    cyclic = {pred for cycle in cycles for pred in cycle}
+
     for raw in model.rules or ():
         checked["rules_declared"] += 1
         rule, why = parse_rule(raw)
@@ -245,6 +323,26 @@ def entail(model, graph, entities) -> Tuple[SubEnvelope, List[Tuple[str, str, st
                 detail=("the head predicate appears in its own body; this "
                         "evaluator runs one pass and does not iterate to a "
                         "fixed point")))
+            continue
+        if rule.head.pred in cyclic:
+            # SAME REASON, wider subject. A consumer matching on the name
+            # keeps matching; what changed is that the name now covers the
+            # shape rather than the one instance of it that fits in a single
+            # rule. Reported with the cycle, because *these predicates close
+            # a loop* is the only form of this an author can act on.
+            loop = next(c for c in cycles if rule.head.pred in c)
+            declines.append(Decline(
+                "recursion_unsupported", {"rule": rule.name},
+                detail=(f"this rule is part of a predicate cycle "
+                        f"{' -> '.join(loop + (loop[0],))}; no rule in it has "
+                        f"its head in its own body, but together they derive "
+                        f"from their own output. One pass hides that -- "
+                        f"`adopt` writes the derived edges back, so the next "
+                        f"call joins against them and the depth becomes a "
+                        f"property of the data rather than of the rules. An "
+                        f"acyclic chain is a finite unrolling and stays "
+                        f"legal; a cycle is not"),
+                evidence={"cycle": list(loop)}))
             continue
         missing = sorted({atom.pred for atom in rule.body
                           if atom.pred not in declared_predicates})
