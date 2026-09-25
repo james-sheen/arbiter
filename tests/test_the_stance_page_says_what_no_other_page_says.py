@@ -231,57 +231,20 @@ class TestTheOtherPagesKeepTheirs:
             "direction from the README section that declines it")
 
 
-class TestTheFrontPageListsTheGuidesItShips:
-    """A page nobody is told about is a page nobody reads.
-
-    The README carries a table of the documents beside it. `STANCE.md` was added
-    to the tree, to the build and to a test before anything pointed a browsing
-    reader at it -- which is how a shipped file ends up reachable only by someone
-    who already knows it exists.
-
-    DERIVED from the manifest rather than listed here: the set of root guides is
-    a fact the packaging owns, and a second copy in a test is the shape this file
-    exists to refuse.
-    """
-
-    @staticmethod
-    def _shipped_root_guides() -> list:
-        import json
-
-        for parent in pathlib.Path(__file__).resolve().parents:
-            manifest = parent / "docs" / "publication" / "engine-manifest.json"
-            if manifest.is_file():
-                man = json.loads(manifest.read_text(encoding="utf-8"))
-                return sorted(
-                    c["target"] for c in man.get("verbatim_copies", [])
-                    if c.get("target", "").endswith(".md")
-                    and "/" not in c["target"])
-        pytest.skip("no manifest in this tree to derive the guide set from")
-
-    def test_the_population_is_not_empty(self):
-        assert len(self._shipped_root_guides()) >= 3, (
-            "the derivation found almost nothing; it is broken rather than clean")
-
-    def test_every_one_of_them_has_a_ROW_IN_THE_TABLE(self):
-        """IN THE TABLE, not anywhere in the file.
-
-        The first version asked whether the filename appeared in the README at
-        all -- and a prose sentence elsewhere on the page satisfied it, so
-        deleting the table row changed nothing and the mutation that should have
-        reddened this passed. The same hole as the workflow guard that read the
-        derived half of a line whose other half was a copy: the check was
-        satisfied by a different part of the document from the one it is about.
-        """
-        readme = _readme()
-        rows = set(re.findall(r"^\|\s*\[`([^`]+)`\]\([^)]+\)\s*\|",
-                              readme, re.MULTILINE))
-        assert rows, "no document table found in the README; this measures nothing"
-        missing = [g for g in self._shipped_root_guides() if g not in rows]
-        assert not missing, (
-            f"{missing} ship at the root and have no row in the README's "
-            f"document table; a reader browsing it cannot find them. Rows "
-            f"present: {sorted(rows)}")
-
+# THE FRONT-PAGE DOCUMENT TABLE IS CHECKED IN `tests/residual/`, NOT HERE.
+#
+# The check derives the guide set from `engine-manifest.json` -- a fact the
+# PACKAGING owns -- and the published tree does not carry that file. So in the
+# tree this suite actually ships to it could only skip, and it did: two
+# assertions went quiet in the 0.2.7 artifact while the suite still read 2780
+# passed / 7 skipped. CI caught it by grading the skip SET by name, which is the
+# only check that could -- a skip keeps the collected count, so a coverage floor
+# cannot see a tier go quiet.
+#
+# A replacement asserting the OTHER direction here -- every row resolves to a
+# file beside the page -- was tried and dropped: in the authoring tree the
+# documents are not at the root and two of them do not exist until stage time,
+# so it could only have skipped too, one tree over.
 
 
 class TestThePageAccountsForTheShippedProducer:
