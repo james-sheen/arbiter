@@ -75,7 +75,7 @@ domain:
       #
       # The role rule is single-value: `role: percentage` range-checks this
       # reading against 0-100 and would behave identically if `level_pct` were
-      # deleted from the model. That was the ONLY rule until, and this
+      # deleted from the model. That was the ONLY rule until a later change, and this
       # comment said `two independent readings that should agree` until
       # 2026-08-16 -- the reading the use-case catalogue carried in eleven
       # places, and the reason both were reported from outside on the same day.

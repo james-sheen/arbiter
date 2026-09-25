@@ -380,7 +380,7 @@ def test_a_declaration_that_names_models_without_expecting_one_counts_nothing():
 
 
 def test_the_kind_filter_is_now_a_live_path():
-    """IT WAS DEFENCE UNTIL, AND THIS TEST SAID SO AND SAID WHY.
+    """IT WAS DEFENCE UNTIL a later change, AND THIS TEST SAID SO AND SAID WHY.
 
     The version here was named `..._is_defence_and_not_a_live_path`, reported
     that no test claimed to exercise the filter, and gave the measurement

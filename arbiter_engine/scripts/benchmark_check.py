@@ -138,7 +138,7 @@ def build(entities: int, observations: int, breach_fraction: float):
     """A fresh session with `entities` units, a `breach_fraction` of them bad.
 
     Returns the session and the two halves of its construction cost SEPARATELY.
-    They were one number until, and the number was unreadable: loading
+    They were one number until a later change, and the number was unreadable: loading
     the model is flat in ENTITY count -- it loads a model, not entities -- while
     the feed is linear, so a single `build` figure hides which half a consumer
     pays again on the next cycle. That is the question the cost table gets

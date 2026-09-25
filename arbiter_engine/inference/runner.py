@@ -23,7 +23,8 @@ from typing import (Any, Dict, FrozenSet, List, Optional, Sequence, Set,
                     Tuple)
 
 from ..assumptions import (EVIDENCE_SEVERITY_NOT_DECLARED,
-                           EVIDENCE_SEVERITY_UNUSABLE)
+                           EVIDENCE_SEVERITY_UNUSABLE,
+                           TARGET_READING_SET_ASIDE)
 from ..subenvelope import Decline, SubEnvelope
 from ..twin.gap import GAP_CONFIDENCE_THRESHOLDS as _GAP_WEIGHT
 from ..twin.topology import GapType, TopologyGap, TopologyQuestion
@@ -79,7 +80,7 @@ def evidence_severities(model) -> Tuple[FrozenSet[str], bool, bool]:
     see; `[critical, hihg]` therefore becomes the default rather than quietly
     becoming `[critical]`.
 
-    `unusable` SEPARATES TRYING FROM NOT TRYING. Until this returned
+    `unusable` SEPARATES TRYING FROM NOT TRYING. Until a later change this returned
     two values and an author who mistyped a severity got the same bare
     `evidence_severity_not_declared` as one who declared nothing -- the reading
     an outside review reproduced was *not declared*, therefore *my file did not
@@ -135,6 +136,40 @@ def evidence_from(session, graph: CausalGraph,
         else:
             observed[node] = 0
     return observed, unobserved
+
+
+#: Severity order for reporting the worst one, most urgent first. Ties in
+#: `priority_score` (WARNING and MEDIUM share one) fall to declaration order, so
+#: the same findings always report the same word.
+_SEVERITY_ORDER: Tuple[Severity, ...] = tuple(Severity)
+
+
+def _own_severity(session, entity_id: str) -> Optional[str]:
+    """The most urgent severity the last check gave `entity_id`, at ANY level.
+
+    Deliberately not filtered by the evidence floor. A panel carrying a warning
+    under an engine floor of `high` counted as CLEAN, and a reader looking at
+    the set-aside reading is owed both facts -- what the floor made of it and
+    what the check actually said -- or *clean* reads as *nothing was found*.
+    """
+    result = getattr(session, "_last_result", None)
+    if result is None:
+        return None
+    worst: Optional[Severity] = None
+    for problem in list(getattr(result, "problems", ()) or ()) + \
+            list(getattr(result, "warnings", ()) or ()):
+        if str(getattr(problem, "entity_id", "")) != entity_id:
+            continue
+        raw = getattr(problem, "severity", None)
+        try:
+            severity = Severity(str(getattr(raw, "value", raw)).lower())
+        except ValueError:
+            continue
+        if worst is None or (
+                (severity.priority_score, _SEVERITY_ORDER.index(severity))
+                < (worst.priority_score, _SEVERITY_ORDER.index(worst))):
+            worst = severity
+    return None if worst is None else worst.value
 
 
 def _surgery(graph: CausalGraph, do: Dict[str, int]) -> CausalGraph:
@@ -220,6 +255,22 @@ def run_inference(session, query: Query,
             evidence={"cycle": loop}))
         return SubEnvelope("inference", checked, findings, declines, questions)
 
+    # AN INTERVENTION ON THE TARGET IS THE ANSWER. `do(x=v)` sets x,
+    # so P(x faulty | do(x=v)) is v, whatever the evidence says and however the
+    # graph is wired. Until this branch the intervened value went into the
+    # evidence and was then popped with the target's reading below, so the
+    # surgery cut x's parents and the elimination answered for an x nobody had
+    # set: measured on the specimen, `do={fdr-1: 0}` and `do={fdr-1: 1}` both
+    # returned 0.984981. Answered here, BEFORE the backdoor check, because an
+    # answer that reads no edge cannot be unidentifiable. Nothing is filed and
+    # nothing is reported: a value the caller forced is not a prediction about
+    # the world, and a finding would report the caller's own act back to them.
+    if query.target in query.do:
+        checked["answered"] = 1
+        checked["method"] = "intervention"
+        checked["posterior"] = float(query.do[query.target])
+        return SubEnvelope("inference", checked, findings, declines, questions)
+
     working = _surgery(graph, query.do) if query.do else graph
     latent = _open_backdoor_latent(working, query)
     if latent is not None:
@@ -235,17 +286,34 @@ def run_inference(session, query: Query,
     observed, unobserved = evidence_from(session, working, severities)
     for node in query.do:
         observed[node] = query.do[node]
-    observed.pop(query.target, None)
+    # The target's own state is left out, because conditioning on it answers 1
+    # or 0 by construction. What is asked is whether EVERYTHING ELSE implicates
+    # it -- and since the answer says that is what was asked.
+    set_aside = observed.pop(query.target, None)
     checked["evidence"] = len(observed)
     checked["unobserved"] = len(unobserved)
     # from here down the answer depends on WHICH severities counted
-    # as faulty, so every exit below carries the disclosure. The two returns
+    # as faulty, so every exit below carries the disclosure. The returns
     # above this line are refusals decided from the GRAPH alone -- a cycle, an
-    # open backdoor -- and read no evidence, so stamping them would name a
-    # choice that did not touch the answer.
+    # open backdoor -- or an intervention that fixes the answer, and read no
+    # evidence, so stamping them would name a choice that did not touch it.
     stamps: Tuple[str, ...] = () if floor_declared else (
         (EVIDENCE_SEVERITY_NOT_DECLARED,)
         + ((EVIDENCE_SEVERITY_UNUSABLE,) if floor_unusable else ()))
+    # AND WHICH READING WAS NOT USED. A target in breach answered
+    # exactly as a healthy one did, with nothing on the envelope saying its own
+    # reading had been excluded: measured, the supply at 9.0 kV and at 11.0 kV
+    # both 0.670634. Stamped whenever the target HAD a reading, clean as well
+    # as faulty -- a clean reading set aside misleads just as far, the other
+    # way. `severity` is the target's own worst finding at any level, beside
+    # the state the evidence floor made of it, because under the engine's floor
+    # a warning counts as clean and *clean* alone would read as *nothing found*.
+    target_reading: Optional[Dict[str, Any]] = None
+    if set_aside is not None:
+        target_reading = {"state": "faulty" if set_aside else "clean",
+                          "severity": _own_severity(session, query.target)}
+        checked["target_reading"] = target_reading
+        stamps = stamps + (TARGET_READING_SET_ASIDE,)
 
     relevant = _relevant_edges(working, query, observed)
     defaulted = sorted(f"{s}->{t}" for (s, t) in relevant
@@ -313,14 +381,14 @@ def run_inference(session, query: Query,
     elif posterior >= report_above:
         findings.append(_posterior_finding(
             session, working, query, posterior, observed, unobserved,
-            report_above))
+            report_above, target_reading))
 
     return SubEnvelope("inference", checked, findings, declines, questions,
                        assumptions=stamps)
 
 
 def _posterior_finding(session, graph, query, posterior, observed,
-                       unobserved, report_above):
+                       unobserved, report_above, target_reading=None):
     from ..interfaces import Problem
     entity = session.entities.get(query.target)
     return Problem.from_entity(
@@ -335,6 +403,9 @@ def _posterior_finding(session, graph, query, posterior, observed,
                   "cpt_sources": graph.sources(),
                   "evidence_set": sorted(observed),
                   "unobserved": sorted(unobserved),
+                  # a finding travels without its envelope, so the
+                  # reading it did not use travels with it.
+                  "target_reading": target_reading,
                   "root_prior": ROOT_PRIOR,
                   "root_prior_source": "default",
                   "do": dict(query.do)})

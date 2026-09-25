@@ -96,6 +96,19 @@ def _leg(model: str, panel_v: float) -> dict:
     return infer(session, target="sub-1").to_dict()["inference"]
 
 
+#: The two stamps this file is about. Every assertion that an answer carries
+#: "no stamp" or "only the first stamp" is about THESE, and is asked of these:
+#: the query below targets an entity with a reading of its own, so the answer
+#: also carries `target_reading_set_aside`, which says nothing about the floor
+#: and would otherwise make every such assertion a claim about every stamp
+#: `infer` may ever add.
+FLOOR_STAMPS = (EVIDENCE_SEVERITY_NOT_DECLARED, EVIDENCE_SEVERITY_UNUSABLE)
+
+
+def _floor(leg: dict) -> list:
+    return [s for s in leg.get("assumptions", []) if s in FLOOR_STAMPS]
+
+
 def _declaring(severities: str) -> str:
     return _base().replace(
         "  entity_types:",
@@ -131,7 +144,7 @@ class TestTheDefaultIsDisclosed:
         """Two-sided. A stamp that fires whatever the model says discloses
         nothing."""
         leg = _leg(_declaring("[warning, high, critical]"), 212.0)
-        assert leg.get("assumptions", []) == []
+        assert _floor(leg) == []
 
     def test_no_other_discipline_gained_an_assumptions_key(self):
         """The leg is emitted only when something was stamped, so a payload
@@ -167,7 +180,7 @@ class TestDeclaringItChangesTheAnswer:
     def test_declaring_only_critical_is_stricter_than_the_default(self):
         """The floor moves both ways, so it is a choice and not a switch."""
         strict = _leg(_declaring("[critical]"), 200.0)
-        assert strict.get("assumptions", []) == []
+        assert _floor(strict) == []
         assert strict["checked"]["posterior"] == pytest.approx(
             _leg(_base(), 200.0)["checked"]["posterior"])
 
@@ -184,7 +197,10 @@ class TestAnUnusableDeclarationIsNoDeclaration:
         """`[critical, hihg]` must not quietly become `[critical]`. If it did,
         the answer would match the strict-floor run and carry no stamp."""
         leg = _leg(_declaring("[critical, hihg]"), 212.0)
-        assert leg["assumptions"], "a typo was applied silently"
+        # The FLOOR stamps, not the list: the answer carries another stamp for
+        # a reason unrelated to the floor, and a bare truthiness check would
+        # then pass with the typo applied.
+        assert _floor(leg), "a typo was applied silently"
 
 
 def _rows(model: str) -> list:
@@ -202,7 +218,7 @@ class TestARefusedDeclarationIsDistinguishableFromAnOmission:
 
     def test_an_omission_carries_only_the_first_stamp(self):
         leg = _leg(_base(), 212.0)
-        assert leg["assumptions"] == [EVIDENCE_SEVERITY_NOT_DECLARED]
+        assert _floor(leg) == [EVIDENCE_SEVERITY_NOT_DECLARED]
 
     @pytest.mark.parametrize("severities",
                              ["[critical, hihg]", "[]", "[nonsense]",
@@ -214,12 +230,12 @@ class TestARefusedDeclarationIsDistinguishableFromAnOmission:
 
     def test_a_usable_declaration_carries_neither(self):
         leg = _leg(_declaring("[warning, high, critical]"), 212.0)
-        assert leg.get("assumptions", []) == []
+        assert _floor(leg) == []
 
     def test_the_two_reports_are_not_the_same_report(self):
         """The whole finding in one assertion: these were equal before."""
-        omitted = _leg(_base(), 212.0)["assumptions"]
-        refused = _leg(_declaring("[critical, hihg]"), 212.0)["assumptions"]
+        omitted = _floor(_leg(_base(), 212.0))
+        refused = _floor(_leg(_declaring("[critical, hihg]"), 212.0))
         assert omitted != refused
 
     def test_the_second_stamp_never_arrives_alone(self):

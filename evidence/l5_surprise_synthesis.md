@@ -8,7 +8,7 @@
 
 ## What is an L5 surprise?
 
-L5 surprises are observations that the planned probes had not anticipated. The Alpha's the recursive-examination framework 5-tier exercise framework (T0 data-flow probe → T1 signature library → T2 adversarial cycle → T3 diagnostic-iteration loop → T4 cross-pattern leverage → T5 codification) defines its own surface — the questions each tier knows to ask. L5 surprises are observations that fall outside that surface: they emerge from exercising substrate, not auditing it, and they typically arise during T5 (session-end codification) when the operator notices a pattern that the framework's own probes couldn't see.
+L5 surprises are observations that the planned probes had not anticipated. The Alpha's recursive-examination 5-tier exercise framework (T0 data-flow probe → T1 signature library → T2 adversarial cycle → T3 diagnostic-iteration loop → T4 cross-pattern leverage → T5 codification) defines its own surface — the questions each tier knows to ask. L5 surprises are observations that fall outside that surface: they emerge from exercising substrate, not auditing it, and they typically arise during T5 (session-end codification) when the operator notices a pattern that the framework's own probes couldn't see.
 
 Why partners should care: L5 surprises are the substrate's claim to *real* coverage of cascade behavior in production-like AI/ML serving deployments. If the only findings were from planned probes, the substrate would be reporting back to its own designer. Surprises are the unplanned dividend — observations a partner couldn't have anticipated from the system's documentation alone.
 
@@ -134,7 +134,7 @@ For each L5 surprise (Days 1-11 = 16; Day-12 the second evaluation round RUN add
 - **Anticipated by the probe design, before the load generator was built**: 0 of 16.
 - **Anticipated after the triggering fault event**: 2 of 16 — the cumulative-counter self-clear and the MONOTONICITY axiom-family shift were predictable from the prior day's findings.
 
-So the vast majority were genuinely open-world: the substrate produced findings that the planned probes (the recursive-examination framework T0-T5 + Spikes 1-5) did NOT anticipate.
+So the vast majority were genuinely open-world: the substrate produced findings that the planned probes (recursive-examination T0-T5 + Spikes 1-5) did NOT anticipate.
 
 **Detector anchor (replay) — the result that runs the other way.** Every figure above measures what the *designers* foresaw. None of them says anything about what the *detector* caught, and that number is unfavourable: **0 of the 16 Alpha-1 surprises were machine-surfaced at the time.** A human found all sixteen (the replay verdict, not published — see the provenance list at the end of this document).
 
@@ -216,7 +216,7 @@ request. They are not links; the records themselves can be supplied directly:
 
 **Operator working notes, not documents** — pattern codifications held outside the repository. Listed
 because they are where these findings were generalised, not as retrievable sources:
-alpha-recursive-examination (T1 catalog + the recursive-examination framework framework); the methodology notes
+alpha-recursive-examination (T1 catalog + recursive-examination framework); the methodology notes
 (Pattern N 3-branch family + asymmetric-recovery sub-shape); the methodology notes
 (Pattern N load-bearing); the methodology notes (Compression-B 12× yield).
 

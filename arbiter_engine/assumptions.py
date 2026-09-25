@@ -6,7 +6,7 @@ not a warning and not a finding: it is the engine saying which of its own
 choices the value in front of you depends on, so that a reader who disagrees
 with the choice knows which number to distrust.
 
-WHY THEY LIVE HERE. Until they lived as bare string literals at twenty
+WHY THEY LIVE HERE. Until a later change they lived as bare string literals at twenty
 sites across four modules, and nothing anywhere held the list. The cost was not
 hypothetical. An outside comparison of this engine reproduced all three of its
 ENUMERATED vocabularies exactly -- the fourteen decline reasons, the six gap
@@ -84,6 +84,23 @@ EVIDENCE_SEVERITY_NOT_DECLARED = "evidence_severity_not_declared"
 #: `did_you_mean` already existed. This stamp says LOOK THERE; it does not
 #: duplicate what is there.
 EVIDENCE_SEVERITY_UNUSABLE = "evidence_severity_unusable"
+
+#: The queried entity had a reading of its own, and the posterior was computed
+#: WITHOUT it. `infer` answers *does the rest of the graph implicate this
+#: entity*, which is the informative question -- conditioning on the target's
+#: own state would answer 1 or 0 by construction -- and the engine chose that
+#: question on the caller's behalf. What the reading said is on the answer as
+#: `checked.target_reading`: the state it would have set, and the target's own
+#: worst severity at any level.
+#:
+#:, and it went unsaid for as long as the verb has existed. Measured on
+#: the substation specimen with the feeder unread: the supply at 9.0 kV, below
+#: its own critical floor, gets exactly the posterior it gets at a healthy
+#: 11.0 kV, 0.670634 both times, because the one reading that would have
+#: settled the question was the one left out. The other direction is worse. A feeder READ CLEAN is ranked
+#: first by `hypothesize` at 0.962 with its own meter named as the evidence
+#: needed -- the reading it had already taken and set aside.
+TARGET_READING_SET_ASIDE = "target_reading_set_aside"
 
 #: The horizon was long enough that the transient had finished, so the value
 #: reported is the steady state rather than a point on the way to it.
@@ -239,6 +256,7 @@ ASSUMPTION_STAMPS: Tuple[str, ...] = (
     TIME_COURSE_NOT_DECLARED,
     EVIDENCE_SEVERITY_NOT_DECLARED,
     EVIDENCE_SEVERITY_UNUSABLE,
+    TARGET_READING_SET_ASIDE,
     STEADY_STATE_REACHED,
     SERIES_EDGES_COMPOSED_EXACTLY,
     SERIES_EDGES_COMPOSE_BY_PRODUCT,

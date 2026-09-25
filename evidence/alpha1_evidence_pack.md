@@ -121,9 +121,9 @@ Detail is in the hypothesis log's Day-7/8/9 entries. A per-day Day-7 fault-watch
 
 ---
 
-## Methodology — the recursive-examination framework 5-tier exercise framework
+## Methodology — recursive-examination 5-tier exercise framework
 
-Alpha-1 work was structured by the recursive-examination framework (Recursive Examination as Engine) framework — a 5-tier session-level exercise discipline that generates L5 surprises by repeatedly stressing substrate rather than auditing it (auditing reveals known unknowns; exercising reveals unknown unknowns):
+Alpha-1 work was structured by the recursive-examination (Recursive Examination as Engine) framework — a 5-tier session-level exercise discipline that generates L5 surprises by repeatedly stressing substrate rather than auditing it (auditing reveals known unknowns; exercising reveals unknown unknowns):
 
 - **T0**: Data-flow probe (every session start; ~60s) — catches silent-fall-through before per-axis work.
 - **T1**: Diagnostic-signature library match — 18 catalogued signatures save ~30-60 min per match.

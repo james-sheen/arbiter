@@ -46,6 +46,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from ..assumptions import ASSUMPTION_STAMPS
 from ..subenvelope import Decline, SubEnvelope
 from .causal import CausalGraph, causal_subgraph
 from .runner import Query, run_inference
@@ -151,10 +152,18 @@ def hypothesize(session: Any, entity_id: str, *,
         return SubEnvelope("inference", checked, not_checked=declines), []
 
     ranked: List[Dict[str, Any]] = []
+    # THE STAMPS OF EVERY INFERENCE THIS RANKING RESTS ON. Each
+    # candidate is scored by `run_inference`, which stamps the defaults it
+    # applied; this verb used to drop them all, so a ranking computed against
+    # the engine's evidence floor carried no `evidence_severity_not_declared`
+    # while the verb's own docstring told the reader to check for it.
+    stamps: set = set()
     for node, hops in candidates:
         sub = run_inference(session, Query(target=node), report_above=None)
         payload = sub.to_dict()
-        posterior = (payload.get("checked") or {}).get("posterior")
+        checked_here = payload.get("checked") or {}
+        posterior = checked_here.get("posterior")
+        stamps.update(payload.get("assumptions") or ())
         entity_type = graph.entity_type.get(node, "")
         properties = _readable_properties(session.model, entity_type)
         ranked.append({
@@ -165,6 +174,13 @@ def hypothesize(session: Any, entity_id: str, *,
             # The FIRST declared readable property, which is the model's own
             # ordering rather than this verb's opinion about which matters.
             "evidence_needed": (f"{node}.{properties[0]}" if properties else None),
+            # WHAT THAT READING ALREADY SAID, when it was taken. The
+            # posterior above leaves the candidate's own reading out, which is
+            # what makes it a ranking at all; without this row a feeder READ
+            # CLEAN came back first at 0.962 with its own meter as the evidence
+            # needed, sending an operator to take a reading already taken.
+            # `None` means unread -- the case `evidence_needed` is written for.
+            "own_reading": checked_here.get("target_reading"),
             "test_action": _test_action(session.model, entity_type),
         })
 
@@ -179,4 +195,9 @@ def hypothesize(session: Any, entity_id: str, *,
                   if r["posterior"] is not None and r["posterior"] >= report_above]
         checked["reported"] = len(ranked)
 
-    return SubEnvelope("inference", checked, not_checked=declines), ranked
+    # In the vocabulary's own order, so one set of findings always reports one
+    # list; a stamp outside the published tuple sorts last rather than vanishing.
+    order = {stamp: i for i, stamp in enumerate(ASSUMPTION_STAMPS)}
+    assumptions = tuple(sorted(stamps, key=lambda s: (order.get(s, len(order)), s)))
+    return (SubEnvelope("inference", checked, not_checked=declines,
+                        assumptions=assumptions), ranked)

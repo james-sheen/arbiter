@@ -1105,7 +1105,18 @@ this is a verb rather than a filter over `traverse`. On the shipped specimen,
 asking about the supply with the feeder OBSERVED faulty gives 0.679054 and with
 the feeder FORCED faulty gives 0.05 -- the same node in the same state, a factor
 of thirteen apart. Seeing a thing fail is evidence about what feeds it; breaking
-it yourself is not.
+it yourself is not. Forcing the TARGET itself answers exactly: `do={t: v}`
+returns `v`, method `intervention`.
+
+**The target's own reading is not evidence about the target.** `infer` asks
+whether everything ELSE implicates it, because conditioning on its own state
+would answer 1 or 0 by construction. So a supply in critical breach and the
+same supply healthy get one posterior between them -- correct for that
+question, and the answer says so: `target_reading_set_aside` is stamped whenever
+the target had a reading, and `checked.target_reading` names the state it would
+have set and the target's own worst severity. `hypothesize` carries the same
+row per candidate as `own_reading`, so a candidate the graph implicates can be
+read beside what its own meter already said.
 
 ### What counts as faulty evidence: `causal.evidence_severity`
 
@@ -1249,7 +1260,8 @@ which number to distrust.
 They arrive in an `assumptions` list on the `simulation` and `plan`
 sub-envelopes, and on each `plan` candidate where the candidates differ. An
 EMPTY list means the engine made none of them, which is a different claim from
-the key being absent.
+the key being absent. The `inference` sub-envelope -- what `infer` and
+`hypothesize` return -- carries the list only when it has something in it.
 
 | stamp | what it discloses |
 |---|---|
@@ -1257,6 +1269,7 @@ the key being absent.
 | `time_course_not_declared` | the time course crossed was not declared; this engine supplied a delay or a time constant, or both |
 | `evidence_severity_not_declared` | `infer` read the last check against THIS engine's severity floor, because the model declared none. Declare `causal.evidence_severity:` to choose it |
 | `evidence_severity_unusable` | the model DID declare `causal.evidence_severity:` and this engine could not use it, so the floor above was its own. Carried beside the stamp above, never instead of it; `model_describe` names the value that was refused |
+| `target_reading_set_aside` | the queried entity had a reading of its own and the posterior was computed without it -- the question answered is whether everything else implicates it. `checked.target_reading` says what the reading would have set, and the target's own worst severity |
 | `steady_state_reached` | the horizon outlasted the transient, so the value reported is the settled one |
 | `series_edges_composed_exactly` | two couplings in series were composed by the exact cascade response |
 | `series_edges_compose_by_product` | two couplings in series were composed by multiplying response fractions, which is an approximation |

@@ -34,6 +34,38 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+## [0.2.8] — 2026-09-25
+
+### Added
+
+- **`target_reading_set_aside` (`TARGET_READING_SET_ASIDE`), a stamp on every
+  `inference` answer whose target had a reading of its own.** `infer` answers whether everything ELSE implicates
+  the target, so the target's own reading is left out -- and nothing said so. A
+  supply at 9.0 kV, below its own critical floor, got the posterior it gets at a
+  healthy 11.0 kV. `checked.target_reading` now carries what the reading would
+  have set (`faulty` or `clean`) and the target's own worst severity at any
+  level. No posterior changes.
+- **Each `hypothesize` candidate carries `own_reading`**, the same row for that
+  candidate: `None` when it was unread, which is the case `evidence_needed` is
+  written for. Measured before it: a feeder read CLEAN ranked first at 0.962
+  with its own current named as the evidence needed.
+
+### Fixed
+
+- **`hypothesize` carries the stamps of the inferences behind its ranking.** It
+  dropped all of them, so a ranking computed against this engine's default
+  evidence floor arrived without `evidence_severity_not_declared`, while the
+  verb's own docstring told the reader to check for that stamp.
+- **An intervention on the target answers exactly.** `infer(t, do={t: v})`
+  returned the same posterior for `v = 0` and `v = 1` (0.984981 on the
+  specimen), because the forced value was set aside with the reading. It
+  returns `v` now, with method `intervention`, and files nothing.
+- **Twelve published sentences that read as broken English.** Seven docstrings
+  and comments (`Until this returned two values`, `the ONLY rule until, and`)
+  and five lines of `evidence/` (`the recursive-examination framework
+  framework`) came out of the step that removes internal references. They now
+  read as sentences. No behaviour changes.
+
 ### Changed
 
 - **Releases are uploaded to the index by hand, and `.github/PUBLISH_FROM_CI` is

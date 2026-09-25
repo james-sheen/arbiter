@@ -1744,7 +1744,7 @@ class TopologyTraverser:
         builder seeded, which is how a walk that evaluated one invariant came
         to report four.
 
-        **BOUNDEDNESS only** — and, until, only HALF of BOUNDEDNESS.
+        **BOUNDEDNESS only** — and, until a later change, only HALF of BOUNDEDNESS.
         The body compared against `warning` and `critical` and never against
         `lower_warning` / `lower_critical`, so a declared FLOOR was invisible
         here while `UnifiedAxiomReasoner` reported it: a traversal over a

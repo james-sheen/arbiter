@@ -2526,7 +2526,19 @@ def hypothesize(session: EngineSession, entity_id: str,
     specimen: with both panels in the warning band the supply outranks the
     feeder 0.0104 to 0.0018, and with both below critical the feeder ranks first
     at 0.962. Same topology, same question, opposite answers — so read the
-    `evidence_severity_not_declared` stamp before reading this ranking.
+    `evidence_severity_not_declared` stamp before reading this ranking. Since
+     the ranking carries it: every stamp an inference behind a candidate
+    applied rides on `hypothesis.assumptions`. Before that the verb dropped
+    them, and this paragraph told the reader to look for a stamp that was never
+    there.
+
+    **A candidate's own reading is not part of its score.** Each posterior
+    answers whether the REST of the graph implicates that candidate, and
+    `own_reading` says what the candidate's own meter already said -- `None`
+    when unread, which is the case `evidence_needed` is for. Measured: a feeder
+    read clean at 300 A ranked first at 0.962 with its own current named as the
+    evidence needed. The ranking is right about the graph; the row now shows
+    the reading beside it.
     """
     from arbiter_engine.inference.hypothesis import (
         hypothesize as _hypothesize)
@@ -2586,6 +2598,18 @@ def infer(session: EngineSession, target: str,
     Without `report_above` there is no finding, on the same rule as `project`
     and `discover`: the posterior is computed and reported, and whether it is
     alarming is not the engine's to decide.
+
+    THE TARGET'S OWN READING IS NOT EVIDENCE. The question answered is whether
+    everything ELSE implicates the target -- conditioning on its own state would
+    return 1 or 0 by construction. When the target had a reading, the answer is
+    stamped `target_reading_set_aside` and `checked.target_reading` says what
+    the reading would have set (`faulty` or `clean`) and the target's own worst
+    severity at any level. A supply in critical breach and the same supply
+    healthy get one posterior between them; that is correct for the question,
+    and until a later change nothing on the answer said which question it was.
+
+    An intervention on the target itself answers exactly: `do={t: v}` returns
+    `v`, method `intervention`, and files nothing.
     """
     if session.model is None:
         return unavailable_envelope("no domain model loaded")
