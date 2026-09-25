@@ -233,8 +233,8 @@ class TestTheOtherPagesKeepTheirs:
 
 # THE FRONT-PAGE DOCUMENT TABLE IS CHECKED IN `tests/residual/`, NOT HERE.
 #
-# The check derives the guide set from `engine-manifest.json` -- a fact the
-# PACKAGING owns -- and the published tree does not carry that file. So in the
+# The check derives the guide set from the build manifest -- a fact the PACKAGING
+# owns -- and the published tree does not carry that file. So in the
 # tree this suite actually ships to it could only skip, and it did: two
 # assertions went quiet in the 0.2.7 artifact while the suite still read 2780
 # passed / 7 skipped. CI caught it by grading the skip SET by name, which is the
