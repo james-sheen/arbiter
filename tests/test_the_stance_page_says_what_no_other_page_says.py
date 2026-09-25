@@ -282,3 +282,40 @@ class TestTheFrontPageListsTheGuidesItShips:
             f"document table; a reader browsing it cannot find them. Rows "
             f"present: {sorted(rows)}")
 
+
+
+class TestThePageAccountsForTheShippedProducer:
+    """The page says what a producer is, and the package now ships
+    one. A page that described the rule while the shipped example sat outside
+    it would be the exact gap this file exists to close, one layer out.
+    """
+
+    def _section(self):
+        text = STANCE
+        start = text.index("## The reference producer")
+        return text[start:text.index("\n## ", start + 4)]
+
+    def test_the_page_names_it(self):
+        assert "baseline_learner" in self._section()
+
+    def test_the_name_it_gives_is_the_one_that_imports(self):
+        """Derived, not transcribed. A page naming a module nobody can import
+        is the defect this whole file is about."""
+        import importlib
+
+        section = self._section()
+        assert "arbiter_engine.producers.baseline_learner" in section
+        module = importlib.import_module(
+            "arbiter_engine.producers.baseline_learner")
+        assert hasattr(module, "forecast_series")
+
+    def test_it_says_the_producer_gets_no_privilege(self):
+        """The claim that makes the comparison worth anything."""
+        section = self._section().lower()
+        assert "privilege" in section or "no special" in section
+        assert "reading_history" in section
+
+    def test_it_says_why_a_random_walk_is_not_enough(self):
+        section = self._section().lower()
+        assert "random walk" in section
+        assert "floor" in section

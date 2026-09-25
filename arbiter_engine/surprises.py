@@ -576,3 +576,103 @@ def _refuse(session: Any, entry: Surprise) -> Optional[Decline]:
             f"{entry.entity!r} is not an entity in this session, so no finding "
             f"could ever carry its id")
     return None
+
+
+#: What a proposal's replay says when there is no corpus to replay against.
+#: -- the SAME rule the scorer already applies to a window that never
+#: observed its subject: the absence is reported, never scored as a zero.
+REPLAY_UNAVAILABLE = "replay_unavailable"
+
+
+def replay_proposal(session: Any, proposal: Any,
+                    surprises: Optional[SurpriseSet], *,
+                    max_instants: int = 500) -> Dict[str, Any]:
+    """What ADOPTING this fitted gain would have changed, in counts.
+
+    A proposal is a number somebody has to decide about, and the question they
+    actually have is *would the detector have caught more of what happened*.
+    That is answerable only against a record of what happened, so this replays
+    the corpus twice -- once as the model is declared, once with the proposal
+    substituted -- and reports both.
+
+    NO RATE, AND THAT IS NOT AN OVERSIGHT. The phase plan asked for
+    `{hit_rate_before, hit_rate_after}`. `SurpriseScore` deliberately carries
+    no rate at all, because the one real corpus this project holds answers two
+    different questions whose single-attribute merger is the defect CLM-014
+    exists to prevent. A ratio here would reintroduce it one level down, in a
+    field a reader would quote precisely because it looks comparable. So the
+    counts travel with their denominator and the caller does the division
+    knowing which one they did it on.
+
+    WITHOUT A CORPUS THE ANSWER IS A REFUSAL, never a zero. A proposal scored
+    zero for want of a record reads exactly like a proposal that was tested and
+    found useless, and those are opposite facts about the same number.
+    """
+    if surprises is None or not surprises.entries:
+        return {
+            "status": REPLAY_UNAVAILABLE,
+            "reason": ("no surprise corpus was supplied for this domain, so "
+                       "there is no record of what happened to replay against. "
+                       "This is a refusal and not a score of zero: a proposal "
+                       "nobody could test is not a proposal that failed."),
+        }
+
+    # MATCHED ON THE RULE, NOT ON THE EDGE LABEL. `proposal.edge` names the two
+    # ENTITIES the gain was fitted between (`p->t`); a gain is declared on the
+    # rule that covers their types, and several instance edges share one rule.
+    # The first draft matched the label and found nothing, because those are
+    # different levels and only one of them is where a gain lives.
+    model = getattr(session, "model", None)
+    rules = list(getattr(model, "relationship_rules", None) or ())
+    relation = getattr(proposal, "relation_type", None)
+    source_prop = getattr(proposal, "from_property", None)
+    target_prop = getattr(proposal, "to_property", None)
+    target = None
+    for rule in rules:
+        if not isinstance(rule, dict):
+            continue
+        block = rule.get("transition")
+        if not isinstance(block, dict):
+            continue
+        if (rule.get("type") == relation
+                and block.get("from") == source_prop
+                and block.get("to") == target_prop):
+            target = (rule, block)
+            break
+    if target is None:
+        return {
+            "status": REPLAY_UNAVAILABLE,
+            "reason": (f"no declared rule carries `{source_prop} -> "
+                       f"{target_prop}` over `{relation}`, so the proposal "
+                       f"cannot be substituted into the model it came from"),
+        }
+
+    before = score(session, surprises, max_instants=max_instants)
+    _rule, block = target
+    original = block.get("gain")
+    try:
+        block["gain"] = float(proposal.gain)
+        if hasattr(session, "_topology"):
+            session._topology = None
+        after = score(session, surprises, max_instants=max_instants)
+    finally:
+        # RESTORED WHETHER OR NOT THE SCORE RAN. Leaving a proposal's number in
+        # the model would make the engine an editor, which is the one thing
+        # every proposal surface here refuses to be.
+        if original is None:
+            block.pop("gain", None)
+        else:
+            block["gain"] = original
+        if hasattr(session, "_topology"):
+            session._topology = None
+
+    return {
+        "status": "replayed",
+        "corpus": surprises.domain,
+        "confirmed": before.detected + before.missed,
+        "detected_before": before.detected,
+        "detected_after": after.detected,
+        "declined_before": before.declined,
+        "declined_after": after.declined,
+        "delta": after.detected - before.detected,
+    }

@@ -79,6 +79,28 @@ declaration.
 its own stated spread. It does not order producers, recommend one, or carry a
 reputation between sessions.
 
+## The reference producer, which gets none of the above either
+
+The package ships one: `arbiter_engine.producers.baseline_learner`, a
+damped-trend exponential smoother. It exists because the engine's own baseline
+is a **random walk** — it predicts the last value and widens with the horizon —
+and a random walk is the right floor and a poor opponent. Anything that notices
+a series is going somewhere beats it, so *beats the baseline* against a random
+walk alone says almost nothing.
+
+**It is a producer, not a feature.** It reads a session through
+`reading_history()`, the accessor this engine tells every reader to use, and
+files ordinary records through `ingest_forecasts`. It imports no checker, is
+handed no privilege an outside forecaster would be refused, and is scored by
+exactly the rules above — including `not_a_producers_submission` if its records
+carry a `source`. A baseline with access the competition lacks is not a
+baseline, and the suite asserts its import surface as well as its score.
+
+**It refuses rather than guessing.** A series shorter than its minimum gets no
+forecast, and one whose points are not ordered in time is refused rather than
+sorted — re-ordering a series nobody gave you that way is how a producer comes
+to score well on data it invented.
+
 ## Why the engine sets its own records aside
 
 The engine is a producer too. `rollout` files what it projected; every

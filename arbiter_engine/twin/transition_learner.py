@@ -31,6 +31,13 @@ nothing it produces enters the model without an author. A fitted gain is a
 adopted, and where a gain IS declared and the data contradict it, the engine
 reports the disagreement and does not edit the declaration. A tool that
 rewrites its own input is not reporting on a system, it is one.
+
+WHO MAY ADOPT, RULED 2026-09-25. Somebody has to write the number
+down eventually, or every fit is a measurement nobody can act on. The ruling
+says WHO: a vertical, in its own file, under a command a person invoked,
+recording a basis. Not this package, and not on its own behalf. The full
+reasoning is beside `_proposed_transitions` in `api.py`, which is the surface
+that publishes these proposals and the place the ruling was asked for.
 """
 from __future__ import annotations
 

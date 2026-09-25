@@ -754,7 +754,16 @@ _FEEDERS_ON_THE_SUPPORTED_SURFACE = (
 )
 
 
-def _proposed_transitions(session: EngineSession) -> Dict[str, Any]:
+def _replay_proposal(session: EngineSession, proposal: Any,
+                     surprises: Any) -> Dict[str, Any]:
+    """One proposal's replay, or the refusal that stands in for it."""
+    from arbiter_engine.surprises import replay_proposal
+
+    return replay_proposal(session, proposal, surprises)
+
+
+def _proposed_transitions(session: EngineSession,
+                          surprises: Any = None) -> Dict[str, Any]:
     """Fitted gains, their support, and any that contradict a declaration.
 
     Reported from `model_describe` rather than from a verb of its
@@ -767,6 +776,32 @@ def _proposed_transitions(session: EngineSession) -> Dict[str, Any]:
     author's claim about the system, and an engine that silently replaced it
     with a fitted number would leave nobody able to say what the model
     asserts -- the file would no longer be the model.
+
+    RULED 2026-09-25, A VERTICAL MAY WRITE ONE DOWN; THIS ENGINE
+    STILL MAY NOT. The phase plan asked for an `adopt <proposal_id>` verb,
+    and this package had refused one twice -- here and in
+    `causal/discovery.py`. The ruling separates the two things that question
+    runs together. What is refused above is an ENGINE acting on its own
+    measurement: a process handed a file to read, rewriting it, on a number
+    nobody asked it for. What is now permitted is a tool DOWNSTREAM of this
+    one, whose own author maintains the file, invoked by a person who typed
+    the proposal's name, writing the number with a basis beside it saying
+    where it came from. The file still says what the model asserts. It now
+    says the author chose to assert a fitted number, and says so in the file.
+
+    THE DISTANCE IS THE WHOLE OF THE RULING, AND NONE OF IT IS HERE: a
+    separate distribution, a separate command, a named proposal, a recorded
+    basis, and a gate that refuses a number which would have caught nothing.
+    Take any one of those away and what is left is the thing refused above.
+
+    So nothing in this package opens a model for writing, and the shipped
+    suite holds that by RUNNING this surface -- the replay included, which
+    substitutes a proposal to measure it -- and comparing the model file's
+    bytes, size and modification time afterwards. Not by reading this source
+    for a `write` call, which is a check on text about a claim concerning
+    behaviour. The first downstream writer is `bmc-sensor-audit adopt`, which
+    writes a fitted `gain` and its `gain_basis` into the supplemental file that
+    vertical's operator already maintains by hand.
     """
     from arbiter_engine.twin.transition_learner import (
         MINIMUM_PAIRED_SAMPLES, learn_transitions,
@@ -816,7 +851,14 @@ def _proposed_transitions(session: EngineSession) -> Dict[str, Any]:
              # author's behalf is the one thing this surface does not do.
              "residual_autocorrelation": p.residual_autocorrelation,
              "gain_sigma_assumes_independent_residuals":
-                 p.standard_error_assumes_independence}
+                 p.standard_error_assumes_independence,
+             # WOULD ADOPTING THIS HAVE CAUGHT MORE. A proposal is a
+             # number somebody has to decide about, and `n` and `r_squared`
+             # answer how well it fits the data it was fitted on, which is not
+             # the same question. Without a corpus this is a REFUSAL carrying
+             # its reason, never a zero: a proposal nobody could test is not a
+             # proposal that failed.
+             "replay": _replay_proposal(session, p, surprises)}
             for p in proposals],
         "not_fitted": [
             {"edge": r.location, "reason": r.reason, "detail": r.detail}
@@ -1051,7 +1093,8 @@ def _transition_coverage(model, session: Optional[EngineSession] = None
     }
 
 
-def model_describe(session: EngineSession) -> Envelope:
+def model_describe(session: EngineSession,
+                   surprises: Any = None) -> Envelope:
     """What domain is loaded: entity types, indicators, declared axioms.
 
     This is the grounding tool. An agent calls it before reasoning so it
@@ -1150,7 +1193,7 @@ def model_describe(session: EngineSession) -> Envelope:
         # ones the author declared. Proposals: nothing here has changed the
         # model, and a `gain: estimate` transition projects no value until a
         # number is adopted into the YAML.
-        "proposed_transitions": _proposed_transitions(session),
+        "proposed_transitions": _proposed_transitions(session, surprises),
         # the list, mounted where a MODEL fact belongs. `check` has
         # carried it since it was added; this verb, whose whole question is
         # *did my model load the way I wrote it*, did not -- so a reader
@@ -2458,6 +2501,49 @@ def entail(session: EngineSession, adopt: bool = False) -> Envelope:
          "rule": meta["rule"], "from": meta["from"], "adopted": bool(adopt)}
         for (relation, source, target), meta in derived
     ]
+    return _WithPayload(envelope, payload)
+
+
+def hypothesize(session: EngineSession, entity_id: str,
+                report_above: Optional[float] = None) -> Envelope:
+    """What could explain a finding on `entity_id`, ranked, with what to read next.
+
+    THE INVERSE OF `gaps`. That verb says what the MODEL does not declare; this
+    says what the WORLD might be doing given what it does — the same question
+    turned around, and the one an operator has after a finding names an entity
+    that is wrong.
+
+    Each candidate is a DECLARED causal ancestor, scored by the same inference
+    `infer` runs, and carries the reading that would discriminate it and the
+    declared action that could test it. Nothing here searches for a cause
+    outside the graph: an engine proposing causes nobody declared would be doing
+    the inference this project removed from `role:` and from flow direction.
+
+    **It is only as good as the evidence severity.** With every breach at
+    `warning` and no `causal.evidence_severity:` declared, no finding counts as
+    evidence, every posterior sits at its prior, and the ranking is an ordering
+    of priors rather than of explanations. Measured on the shipped substation
+    specimen: with both panels in the warning band the supply outranks the
+    feeder 0.0104 to 0.0018, and with both below critical the feeder ranks first
+    at 0.962. Same topology, same question, opposite answers — so read the
+    `evidence_severity_not_declared` stamp before reading this ranking.
+    """
+    from arbiter_engine.inference.hypothesis import (
+        hypothesize as _hypothesize)
+
+    if session.model is None:
+        return unavailable_envelope("no domain model loaded")
+    try:
+        sub, ranked = _hypothesize(session, entity_id, report_above=report_above)
+    except Exception as exc:  # noqa: BLE001 - see `_raised`
+        sub, ranked = _raised("inference", exc, {"candidates": 0}), []
+
+    envelope = Envelope(
+        checked=CheckedSummary(invariants=0, entities=len(session.entities)),
+        findings=list(sub.findings), questions=[_q(q) for q in sub.questions])
+    payload = envelope.to_dict()
+    payload["hypothesis"] = sub.to_dict()
+    payload["hypothesis"]["candidates"] = ranked
     return _WithPayload(envelope, payload)
 
 

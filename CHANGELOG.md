@@ -34,7 +34,42 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
-_Nothing yet._
+## [0.2.7] — 2026-09-25
+
+### Added
+
+- **Every fitted transition proposal now carries a `replay`**: what adopting it
+  would have caught, as counts against the corpus that recorded what happened.
+  `n` and `r_squared` say how well a gain fits the data it was fitted on, which
+  is a different question.
+- **`replay_unavailable` (`REPLAY_UNAVAILABLE`) is the answer when no corpus was
+  supplied.** It carries its reason and no counts: a proposal nobody could test
+  is not a proposal that failed, and a zero cannot tell those apart. No rate is
+  reported, for the reason the surprise score reports none.
+- **`hypothesize(session, entity_id)` — what could explain a finding, ranked.**
+  The inverse of `gaps`: that verb says what the model does not declare, this
+  says what the world might be doing given what it does. Each candidate is a
+  DECLARED causal ancestor, scored by the same inference `infer` runs, carrying
+  the reading that would discriminate it and the declared action that could test
+  it. `MAX_HOPS` bounds the walk. It ranks nothing the author did not connect.
+- **`arbiter_engine.producers.baseline_learner`, a reference producer.** A
+  damped-trend exponential smoother, shipped because the engine's own baseline
+  is a random walk and a random walk is the right floor and a poor opponent. It
+  gets no privilege: it reads a session through `reading_history()` and files
+  through `ingest_forecasts` like any outside forecaster. `MINIMUM_POINTS` is
+  the series length below which it returns nothing rather than a fitted number.
+- **`model_describe(session, surprises=...)`** takes the corpus to replay
+  against. The model is restored afterwards whether or not the replay ran --
+  deriving and adopting stay separate.
+
+### Changed
+
+- **The proposal surface now records WHO may write a fitted gain down, and it
+  is not this package.** A tool downstream -- a separate distribution, a
+  separate command, a proposal named by a person, a basis recorded in the file
+  -- may adopt one into a model it owns. Nothing here opens a model for
+  writing, and a test compares the file's bytes rather than reading this source
+  for a call. The first such writer is `bmc-sensor-audit adopt`.
 
 ## [0.2.6] — 2026-09-24
 
