@@ -48,7 +48,7 @@ import uuid
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from ..clock import as_naive_utc, now_utc
+from ..clock import as_naive_utc, as_of, now_utc
 # the id the yardstick is filed under, read from the module that
 # owns it rather than re-spelled here. Two spellings of one literal is how
 # the exclusion below would silently stop excluding anything.
@@ -698,18 +698,47 @@ class PredictionLedger:
         property_name: str,
         start: datetime,
         end: datetime,
+        now: Optional[datetime] = None,
     ) -> List[Tuple[datetime, float]]:
-        """Numeric observations for (entity, property) in [start, end],
-        read defensively from the in-memory histories."""
+        """Numeric observations for (entity, property) in [start, end], read
+        through each history's own `get_values` -- never its internals.
+
+        This read the in-memory store's private `_history` dict and
+        SKIPPED any history without one. `check` hands the ledger the session's
+        READING history, which is the raw store only when the model declares
+        neither a calendar nor a derived indicator; otherwise it is a view, and
+        so is the durable store. Measured, the same twenty minutes of one tank
+        filing a forecast a minute: the in-memory store graded 12 of 12; the
+        durable store, a declared calendar and a model with one derived
+        indicator graded NONE, all twelve `ungradeable`. A calibration figure
+        that could never be anything but empty, reported without an error --
+        beside a comment in `check` saying the view was passed so that a
+        derived forecast WOULD have something to score against.
+
+        `get_values` is the one reader every history implements, and it ends
+        at the engine's clock -- so the read is pinned to the GRADING instant,
+        `now`, which a caller may pass explicitly and which the private dict
+        never consulted. The window reaches back to `start`, a microsecond
+        wider because the stores bound it exclusively, and is then cut to
+        exactly `[start, end]`. A calendar view answers a window in OPEN time,
+        which reaches further back in wall time, and the cut is what makes
+        that harmless.
+        """
         out: List[Tuple[datetime, float]] = []
-        for history in histories or []:
-            raw = getattr(history, "_history", None)
-            if not isinstance(raw, dict):
-                continue
-            for ts, value in raw.get((entity_id, property_name)) or []:
-                if (isinstance(ts, datetime) and isinstance(value, (int, float))
-                        and start <= ts <= end):
-                    out.append((ts, float(value)))
+        at = as_naive_utc(now) if now is not None else now_utc()
+        span = at - start + timedelta(microseconds=1)
+        if span.total_seconds() <= 0:
+            return out
+        with as_of(at):
+            for history in histories or []:
+                reader = getattr(history, "get_values", None)
+                if reader is None:
+                    continue
+                for ts, value in reader(entity_id, property_name, span) or []:
+                    if (isinstance(ts, datetime)
+                            and isinstance(value, (int, float))
+                            and start <= ts <= end):
+                        out.append((ts, float(value)))
         return out
 
     def _grade_distribution_record(
@@ -743,7 +772,7 @@ class PredictionLedger:
             return None
         observations = self._observations_for(
             list(histories), record.entity_id, record.indicator or "",
-            record.predicted_at, window_end)
+            record.predicted_at, window_end, now)
         if not observations:
             record.verdict = GRADE_UNGRADEABLE
             record.graded_at = now
@@ -779,7 +808,7 @@ class PredictionLedger:
             return None
         observations = self._observations_for(
             list(histories), record.entity_id, record.indicator or "",
-            record.predicted_at, window_end)
+            record.predicted_at, window_end, now)
         target = record.predicted_at + timedelta(seconds=record.horizon_s)
         # AND EACH READING GRADES ONE HORIZON, not every horizon
         # whose window contains it. This took the observation closest to the

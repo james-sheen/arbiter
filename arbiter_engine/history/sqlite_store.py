@@ -135,6 +135,24 @@ class SqliteObservationHistory(ObservationHistory):
         return [(_from_seconds(ts), text if text is not None else str(number))
                 for ts, number, text in rows]
 
+    def series_keys(self) -> List[Tuple[str, str]]:
+        """Every ``(entity_id, property_name)`` this store holds a series for.
+
+        Not one of the ABC's five, and the in-memory store had it
+        from on -- so every reader that enumerates a history was
+        written against the default and this class was never asked. Two of
+        them crashed on it: `model_describe` and `gaps` raised AttributeError
+        for any session built over this store, and `rollout` ran with no
+        imagined past behind it, declining `precondition_unmet`. Nothing
+        downstream had constructed one until a vertical kept its readings
+        across runs, which is the one use this class exists for.
+        """
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT DISTINCT entity_id, property FROM obs"
+                " ORDER BY entity_id, property").fetchall()
+        return [(str(entity_id), str(prop)) for entity_id, prop in rows]
+
     def get_observations(self, entity_id: str, start: datetime,
                          end: datetime) -> List[Observation]:
         with self._lock:

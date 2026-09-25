@@ -34,6 +34,26 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+## [0.2.9] — 2026-09-25
+
+### Fixed
+
+- **`model_describe` and `gaps` work over every history this package ships.**
+  Both asked the session's history for `series_keys()`, which only the
+  in-memory store implemented, so a session built over
+  `SqliteObservationHistory` or `CalendarHistory` raised `AttributeError`, and
+  `rollout` ran with no seeded past (`precondition_unmet`). Both stores now list
+  their series. A history of the caller's own that implements only the five
+  `ObservationHistory` methods gets `unconsumed_observations: None` -- the report
+  could not be made -- rather than a crash or an empty list.
+- **A forecast is graded through whatever history the session reads.** The
+  ledger read the in-memory store's private series and skipped any other, so
+  a forecast made over `SqliteObservationHistory`, in a model declaring a
+  `calendar:`, or in a model with any derived indicator matured `ungradeable`
+  every time: measured, none of twelve graded in each case, against twelve of
+  twelve on the plain store. It reads through `get_values` now, and all four
+  grade alike. No calibration figure moves for a session that graded before.
+
 ## [0.2.8] — 2026-09-25
 
 ### Added

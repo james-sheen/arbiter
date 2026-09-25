@@ -226,3 +226,8 @@ class CalendarHistory(ObservationHistory):
 
     def get_observation_count(self, entity_id: str, property_name: str) -> int:
         return self.inner.get_observation_count(entity_id, property_name)
+
+    def series_keys(self):
+        """The series the history underneath holds -- a calendar changes which
+        instants count, never which series exist."""
+        return self.inner.series_keys()

@@ -536,7 +536,7 @@ class EngineSession:
                 })
         return records
 
-    def unconsumed_observations(self) -> List[Dict[str, Any]]:
+    def unconsumed_observations(self) -> Optional[List[Dict[str, Any]]]:
         """Series this session holds that no declared indicator will ever read.
 
         This rules the second half of issue #1. ``add_observations``
@@ -564,9 +564,18 @@ class EngineSession:
         # report on the other input surface counted them as read. One
         # declaration, two verdicts, and the only way to silence the wrong one
         # was to declare the property a second time.
+        # A HISTORY THAT CANNOT LIST ITS SERIES CANNOT BE ASKED
+        # THIS, and the answer says so rather than crashing or claiming the
+        # empty list. `series_keys` is not one of the ABC's five methods; both
+        # stores this engine ships implement it, and a caller's own need not.
+        # `None` is the engine's convention for *not measured*, and every
+        # consumer in the family already reads this key through `or []`.
+        keys = getattr(self.history, "series_keys", None)
+        if keys is None:
+            return None
         declared: Dict[str, set] = self.readable_properties()
         records: List[Dict[str, Any]] = []
-        for entity_id, prop in self.history.series_keys():
+        for entity_id, prop in keys():
             entity = self.entities.get(entity_id)
             if entity is None:
                 reason = "unknown_entity"
