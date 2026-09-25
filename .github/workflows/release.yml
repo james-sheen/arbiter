@@ -109,15 +109,26 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "$GITHUB_REF_NAME" dist/* --clobber
 
-      # PUBLISHING IS OFF UNTIL THE INDEX SIDE EXISTS, and the marker is a file
-      # rather than a setting so the change that turns it on is reviewable.
+      # PUBLISHING IS DONE BY HAND, BY RULING, and the marker is a file rather
+      # than a setting so the change that turns it back on is reviewable.
       #
-      # Trusted Publishing needs a publisher registered on PyPI naming this
-      # repository, this workflow file and this environment. Until that is
-      # registered, minting fails -- and a job that is red on every release day
-      # is one people learn to skip, which is the argument `verify-published.yml`
-      # already makes about itself. So: build and attach always, publish only
-      # when the marker says the other side is ready.
+      # It was ON from 2026-09-03 to 2026-09-25 and never published a file. The
+      # job below runs on the TAG; the release runbook uploads BEFORE the tag,
+      # so the repository never advertises a version the index does not serve.
+      # For a release made that way the publish job can only ever meet a version
+      # already on the index, so approving it could only fail -- and fourteen tag
+      # runs, v0.1.11 through v0.2.7, sat waiting with no conclusion instead.
+      # That is the two paths being mutually exclusive, not somebody forgetting
+      # to click.
+      #
+      # BOTH SETTINGS IT NEEDS STILL EXIST, and settings do not show in a diff,
+      # so they are stated here rather than lost with the marker. A `pypi`
+      # environment with a required reviewer (measured 2026-09-25), and a PyPI
+      # trusted publisher naming this repository, this workflow and that
+      # environment (verified at registration on 2026-09-03; no upload has ever
+      # used it). Turning publishing back on is a change to the UPLOAD ORDER
+      # first -- tag, then publish -- and the marker second. The marker alone
+      # restores exactly the waits described above.
       - name: Is publishing from CI enabled?
         id: gate
         run: |
@@ -126,12 +137,13 @@ jobs:
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
             echo "::notice::CI built these artifacts from the tag and attached them" \
-                 "to the Release. Publishing to the index is still done by hand." \
-                 "To hand it over: create the 'pypi' environment in this" \
-                 "repository's settings, register a PyPI trusted publisher naming" \
-                 "this repository, release.yml and that environment, then add" \
-                 ".github/PUBLISH_FROM_CI. The publish job stays behind the" \
-                 "environment's approval either way."
+                 "to the Release. Publishing to the index is done by hand, before" \
+                 "the tag, so this repository never advertises a version the index" \
+                 "does not serve. The 'pypi' environment and the PyPI trusted" \
+                 "publisher both still exist. To hand publishing to CI, change the" \
+                 "release order to tag-then-publish FIRST, then add" \
+                 ".github/PUBLISH_FROM_CI: the marker alone brings back a publish" \
+                 "job that can only meet a version already on the index."
           fi
 
       # The bytes that were attached, kept for the publish job. NOT a rebuild

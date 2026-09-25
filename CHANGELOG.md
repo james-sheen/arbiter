@@ -34,6 +34,13 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+### Changed
+
+- **Releases are uploaded to the index by hand, and `.github/PUBLISH_FROM_CI` is
+  retired.** The CI publish job it enabled runs on the tag, after the upload the
+  release procedure makes first, so it never published a file. CI still builds
+  each release from its tag and attaches the files to the GitHub Release.
+
 ## [0.2.7] — 2026-09-25
 
 ### Added
