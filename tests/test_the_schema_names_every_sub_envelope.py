@@ -106,9 +106,10 @@ class TestEverySubEnvelopeSharesOneShape:
 
     def test_the_known_set_is_accounted_for(self, schema):
         declared = set(schema["properties"]) - LEGS
+        # An internal ruling added `execution`, carried by `file_action`.
         assert declared == {
             "forecasts", "shadow", "projection", "entailment", "inference",
-            "discovery", "simulation", "plan"}
+            "discovery", "simulation", "plan", "execution"}
 
 
 class TestTheProseNoLongerMisdescribesThem:

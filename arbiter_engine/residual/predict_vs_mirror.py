@@ -149,6 +149,13 @@ class PredictionRecord:
     # `None` means outside, because that is what every caller predating this
     # field was.
     source: Optional[str] = None
+    #:. Set only on the two records `file_action` files for each value
+    #: an EXECUTED action moved: the execution's `id`, which `arm` of the pair
+    #: this is (`action` or `no_action`), the action, its parameters, when it
+    #: took effect and who says so. Graded like any value record; kept out of
+    #: every figure `calibration` reports for ordinary forecasts, and reported
+    #: under `executions` instead. `None` on everything else.
+    execution: Optional[Dict[str, Any]] = None
     # Set at grading for distribution records: per-level pinball loss, the
     # 90%-interval hit, and the CRPS approximation built from them.
     scores: Optional[Dict[str, Any]] = None
@@ -529,6 +536,7 @@ class PredictionLedger:
         quantiles: Optional[Dict[str, float]] = None,
         model_id: Optional[str] = None,
         source: Optional[str] = None,
+        execution: Optional[Dict[str, Any]] = None,
     ) -> str:
         """File a value prediction, the first of its kind: entity E's
         property P will read ~V (+/- tolerance) at horizon H. Tolerance is
@@ -577,6 +585,7 @@ class PredictionLedger:
             # predicate, so folding `""` to `None` silently reclassifies a
             # caller who supplied an empty source as somebody outside.
             source=str(source) if source is not None else None,
+            execution=dict(execution) if execution is not None else None,
         )
         self._note_eviction()
         self._append(record)
@@ -995,11 +1004,30 @@ class PredictionLedger:
 
     # -- calibration ----------------------------------------------------------
 
+    def _ordinary(self) -> List[PredictionRecord]:
+        """Every record except the pairs an executed action filed.
+
+        A pair's `no_action` record forecasts a world the recorded
+        execution did not leave standing, so it is falsified whenever the
+        action worked -- scored beside ordinary forecasts, it would charge the
+        model for the action's success, which is the argument that an internal ruling
+        made for refusing to file a counterfactual at all. Both arms are
+        reported apart, under `executions`, where the question is which one
+        the world followed.
+        """
+        return [r for r in self._records if r.execution is None]
+
     def calibration(self) -> Dict[str, Any]:
-        """OutcomeFeedbackLoop-style summary over graded records."""
-        confirmed = [r for r in self._records if r.verdict == GRADE_CONFIRMED]
-        falsified = [r for r in self._records if r.verdict == GRADE_FALSIFIED]
-        ungradeable = [r for r in self._records if r.verdict == GRADE_UNGRADEABLE]
+        """OutcomeFeedbackLoop-style summary over graded records.
+
+        `recorded` and `pending` count the whole ledger. Every figure after
+        them leaves out the records an executed action filed, which
+        `executions` reports on their own.
+        """
+        ordinary = self._ordinary()
+        confirmed = [r for r in ordinary if r.verdict == GRADE_CONFIRMED]
+        falsified = [r for r in ordinary if r.verdict == GRADE_FALSIFIED]
+        ungradeable = [r for r in ordinary if r.verdict == GRADE_UNGRADEABLE]
         graded = confirmed + falsified
         # The mean confidence the graded records were FILED at. Computed here
         # because two keys below report it and neither may re-derive it.
@@ -1010,7 +1038,7 @@ class PredictionLedger:
                 for r in graded) / len(graded)
         ) if graded else None
         by_kind: Dict[str, Dict[str, int]] = {}
-        for r in self._records:
+        for r in ordinary:
             bucket = by_kind.setdefault(r.kind, {
                 "pending": 0, "confirmed": 0, "falsified": 0, "ungradeable": 0})
             bucket[r.verdict or "pending"] += 1
@@ -1069,7 +1097,47 @@ class PredictionLedger:
             "brier": brier,
             **self._distribution_calibration(),
             "own_projections": self._own_projection_calibration(),
+            "executions": self._execution_calibration(),
         }
+
+    def _execution_calibration(self) -> Dict[str, Any]:
+        """The pairs `file_action` filed, by arm and by execution.
+
+        Counts, never a rate standing alone: a rate carries the denominator
+        it was taken over. Nothing here says which arm WON -- each execution
+        reports both arms' verdicts side by side, and the reader compares
+        them. A single word for that comparison would be a vocabulary nobody
+        declared, over a question whose answer is the two rows.
+        """
+        def _counts() -> Dict[str, Any]:
+            return {"pending": 0, "confirmed": 0, "falsified": 0,
+                    "ungradeable": 0}
+
+        arms: Dict[str, Dict[str, Any]] = {"action": _counts(),
+                                           "no_action": _counts()}
+        by_execution: Dict[str, Dict[str, Any]] = {}
+        paired = [r for r in self._records if r.execution is not None]
+        for record in paired:
+            execution = record.execution or {}
+            arm = str(execution.get("arm") or "")
+            verdict = record.verdict or "pending"
+            arms.setdefault(arm, _counts())[verdict] += 1
+            row = by_execution.setdefault(str(execution.get("id") or ""), {
+                "action": execution.get("action"),
+                "parameters": execution.get("parameters"),
+                "executed_at": execution.get("executed_at"),
+                "basis": execution.get("basis"),
+                "arms": {"action": _counts(), "no_action": _counts()},
+            })
+            row["arms"].setdefault(arm, _counts())[verdict] += 1
+        for counts in [*arms.values(),
+                       *(arm for row in by_execution.values()
+                         for arm in row["arms"].values())]:
+            graded = counts["confirmed"] + counts["falsified"]
+            counts["confirm_rate"] = (counts["confirmed"] / graded
+                                      if graded else None)
+        return {"recorded": len(paired), "executions_n": len(by_execution),
+                "arms": arms, "by_execution": by_execution}
 
     def _own_projection_calibration(self) -> Dict[str, Any]:
         """The proper scores for forecasts THIS ENGINE made, kept apart.
@@ -1092,7 +1160,7 @@ class PredictionLedger:
         Every rate carries its denominator and every one is `None` rather than
         zero before anything is scored, on the rule the whole ledger follows.
         """
-        graded = [r for r in self._records
+        graded = [r for r in self._ordinary()
                   if r.kind == "value" and r.scores is not None]
         # THE YARDSTICK IS NOT ONE OF THE RUNNERS. A rollout now
         # files a random walk beside each of its own projections, and those

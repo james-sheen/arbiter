@@ -27,6 +27,7 @@ that was declared.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Mapping
 
@@ -56,6 +57,20 @@ class ActionTemplate:
     #: that is the coupling.
     settle_s: float = 0.0
     source: str = ""
+
+    def tolerance_for(self, parameter: str) -> Optional[float]:
+        """How close a later reading must come to what `parameter` writes.
+
+        Read by `file_action` alone, for the property an EXECUTED
+        action writes directly: that value is what somebody did, and whether
+        the world then read it is gradable only against a band the author
+        declared. None when the parameter declares none -- the value is then
+        counted as unfilable, never filed against a band made up here.
+        """
+        spec = (self.parameters_schema or {}).get(parameter)
+        if not isinstance(spec, dict) or spec.get("tolerance") is None:
+            return None
+        return float(spec["tolerance"])
 
     def property_for(self, parameter: str) -> Tuple[str, bool]:
         """(property written, whether the mapping was DECLARED)."""
@@ -153,6 +168,10 @@ def load_templates(model: Any) -> Tuple[Dict[str, ActionTemplate],
                 "malformed_action", name,
                 f"settle_s {raw.get('settle_s')!r} is not a number"))
             continue
+        bad = _malformed_tolerance(raw.get("parameters_schema"))
+        if bad:
+            refused.append(ActionRefused("malformed_action", name, bad))
+            continue
         templates[name] = ActionTemplate(
             name=name,
             applies_to=str(raw.get("applies_to") or ""),
@@ -162,6 +181,26 @@ def load_templates(model: Any) -> Tuple[Dict[str, ActionTemplate],
             source=str(raw.get("source") or ""),
         )
     return templates, refused
+
+
+def _malformed_tolerance(schema: Any) -> str:
+    """Why a parameter's declared `tolerance:` cannot be read, or "".
+
+    The same refusal a non-numeric `settle_s` gets, for the same reason: a
+    template carrying a band nobody can read would file against no band, or
+    against one the engine chose.
+    """
+    for parameter, spec in sorted((schema or {}).items()
+                                  if isinstance(schema, dict) else ()):
+        if not isinstance(spec, dict) or "tolerance" not in spec:
+            continue
+        value = spec["tolerance"]
+        if (isinstance(value, bool) or not isinstance(value, (int, float))
+                or not math.isfinite(value) or value <= 0):
+            return (f"parameter {parameter!r} declares tolerance {value!r}; a "
+                    f"tolerance is a positive number in the property's own "
+                    f"units")
+    return ""
 
 
 def resolve(instance: ActionInstance,

@@ -1136,8 +1136,11 @@ _KNOWN_ACTION_TEMPLATE_KEYS = frozenset({
     "settle_s", "source",
 })
 
+#: `tolerance` is how close a later reading must come to what the
+#: parameter writes, read when an EXECUTED action is filed; `twin/actions.py`
+#: refuses the template if it is not a positive number.
 _KNOWN_ACTION_PARAM_KEYS = frozenset({
-    "type", "entity_property", "candidates",
+    "type", "entity_property", "candidates", "tolerance",
 })
 
 #: Which nested block each is checked against, and the label a row carries.

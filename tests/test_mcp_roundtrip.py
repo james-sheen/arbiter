@@ -73,6 +73,14 @@ ARGUMENTS = {
     # answer, because reporting the field and refusing to rank it is the
     # behaviour, not an error path.
     "plan": {"horizon_s": 120.0, "step_s": 60.0},
+    # The ranking over a model declaring no causal edge: it must
+    # still answer, with nothing to rank and the reason why.
+    "hypothesize": {"entity_id": ENTITY_ID},
+    # An execution the minimal model cannot place: the transport's
+    # job is the shape, and a refusal by name is an envelope like any other.
+    "file_action": {"action": {"template": "none", "entity_id": ENTITY_ID},
+                    "executed_at": "2026-01-01T00:00:00",
+                    "basis": "the roundtrip walk"},
     "load_model": {"model": _MINIMAL_MODEL},
     "add_entity": {"entity_id": "x", "entity_type": "Unit"},
     # The session's own entity joined to itself by a relation type
@@ -102,7 +110,7 @@ class TestTheRoutingTable:
         """
         reads = {"model_describe", "check", "traverse", "gaps", "attest",
                  "project", "discover", "entail", "infer", "rollout",
-                 "plan"}
+                 "plan", "hypothesize"}
         # AND THE EDGE. `add_relationship` is the third input kind:
         # a `transition:` block lives on a relationship RULE and has nothing
         # to move until an edge of its type exists, so a surface without this
@@ -112,7 +120,11 @@ class TestTheRoutingTable:
         # nothing.
         feeders = {"load_model", "add_entity", "add_relationship",
                    "add_observations"}
-        assert reads | feeders == set(TOOL_NAMES)
+        # AND ONE THAT RECORDS. `file_action` is neither: it puts
+        # an execution into the prediction ledger, which no read and no
+        # feeder touches.
+        records = {"file_action"}
+        assert reads | feeders | records == set(TOOL_NAMES)
 
     @pytest.mark.parametrize("name", TOOL_NAMES)
     def test_every_advertised_tool_is_routable(self, name):

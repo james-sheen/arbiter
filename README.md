@@ -304,10 +304,11 @@ from arbiter_engine import (
 ```
 
 **Fourteen of those are types and the kernel; the fifteenth is a module, and the split is
-deliberate.** `arbiter_engine.api` is the tool surface: eleven verbs over a session, each returning the
+deliberate.** `arbiter_engine.api` is the tool surface: thirteen verbs over a session, each returning the
 envelope above. Five answer for the eight axioms; four answer for a DISCIPLINE — work of a different
 kind, with its own denominator and its own vocabulary of refusals, reported in a payload beside the
-legs rather than inside them.
+legs rather than inside them. The other four run the model forward (`rollout`, `plan`), record an
+action somebody took (`file_action`), and rank what could explain a finding (`hypothesize`).
 
 ```python
 from importlib.resources import files
@@ -356,7 +357,7 @@ its membership is documented here and does not change inside a minor version.
 
 Those verbs, and the four session-setup calls beside them — `load_model`, `add_entity`,
 `add_relationship`, `add_observations` — are exposed over MCP by
-`arbiter_engine.mcp.server` — fifteen tools, a thin transport over exactly these functions, needing
+`arbiter_engine.mcp.server` — seventeen tools, a thin transport over exactly these functions, needing
 the optional `mcp` extra. That module is a deep path: importable, and not one of the supported names
 above. The sentence here read *the same five … not part of the eleven* through 0.1.16, naming a verb
 count that was never five and a name count two releases stale.
@@ -392,6 +393,13 @@ The overlap is narrow and mostly one word. `rollout` here means: apply declared 
 declared action effects on a private clone of the session, evaluate all eight axioms over every
 imagined state, prefix those findings `imagined_` so a simulated breach can never read as a live
 one, and dispatch nothing, ever. It does not mean sampling a learned latent forward under a policy.
+
+**An action somebody took is the one trajectory under an action that gets filed.** A rollout under
+actions files no prediction: it describes a world nobody has brought about. `file_action` records
+that a declared action TOOK EFFECT at an instant, with a `basis` saying who or what says so. The
+engine rolls the model forward from that instant with the action and without it, files each value
+the action moved in both arms against one declared band, and `calibration.executions` reports which
+arm the readings that followed confirmed. Recording an execution is not dispatching one.
 
 The engine does fit numbers, and stops short of adopting them. `gain: estimate` declares the
 coupling and withholds the number; the fit is reported under `model_describe` with its `n`, its

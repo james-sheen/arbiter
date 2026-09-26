@@ -294,6 +294,10 @@
     "plan": {
       "description": "The `plan` sub-envelope, carried by `plan`. Present only on the verb that produces it; NOT required, so an envelope from an engine predating it still validates.",
       "$ref": "#/$defs/plan_envelope"
+    },
+    "execution": {
+      "description": "The `execution` sub-envelope, carried by `file_action`: an action somebody took, filed as two predictions. Present only on that verb; NOT required, so an envelope from an engine predating it still validates.",
+      "$ref": "#/$defs/execution_envelope"
     }
   },
   "additionalProperties": {
@@ -596,6 +600,41 @@
         "raced": {
           "description": "One row per projection offered to the prediction ledger, naming whether it was filed and, when it was not, why. Present only when `file_predictions` was asked for.",
           "type": "array"
+        }
+      }
+    },
+    "execution_envelope": {
+      "title": "Execution sub-envelope",
+      "description": "THE `execution` SUB-ENVELOPE, carried by `file_action`. A sub-envelope in the shape above, PLUS the execution it records. Its `checked` counts pairs filed and records filed (two per pair), values the action did not move, values with no declared band, and the steps both arms completed. The reasons in `not_checked` are the `simulation` vocabulary's. The execution's own keys are absent when the verb refused before filing anything.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/sub_envelope"
+        }
+      ],
+      "properties": {
+        "id": {
+          "description": "The execution's id. Every record it filed carries it, and `calibration.executions.by_execution` is keyed on it.",
+          "type": "string"
+        },
+        "action": {
+          "description": "`template@entity_id`, the declared action that was executed.",
+          "type": "string"
+        },
+        "parameters": {
+          "description": "The parameter values it was executed with.",
+          "type": "object"
+        },
+        "executed_at": {
+          "description": "When it took effect, ISO 8601, naive UTC.",
+          "type": "string"
+        },
+        "basis": {
+          "description": "Who or what says it took effect, as the caller gave it.",
+          "type": "string"
+        },
+        "calibration": {
+          "description": "The ledger's calibration after filing. `executions` inside it reports every pair by arm and by execution; no other figure in it counts them.",
+          "type": "object"
         }
       }
     }

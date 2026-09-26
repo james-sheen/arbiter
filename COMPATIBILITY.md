@@ -64,6 +64,12 @@ reason, two bullets down: it is deeper than the public API. **Their payloads are
 not**, they are returned by supported names, and the promises above apply to
 them exactly as written. Validate against the schema, which was right first.
 
+**`execution` is the third of that kind**, returned by `file_action`:
+the same four-part shape, with the recorded execution's `id`, `action`,
+`parameters`, `executed_at` and `basis` beside it, and the ledger's `calibration`.
+Its decline reasons are the `simulation` vocabulary's. It is declared as
+`$defs/execution_envelope`, and the promises above apply to it as written.
+
 Three things about it are promises and not accidents:
 
 - **Its `checked` is never summed with the top-level one.** That counts axiom

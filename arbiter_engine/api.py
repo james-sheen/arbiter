@@ -20,6 +20,7 @@ whole relationship, and it points one way only.
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import (Any, Dict, Iterable, List, Optional, Sequence, Set,
                     Tuple)
@@ -2071,6 +2072,251 @@ def rollout(session: EngineSession,
         for step in result.steps
     ]
     payload["simulation"] = simulation
+    return _WithPayload(envelope, payload)
+
+
+def file_action(session: EngineSession, action: Any, executed_at: Any,
+                basis: str, *,
+                horizon_s: float = 3600.0,
+                step_s: float = 60.0,
+                max_transitions: int = 100_000) -> Envelope:
+    """Record that a declared action TOOK EFFECT, and file what it predicts.
+
+    `rollout` under actions files nothing: it describes a world
+    nobody has brought about, and grading it against the one that happened
+    would score the model on outcomes nobody attempted
+    (`counterfactual_not_a_prediction`). This verb is the other case. The
+    caller says an action was executed -- `action` names a declared template,
+    an entity and its parameters; `executed_at` is when it took effect;
+    `basis` is who or what says so -- and the engine rolls the model forward
+    from that instant twice, with the action and without it, and files both.
+    The existing grader grades them against later readings like any forecast,
+    and `calibration()` reports them apart, under `executions`, one row per
+    execution with each arm's verdicts.
+
+    RECORDING AN EXECUTION IS NOT DISPATCHING ONE. Nothing here causes the
+    action; somebody else did, and says so in `basis`. An action recorded but
+    never taken is a false basis, and the grader will say so: its action arm
+    is falsified wherever the action would have moved something.
+
+    THE SEED IS THE SESSION'S STATE WHEN THIS IS CALLED, so it must be the
+    state the action met. A session holding any reading timestamped after
+    `executed_at` is refused rather than rolled forward from a present the
+    action already changed: record the execution before feeding what follows
+    it. An instant after the engine's clock is refused too -- an execution
+    cannot be recorded before it happens.
+    """
+    from arbiter_engine.twin import rollout as _rollout
+    from arbiter_engine.twin.actions import (
+        ActionInstance, load_templates, resolve,
+    )
+
+    if session.model is None:
+        return unavailable_envelope("no domain model loaded")
+    if not session.entities:
+        return unavailable_envelope("no entities supplied")
+    act = as_action_instance(action, where="file_action(action=...)")
+    when = _executed_instant(executed_at)
+    if not isinstance(basis, str):
+        raise TypeError(
+            f"file_action(basis=...) is who or what says the action took "
+            f"effect, as text; got {type(basis).__name__}")
+
+    location = {"location": f"{act.template}@{act.entity_id}"}
+    refusals: List[Decline] = []
+    templates, load_refusals = load_templates(session.model)
+    template, refusal = resolve(act, templates, session.entities)
+    if refusal is not None:
+        refusals.append(Decline(refusal.reason, location, detail=refusal.detail))
+        refusals.extend(
+            Decline(r.reason, {"location": r.location}, detail=r.detail)
+            for r in load_refusals if r.location == act.template)
+    if act.at_s:
+        refusals.append(Decline(
+            "malformed_action", location,
+            detail=f"at_s={act.at_s} schedules an action that has not "
+                   f"happened; an executed one took effect at executed_at"))
+    if not basis.strip():
+        refusals.append(Decline(
+            "malformed_request", {"location": "basis"},
+            detail="an execution record needs a basis: who or what says the "
+                   "action took effect"))
+    if when > now_utc():
+        refusals.append(Decline(
+            "malformed_request", {"location": "executed_at"},
+            detail=f"executed_at {when.isoformat()} is after the engine's "
+                   f"clock; an execution is recorded once it has happened"))
+    if getattr(session, "ledger", None) is None:
+        refusals.append(Decline(
+            "precondition_unmet", {"location": "ledger"},
+            detail="this session has no prediction ledger to file into"))
+    later = _readings_after(session, when)
+    if later:
+        refusals.append(Decline(
+            "precondition_unmet", {"location": "executed_at"},
+            detail=f"this session holds {later} reading(s) timestamped after "
+                   f"executed_at {when.isoformat()}, so its present state is "
+                   f"not the state the action met; record the execution "
+                   f"before feeding what follows it",
+            evidence={"readings_after": later}))
+    if refusals:
+        return _execution_envelope(session, sub_checked={
+            "pairs_filed": 0, "records_filed": 0}, declines=refusals)
+
+    executed = ActionInstance(
+        template=act.template, entity_id=act.entity_id,
+        parameters=dict(act.parameters), at_s=0.0)
+    execution = {
+        "id": str(uuid.uuid4()),
+        "action": f"{act.template}@{act.entity_id}",
+        "parameters": dict(act.parameters),
+        "executed_at": when.isoformat(),
+        "basis": basis,
+    }
+    written = {
+        (act.entity_id, template.property_for(parameter)[0]):
+            template.tolerance_for(parameter)
+        for parameter in act.parameters
+    }
+    try:
+        with as_of(when):
+            arms = []
+            for actions in ([executed], []):
+                topology = _build_topology(session)
+                if topology is None:
+                    return unavailable_envelope(
+                        "no topology available: supply entities before "
+                        "filing an execution")
+                arms.append(_rollout.run(
+                    session, topology, actions=actions, horizon_s=horizon_s,
+                    step_s=step_s, seed_mode="current",
+                    file_predictions=False, max_transitions=max_transitions))
+        acted, withheld = arms
+        filing = _rollout.file_execution(
+            session, acted, withheld, written=written, execution=execution,
+            predicted_at=when)
+    except Exception as exc:  # noqa: BLE001 - see `_raised`
+        sub = _raised("simulation", exc, {"pairs_filed": 0, "records_filed": 0})
+        envelope = Envelope(
+            checked=CheckedSummary(invariants=0, entities=len(session.entities)),
+            findings=list(sub.findings), questions=[])
+        payload = envelope.to_dict()
+        payload["execution"] = sub.to_dict()
+        return _WithPayload(envelope, payload)
+
+    declines: List[Decline] = []
+    seen: Set[Tuple[str, str]] = set()
+    for arm in (acted, withheld):
+        for d in (list(arm.declines) + [x for step in arm.steps
+                                        for x in step.declines]
+                  + list(arm.refused_actions)):
+            if (d.reason, d.location) not in seen:
+                seen.add((d.reason, d.location))
+                declines.append(Decline(d.reason, {"location": d.location},
+                                        detail=d.detail or ""))
+    if filing.values_without_tolerance:
+        coupled = filing.values_without_tolerance - filing.written_without_tolerance
+        parts = [f"{filing.values_without_tolerance} value(s) the action "
+                 f"moved were not filed."]
+        if filing.written_without_tolerance:
+            parts.append(
+                f"{filing.written_without_tolerance} the action wrote "
+                f"directly: declare `tolerance:` on the parameter that "
+                f"writes it, how close a later reading must come.")
+        if coupled:
+            parts.append(
+                f"{coupled} a coupling moved with no spread: declare "
+                f"`gain_sigma:` on the transition that drives it.")
+        declines.append(Decline(
+            "no_declared_tolerance", {"location": "file_action"},
+            detail=" ".join(parts)))
+
+    findings = []
+    for arm_name, arm in (("action", acted), ("no_action", withheld)):
+        for step in arm.steps:
+            for finding in step.findings:
+                if isinstance(getattr(finding, "evidence", None), dict):
+                    finding.evidence["arm"] = arm_name
+                findings.append(finding)
+    return _execution_envelope(
+        session,
+        sub_checked={
+            "pairs_filed": filing.pairs_filed,
+            "records_filed": 2 * filing.pairs_filed,
+            "values_unaffected": filing.values_unaffected,
+            "values_without_tolerance": filing.values_without_tolerance,
+            "steps_requested": acted.steps_requested,
+            "steps_completed": min(acted.steps_completed,
+                                   withheld.steps_completed),
+            "steps_unpaired": filing.steps_unpaired,
+            "refused_by_ledger": filing.refused_by_ledger,
+        },
+        declines=declines, findings=findings,
+        invariants=acted.invariants + withheld.invariants,
+        steps=min(acted.steps_completed, withheld.steps_completed),
+        edges=set(acted.edges_traversed) | set(withheld.edges_traversed),
+        topology=acted.topology,
+        execution=execution)
+
+
+def _executed_instant(value: Any) -> datetime:
+    """`executed_at` as the engine's naive UTC; a wrong TYPE is a caller bug."""
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError(
+                f"file_action(executed_at={value!r}) is not an ISO 8601 "
+                f"instant") from exc
+    if not isinstance(value, datetime):
+        raise TypeError(
+            f"file_action(executed_at=...) takes a datetime or an ISO 8601 "
+            f"string; got {type(value).__name__}")
+    return as_naive_utc(value)
+
+
+def _readings_after(session: EngineSession, when: datetime) -> int:
+    """How many readings this session holds timestamped after `when`."""
+    history = session.reading_history()
+    if not hasattr(history, "series_keys"):
+        return 0
+    span = now_utc() - when
+    if span.total_seconds() <= 0:
+        return 0
+    later = 0
+    for key in history.series_keys():
+        try:
+            entity_id, prop = key
+        except (TypeError, ValueError):
+            continue
+        for ts, _ in history.get_values(entity_id, prop, span) or []:
+            if isinstance(ts, datetime) and ts > when:
+                later += 1
+    return later
+
+
+def _execution_envelope(session: EngineSession, *, sub_checked: Dict[str, int],
+                        declines: List[Decline], findings: Sequence[Any] = (),
+                        invariants: int = 0, steps: int = 0,
+                        edges: Optional[Set[str]] = None, topology: Any = None,
+                        execution: Optional[Dict[str, Any]] = None) -> Envelope:
+    """The envelope `file_action` answers in, filed or refused."""
+    sub = SubEnvelope(kind="simulation", checked=sub_checked,
+                      findings=list(findings), not_checked=declines,
+                      questions=[])
+    envelope = Envelope(
+        checked=CheckedSummary(invariants=invariants, steps=steps,
+                               entities=len(session.entities)),
+        findings=list(findings),
+        questions=([_q(q) for q in _questions_for_traversed_edges(
+            topology, edges or set())] if topology is not None else []))
+    payload = envelope.to_dict()
+    leg = sub.to_dict()
+    if execution is not None:
+        leg.update(execution)
+        if getattr(session, "ledger", None) is not None:
+            leg["calibration"] = session.ledger.calibration()
+    payload["execution"] = leg
     return _WithPayload(envelope, payload)
 
 

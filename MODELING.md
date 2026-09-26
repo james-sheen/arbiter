@@ -1167,6 +1167,40 @@ than `unknown_value`, because a scalar `critical` names a real severity and an
 empty list names none: calling either an unrecognised value would misdescribe
 it, and there would be no near-miss to offer.
 
+## An action somebody took: `tolerance:` and `file_action`
+
+A rollout under actions files no prediction, because nothing says the actions
+were taken. `file_action(session, action, executed_at, basis)` is the case
+where they were: the caller records that a declared action took effect at an
+instant, and the engine rolls the model forward from there with it and without
+it and files both, for later readings to grade. Each value the action moved is
+filed in both arms against ONE band, so the pair differs only in what it
+predicts:
+
+- a value a coupling moved uses the action arm's declared spread, the same
+  1.96 `gain_sigma:`-derived band a filing rollout uses;
+- a value the action WRITES uses the band its parameter declares:
+
+```yaml
+action_templates:
+  - name: throttle_pump
+    applies_to: Pump
+    parameters_schema:
+      speed_rpm:
+        entity_property: speed_rpm
+        tolerance: 25         # a later reading within 25 rpm of the setting counts
+    effect: set
+    source: runbook
+```
+
+**A tolerance is declared, never inferred.** With none, the written value is
+counted in `values_without_tolerance` and declined `no_declared_tolerance`
+naming the parameter; it is not filed against a band chosen here. A value that
+is not a positive number refuses the whole template as `malformed_action`, the
+refusal a non-numeric `settle_s:` gets. A value the action did not change is
+not filed at all: both arms say the same thing, and a pair that cannot disagree
+cannot say which world happened.
+
 ## Choosing between actions: `planning`
 
 `rollout` answers *what happens if I do this*. Ranking candidates needs an

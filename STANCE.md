@@ -119,6 +119,18 @@ always among them. `BRIDGES.md` states the operational consequence: look for you
 own `model_id` in that list, because a non-empty list is normal and yours being in
 it is not.
 
+## An action somebody took
+
+**Recording an execution is not dispatching one.** A rollout under actions files
+nothing, because it describes a world nobody has brought about. `file_action` is the
+one door through which an action's trajectory reaches the ledger: the caller records
+that a declared action took effect at an instant, and says in `basis` who or what
+took it. The engine files two of its own forecasts from that instant, with the
+action and without it, and reports them under `calibration.executions`, apart from
+every other figure, so that an action which worked is not scored as a model that
+failed. Nothing in the engine causes, schedules or approves the action. A false
+`basis` is caught the way any wrong forecast is, by the readings that follow it.
+
 ## The case this rule was written against
 
 A bridge auditing a book runs a reference forecaster as a CONTROL — a deliberately

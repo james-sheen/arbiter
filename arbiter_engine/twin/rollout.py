@@ -1594,6 +1594,100 @@ def _file_rollout_baseline(session: Any, entity_id: str, prop: str,
     return "filed"
 
 
+@dataclass
+class ExecutionFiling:
+    """What `file_execution` did with a pair of trajectories, counted."""
+    pairs_filed: int = 0
+    values_unaffected: int = 0
+    values_without_tolerance: int = 0
+    #: Of those, how many the action wrote DIRECTLY -- whose remedy is a
+    #: `tolerance:` on the parameter, not a `gain_sigma:` on a coupling.
+    written_without_tolerance: int = 0
+    steps_unpaired: int = 0
+    refused_by_ledger: int = 0
+
+
+def file_execution(session: Any, acted: 'RolloutResult',
+                   withheld: 'RolloutResult', *,
+                   written: Dict[Tuple[str, str], Optional[float]],
+                   execution: Dict[str, Any],
+                   predicted_at: Any) -> ExecutionFiling:
+    """File an executed action as TWO predictions per value it moved.
+
+    A rollout under actions files nothing, because nothing says the
+    actions were taken. An execution record says one was: the
+    vertical states that a declared action took effect at an instant, and the
+    engine rolls the model forward from there with it and without it. Both
+    trajectories are ordinary forecasts to the grader; what makes them a pair
+    is the `execution` each record carries.
+
+    ONE BAND FOR BOTH ARMS, AT EACH INSTANT. A value the action did not change
+    is not filed: both arms say the same thing, and a pair that cannot
+    disagree cannot say which world happened. A value it did change is filed
+    in both arms against one tolerance -- the action arm's declared spread,
+    1.96 of it, as a filing rollout uses; or, for a property the action WRITES,
+    the `tolerance:` its parameter declares. The no-action arm has no band of
+    its own for a value nothing moved, and a band chosen for it here would be
+    a number nobody declared. With neither declared, the value is counted and
+    not filed.
+
+    The arms keep separate episodes, so the grader's rule that a reading
+    grades the horizon it is nearest reads each trajectory's own instants.
+    """
+    out = ExecutionFiling()
+    ledger = getattr(session, "ledger", None)
+    if ledger is None:
+        return out
+    out.steps_unpaired = abs(len(acted.steps) - len(withheld.steps))
+    episode = str(execution.get("id") or uuid.uuid4())
+    for step_a, step_n in zip(acted.steps, withheld.steps):
+        for entity_id, values in step_a.values.items():
+            for prop, value in values.items():
+                other = step_n.values.get(entity_id, {}).get(prop)
+                if other is None or float(other) == float(value):
+                    out.values_unaffected += 1
+                    continue
+                if (entity_id, prop) in written:
+                    tolerance = written[(entity_id, prop)]
+                    confidence = None
+                    if tolerance is None:
+                        out.written_without_tolerance += 1
+                else:
+                    sigma = step_a.sigma.get(entity_id, {}).get(prop)
+                    tolerance = 1.96 * float(sigma) if sigma else None
+                    confidence = 0.95
+                if not tolerance:
+                    out.values_without_tolerance += 1
+                    continue
+                try:
+                    for arm, step, predicted in (("action", step_a, value),
+                                                 ("no_action", step_n, other)):
+                        ledger.record_value_prediction(
+                            entity_id=entity_id,
+                            property_name=prop,
+                            predicted_value=float(predicted),
+                            tolerance=float(tolerance),
+                            horizon_s=float(step_a.at_s),
+                            # A declared tolerance is a band, not a stated
+                            # probability: the ledger's own default stands,
+                            # and no figure reads it for a pair.
+                            **({"confidence": confidence}
+                               if confidence is not None else {}),
+                            traversal_id=f"{episode}:{arm}",
+                            predicted_at=predicted_at,
+                            couplings=tuple(
+                                step.drivers.get(entity_id, {}).get(prop, ())),
+                            model_id=_SELF_MODEL_ID,
+                            source=SOURCE_ENGINE,
+                            execution={**execution, "arm": arm},
+                        )
+                except Exception:  # noqa: BLE001 - a ledger refusal is not a crash
+                    out.refused_by_ledger += 1
+                    continue
+                out.pairs_filed += 1
+    return out
+
+
 def _now(session: Any):
     from ..clock import now_utc
     return now_utc()

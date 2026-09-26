@@ -34,6 +34,24 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+## [0.2.12] — 2026-09-26
+
+### Added
+
+- **`file_action(session, action, executed_at, basis)` — an action somebody
+  took, filed as two predictions.** The model is rolled forward from
+  `executed_at` with the declared action and without it, and each value the
+  action moved is filed in both arms against one band: the declared spread, or
+  the new `tolerance:` on the parameter that writes the value. The grader grades
+  both; `calibration()` reports them under `executions`, by arm and by
+  execution, and keeps them out of every other figure. A session holding
+  readings after `executed_at` is refused, and a rollout under actions still
+  files nothing.
+- **`hypothesize` and `file_action` are MCP tools**, seventeen in all.
+- An action parameter may declare `tolerance:`, how close a later reading must
+  come to what it writes. A value that is not a positive number refuses the
+  template.
+
 ## [0.2.11] — 2026-09-26
 
 ### Added

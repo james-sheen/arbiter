@@ -41,13 +41,14 @@ import sys
 from typing import Any, Dict, List
 
 from arbiter_engine.api import (
-    EngineSession, attest, check, discover, entail, gaps, infer,
-    model_describe, plan, project, rollout, traverse,
+    EngineSession, attest, check, discover, entail, file_action, gaps,
+    hypothesize, infer, model_describe, plan, project, rollout, traverse,
 )
 from arbiter_engine.envelope import Envelope, unavailable_envelope
 
 #: The primitives, in the order that an internal ruling lists them, plus `project`
-#: since 2026-09-16 and `rollout` / `plan` since and.
+#: since 2026-09-16, `rollout` / `plan` since and, and
+#: `hypothesize` / `file_action` since and.
 #: Each entry is the
 #: name, a one-line description for the client, and the JSON-Schema input.
 TOOL_SPECS: List[Dict[str, Any]] = [
@@ -356,6 +357,53 @@ TOOL_SPECS: List[Dict[str, Any]] = [
         },
     },
     {
+        "name": "hypothesize",
+        "description": (
+            "What could explain a finding on entity_id, ranked: each "
+            "candidate is a DECLARED causal ancestor, scored by the same "
+            "exact inference `infer` runs, with the reading that would "
+            "discriminate it and the declared action that could test it. "
+            "Nothing outside the declared causal graph is proposed. Read the "
+            "ranking's assumptions first: with no causal.evidence_severity "
+            "declared, a warning is not evidence and the ranking orders "
+            "priors."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "entity_id": {"type": "string"},
+                "report_above": {"type": "number"},
+            },
+            "required": ["entity_id"],
+        },
+    },
+    {
+        "name": "file_action",
+        "description": (
+            "Record that a declared action TOOK EFFECT at executed_at, and "
+            "file what it predicts: the model is rolled forward from that "
+            "instant with the action and without it, and each value the "
+            "action moved is filed in both arms against one declared band. "
+            "Later readings grade both, and calibration.executions reports "
+            "which arm the world followed. Recording an execution is not "
+            "dispatching one; basis says who or what took it. Refused by "
+            "name when the session already holds readings after "
+            "executed_at."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "action": {"type": "object"},
+                "executed_at": {"type": "string"},
+                "basis": {"type": "string"},
+                "horizon_s": {"type": "number"},
+                "step_s": {"type": "number"},
+                "max_transitions": {"type": "integer"},
+            },
+            "required": ["action", "executed_at", "basis"],
+        },
+    },
+    {
         "name": "add_observations",
         "description": (
             "Feed a series for one entity property. Values are either bare "
@@ -410,6 +458,17 @@ def _plan(session: EngineSession, arguments: Dict[str, Any]) -> Envelope:
         # produces claims and not the half that checks them.
         seed_mode=str(arguments.get("seed_mode", "current")),
         file_predictions=bool(arguments.get("file_predictions", False)),
+    )
+
+
+def _file_action(session: EngineSession, arguments: Dict[str, Any]) -> Envelope:
+    """Dispatch `file_action`; `executed_at` arrives as ISO 8601 text."""
+    return file_action(
+        session, arguments.get("action") or {}, arguments.get("executed_at"),
+        arguments.get("basis"),
+        horizon_s=float(arguments.get("horizon_s", 3600.0)),
+        step_s=float(arguments.get("step_s", 60.0)),
+        max_transitions=int(arguments.get("max_transitions", 100_000)),
     )
 
 
@@ -491,8 +550,11 @@ _HANDLERS = {
     "entail": lambda s, a: entail(s, bool(a.get("adopt", False))),
     "infer": lambda s, a: infer(
         s, a["target"], a.get("do"), a.get("report_above")),
+    "hypothesize": lambda s, a: hypothesize(
+        s, a["entity_id"], a.get("report_above")),
     "rollout": _rollout,
     "plan": _plan,
+    "file_action": _file_action,
     "load_model": _load_model,
     "add_entity": _add_entity,
     "add_relationship": _add_relationship,
@@ -584,6 +646,25 @@ def build_server(session: EngineSession | None = None):
         return _emit("plan", {
             "candidates": candidates, "horizon_s": horizon_s,
             "step_s": step_s, "max_transitions": max_transitions,
+        })
+
+    async def hypothesize_tool(entity_id: str,
+                               report_above: float | None = None) -> str:
+        return _emit("hypothesize", {"entity_id": entity_id,
+                                     "report_above": report_above})
+
+    async def file_action_tool(
+        action: Dict[str, Any],
+        executed_at: str,
+        basis: str,
+        horizon_s: float = 3600.0,
+        step_s: float = 60.0,
+        max_transitions: int = 100_000,
+    ) -> str:
+        return _emit("file_action", {
+            "action": action, "executed_at": executed_at, "basis": basis,
+            "horizon_s": horizon_s, "step_s": step_s,
+            "max_transitions": max_transitions,
         })
 
     async def gaps_tool(start_node: str | None = None) -> str:
@@ -679,6 +760,8 @@ def build_server(session: EngineSession | None = None):
         # the two.
         "rollout": rollout_tool,
         "plan": plan_tool,
+        "file_action": file_action_tool,
+        "hypothesize": hypothesize_tool,
     }
     missing = {spec["name"] for spec in TOOL_SPECS} - set(wrappers)
     if missing:
