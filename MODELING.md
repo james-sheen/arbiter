@@ -190,6 +190,12 @@ where it says what the model considered healthy. It is documentation the engine 
 rather than a rule the engine applies -- and it is worth declaring for exactly that reason,
 because the next person to read your model learns the intended vocabulary from it.
 
+**The declaration also decides how a reading is kept.** `add_observations` stores each
+reading of a `type: STATE` property as a state, so the series STABILITY's state arm reads
+arrives through the same call as any number. Every other property is read as a number, and a
+word sent for one is refused with this remedy -- declare the type, and add the entity before
+its observations, since the declaration is found through the entity's type.
+
 ## Relationship indicators, and how a CONNECTIVITY check is declared
 
 Everything above measures a quantity. **CONNECTIVITY measures a shape**, and it is declared
@@ -1365,6 +1371,39 @@ about a span in which nothing could have been observed.
 **Declaring nothing is not declaring closed.** A domain with no `calendar:` is
 always open and behaves exactly as it did before this key existed, which is the
 right default for anything that runs around the clock.
+
+## Evaluation parameters: `axiom_parameters`
+
+The axioms carry parameters of their own -- how many samples STABILITY needs, how
+many days of history HOMEOSTASIS builds its baseline from, the z-scores it fires
+at. The engine's defaults suit telemetry sampled in seconds or minutes. A model
+observed at another cadence says so:
+
+```yaml
+axiom_parameters:
+  homeostasis_baseline_days: 2000   # monthly captures: a baseline that holds years
+  stability_window_size: 6
+```
+
+**Why the example is the one it is.** HOMEOSTASIS builds its baseline from the
+last `homeostasis_baseline_days` of history, seven by default. A model observed
+monthly holds about one sample in seven days, so the axiom declines
+`insufficient_samples` however long the series grows -- thirty-six monthly
+captures decline exactly as one does. Declared as above, the same thirty-six
+evaluate: a steady margin is clean and a collapsing one is a finding.
+
+**The keys are the fields of `AxiomParameters`**, each an integer or a number as
+that field is. `model_describe` lists every one under `axiom_parameters`, with the
+value in effect and whether it was `declared` or is the `default`. A key that is
+not a parameter is reported in `unread_fields` as `unknown_key`, with the nearest
+real name; a value that is not a number of the right kind -- a word, a boolean, a
+fraction where a count is wanted -- is reported as `malformed_value`, and that
+key keeps its default. A block that is not a mapping refuses the model.
+
+**A default is calibration, and a declaration is yours.** The defaults may be
+retuned in a release, as `COMPATIBILITY.md` says; a value your model declares is
+the value it is evaluated with in every release. Declare the ones your cadence
+depends on rather than relying on the number that happens to ship.
 
 ## Coverage is a declaration, and absences are choices
 

@@ -49,6 +49,7 @@ from __future__ import annotations
 import dataclasses
 import difflib
 import logging
+import math
 import re
 from dataclasses import dataclass, field
 from datetime import timedelta
@@ -60,7 +61,7 @@ import yaml
 
 from ..axiom_thresholds import THRESHOLD_FIELDS
 from ..interfaces import IndicatorSpec
-from ..types import (Axiom, IndicatorType, Severity,
+from ..types import (Axiom, AxiomParameters, IndicatorType, Severity,
                      read_severity_floor)
 from .axioms.roles import (
     ROLES, explain_absence, normalise_role, unreachable_axioms,
@@ -141,6 +142,43 @@ def _require_sequence(value: Any, key: str, context: str = "") -> List[Any]:
             if isinstance(value, str) else "")
     raise MalformedDomainModelError(
         f"`{key}`{where} is {found}, not a list{hint}")
+
+
+def _require_mapping(value: Any, key: str) -> Dict[str, Any]:
+    """Return `value` as a dict, or raise naming what was found instead.
+
+    For `axiom_parameters:`. The same reasoning as the sequence check
+    above: a block of the wrong SHAPE is the author's defect in the document,
+    and loading it as though nothing were declared would evaluate every axiom
+    with defaults the file was written to replace, without a word.
+    """
+    if value is None:
+        return {}
+    if isinstance(value, Mapping):
+        return dict(value)
+    raise MalformedDomainModelError(
+        f"`{key}` is {type(value).__name__} {value!r}, not a mapping of "
+        f"parameter names to values")
+
+
+def _axiom_parameter_value(value: Any, kind: type) -> Any:
+    """`value` as a parameter of `kind`, or None when it is not one.
+
+    A bool is refused although Python counts it as an int: `true` for a
+    window size is a slip, not a window of one. A count takes a whole number,
+    written either way (`30` or `30.0`). Anything else must be a finite
+    number; no range is imposed, because the parameters are the author's to
+    choose and the axioms already decline honestly on any they cannot use.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if not math.isfinite(value):
+        return None
+    if kind is int:
+        if isinstance(value, float) and not value.is_integer():
+            return None
+        return int(value)
+    return float(value)
 
 
 def is_domain_model(source: Union[str, Path, Dict[str, Any]]) -> bool:
@@ -321,6 +359,52 @@ class DomainModel:
     #: windows measured in open time by `CalendarHistory`.
     calendar: Dict[str, Any] = field(default_factory=dict)
     indicators: Dict[str, List[IndicatorSpec]] = field(default_factory=dict)
+    #: -- the evaluation parameters this model sets for itself, as the
+    #: author wrote them. `evaluation_parameters()` reads them into the
+    #: `AxiomParameters` the session's reasoner is built with. A key that is
+    #: not a parameter, or a value that is not a number of that parameter's
+    #: kind, is refused and reported by `unread_fields`, and the engine's own
+    #: default stands for that one key. Absent, every default stands, exactly
+    #: as before this existed.
+    axiom_parameters: Dict[str, Any] = field(default_factory=dict)
+
+    def declared_axiom_parameters(self) -> Dict[str, Any]:
+        """The declared parameters this engine ACCEPTED, each as its own kind.
+
+        Only these reach the reasoner. A refused entry is left out rather than
+        coerced: a window of `"seven"` days is a question for the author, and
+        answering it with the default while reporting it is the one honest
+        reading.
+        """
+        accepted: Dict[str, Any] = {}
+        for key, value in (getattr(self, "axiom_parameters", None) or {}).items():
+            kind = _AXIOM_PARAMETER_KINDS.get(key)
+            if kind is None:
+                continue
+            number = _axiom_parameter_value(value, kind)
+            if number is not None:
+                accepted[key] = number
+        return accepted
+
+    def evaluation_parameters(self) -> AxiomParameters:
+        """The parameters every axiom of this model is evaluated with."""
+        return AxiomParameters(**self.declared_axiom_parameters())
+
+    def axiom_parameters_in_effect(self) -> Dict[str, Dict[str, Any]]:
+        """Every parameter, its value, and whether the model or the engine set it.
+
+        EVERY ONE, not only the declared ones. A reader asking why HOMEOSTASIS
+        answered as it did needs the baseline window it was given, and a
+        default is exactly the number nobody chose -- so each row says which
+        it is.
+        """
+        declared = self.declared_axiom_parameters()
+        defaults = AxiomParameters()
+        return {
+            name: {"value": declared.get(name, getattr(defaults, name)),
+                   "source": "declared" if name in declared else "default"}
+            for name in sorted(_AXIOM_PARAMETER_KINDS)
+        }
 
     def all_indicators(self) -> List[IndicatorSpec]:
         return [spec for specs in self.indicators.values() for spec in specs]
@@ -644,7 +728,40 @@ class DomainModel:
         report("causal", getattr(self, "causal", None),
                _KNOWN_CAUSAL_KEYS, "")
         out.extend(self._unread_evidence_severity())
+        report("axiom_parameters", getattr(self, "axiom_parameters", None),
+               _KNOWN_AXIOM_PARAMETER_KEYS, "")
+        out.extend(self._unread_axiom_parameter_values())
         return out
+
+    def _unread_axiom_parameter_values(self) -> List[Dict[str, Any]]:
+        """The VALUE side of `axiom_parameters:`.
+
+        The key side is the shared `unknown_key` report above. This is the
+        other way a declaration can fail to take: a known parameter given
+        something that is not a number of its kind. The default stood for that
+        key, and a reader who only saw the envelope could not tell a refused
+        declaration from no declaration -- so the row says which word, and what
+        was used instead.
+        """
+        rows: List[Dict[str, Any]] = []
+        block = getattr(self, "axiom_parameters", None) or {}
+        defaults = AxiomParameters()
+        for key, value in sorted(block.items(), key=lambda kv: str(kv[0])):
+            kind = _AXIOM_PARAMETER_KINDS.get(key)
+            if kind is None or _axiom_parameter_value(value, kind) is not None:
+                continue
+            wanted = "a whole number" if kind is int else "a finite number"
+            rows.append({
+                "field": f"axiom_parameters.{key}",
+                "reason": "malformed_value",
+                "value": (value if isinstance(value, (str, int, float, bool))
+                          or value is None else repr(value)),
+                "read_by": [], "did_you_mean": None,
+                "remedy": (f"`axiom_parameters.{key}` takes {wanted}, so the "
+                           f"declaration was refused and the engine's own "
+                           f"{getattr(defaults, key)} was used"),
+            })
+        return rows
 
     def _unread_evidence_severity(self) -> List[Dict[str, Any]]:
         """The VALUE side of `causal.evidence_severity:`.
@@ -939,7 +1056,7 @@ _MODEL_KEYS = frozenset({
     "id", "domain_id", "name", "description", "entity_types",
     "relationship_types", "aliases", "rules", "closure", "relationship_rules",
     "calendar", "action_templates", "planning", "causal", "indicators",
-    "property_mapping",
+    "property_mapping", "axiom_parameters",
 })
 
 _KNOWN_FORECAST_KEYS = frozenset({
@@ -983,6 +1100,24 @@ _KNOWN_PLANNING_KEYS = frozenset({
 #: whose absence is legal would silently take the default it was written to
 #: replace.
 _KNOWN_CAUSAL_KEYS = frozenset({"evidence_severity"})
+
+#: The domain-level `axiom_parameters:` block -- the evaluation parameters a
+#: model may set for itself., closing the second half of issue #14:
+#: `homeostasis_baseline_days` was fixed at seven days for every caller that
+#: came in through the session, so a model observed monthly could never build a
+#: HOMEOSTASIS baseline, whatever its indicators declared.
+#:
+#: DERIVED FROM THE DATACLASS, NOT TRANSCRIBED. The keys are the fields of
+#: `AxiomParameters` and their kinds are its annotations, so a parameter added
+#: there is declarable here the same day, and one removed there is reported as
+#: unknown rather than accepted and ignored.
+_AXIOM_PARAMETER_KINDS: Dict[str, type] = {
+    # An annotation arrives as a string where the defining module postpones
+    # them; every field is an int or a float, and a count must stay a count.
+    field_.name: (int if field_.type in (int, "int") else float)
+    for field_ in dataclasses.fields(AxiomParameters)
+}
+_KNOWN_AXIOM_PARAMETER_KEYS = frozenset(_AXIOM_PARAMETER_KINDS)
 
 #: `action_templates:` is mixed, which is why it is here rather than trusted.
 #: A mistyped `entity_property` is caught at rollout time -- the action is
@@ -1564,6 +1699,8 @@ def load_domain(source: Union[str, Path, Dict[str, Any]]) -> DomainModel:
         planning=dict(domain.get("planning") or {}),
         causal=dict(domain.get("causal") or {}),
         indicators=indicators,
+        axiom_parameters=_require_mapping(
+            domain.get("axiom_parameters"), "axiom_parameters"),
     )
 
     # say it at LOAD, not at cycle 1. Every fact needed to answer

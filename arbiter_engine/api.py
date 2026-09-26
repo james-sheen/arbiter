@@ -42,6 +42,7 @@ from arbiter_engine.history.observation import InMemoryObservationHistory
 from arbiter_engine.interfaces import (
     Entity, RelationshipGraph,
 )
+from arbiter_engine.types import IndicatorType
 from arbiter_engine.twin.actions import as_action_instance
 from arbiter_engine.ontology.axioms.roles import (
     unreachable_axioms as _unreachable_axioms,
@@ -129,7 +130,14 @@ class EngineSession:
 
     def load_model(self, source: Any) -> None:
         self.model = load_domain(source)
-        reasoner = UnifiedAxiomReasoner()
+        # -- THE MODEL'S OWN PARAMETERS, not the engine's defaults. This
+        # built `UnifiedAxiomReasoner()` with nothing, so every caller that came
+        # in through a session evaluated with a seven-day HOMEOSTASIS baseline
+        # whatever its cadence, and the only way round it was to construct a
+        # reasoner by hand beside this one. `axiom_parameters:` in the file is
+        # read here; a model that declares none gets exactly what it got before.
+        reasoner = UnifiedAxiomReasoner(
+            params=self.model.evaluation_parameters())
         # An internal ruling removed the seam this used to work around: the loader now
         # ingests IndicatorSpec objects directly, so the typed form the engine
         # loader emits no longer round-trips through a dict to satisfy a
@@ -174,6 +182,16 @@ class EngineSession:
         first element is a pair and whose fifth is a bare float is a caller
         bug, and silently reading the pair as a value would put a tuple into
         the history for an axiom to trip over three layers down.
+
+        **A STATE is kept as a state** (the first half of issue #14).
+        Where the model declares the property `type: state` on the entity's
+        type, each reading is stored as text, which is how every history reads
+        a state back. Everything else is cast to a number as before -- so a
+        numeric string from an export still arrives as a number -- and a
+        reading that is not one is refused with the remedy named. This cast
+        every reading to `float`, so the front door could not carry the fourth
+        input kind at all: STABILITY's state arm declined for ever on a series
+        that existed, and the only way round it was the history underneath.
         """
         samples = list(values)
         if not samples:
@@ -188,19 +206,66 @@ class EngineSession:
                 "beside a real timestamp"
             )
 
+        reading = self._reading_for(entity_id, property_name)
         if all(paired):
             for when, value in samples:
                 self.history.add(
-                    entity_id, property_name, float(value), _as_timestamp(when))
+                    entity_id, property_name, reading(value), _as_timestamp(when))
             return
 
         now = self._bare_reading_instant(interval_seconds)
         count = len(samples)
         for i, value in enumerate(samples):
             self.history.add(
-                entity_id, property_name, float(value),
+                entity_id, property_name, reading(value),
                 now - timedelta(seconds=(count - i) * interval_seconds),
             )
+
+    def _declared_type(self, entity_id: str,
+                       property_name: str) -> Optional[IndicatorType]:
+        """The kind of reading the model declares for this property, or None.
+
+        Keyed on the ENTITY'S type, because a property name means what the
+        indicator on that type says it means: one type's `status` may be a
+        state and another's a count.
+        """
+        entity = self.entities.get(entity_id)
+        if self.model is None or entity is None:
+            return None
+        for spec in (self.model.indicators or {}).get(entity.type, ()) or ():
+            if (spec.property_name or spec.name) == property_name:
+                return spec.indicator_type
+        return None
+
+    def _reading_for(self, entity_id: str, property_name: str):
+        """How one reading of this property is stored.
+
+        Decided once per call rather than per reading: the declaration does not
+        change inside a series, and asking it once is what makes a mixed
+        series (a state and then a number) come out as one kind or the other
+        rather than as whatever each value happened to look like.
+        """
+        if self._declared_type(entity_id, property_name) is IndicatorType.STATE:
+            def as_state(value: Any) -> str:
+                if value is None:
+                    raise ValueError(
+                        f"{entity_id}.{property_name}: a state reading cannot "
+                        f"be None; leave the sample out instead of sending "
+                        f"an empty one")
+                return str(value)
+            return as_state
+
+        def as_number(value: Any) -> float:
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                raise ValueError(
+                    f"{entity_id}.{property_name}: reading {value!r} is not a "
+                    f"number, and no indicator on this entity's type declares "
+                    f"`{property_name}` as `type: state`. Declare it, and add "
+                    f"the entity before its observations, to have it kept as "
+                    f"a state") from None
+        return as_number
 
     def _bare_reading_instant(self, interval_seconds: float) -> datetime:
         """The instant a bare series ends at — ONE per feeding pass.
@@ -1218,6 +1283,11 @@ def model_describe(session: EngineSession,
         # second copy of it is the shape this package has been bitten by
         # before, and it goes stale the first time the predicate moves.
         "dropped_declarations": session.dropped_declarations(),
+        # -- the evaluation parameters in effect, every one, each marked
+        # `declared` or `default`. A model may set them in `axiom_parameters:`
+        # now, and an author proofreading the model should be able to see the
+        # window HOMEOSTASIS will use without running it.
+        "axiom_parameters": model.axiom_parameters_in_effect(),
         "note": (
             "declared_axioms is what the model declares, not what the engine "
             "evaluates; some axioms have evaluation paths that consult no "
@@ -1228,7 +1298,9 @@ def model_describe(session: EngineSession,
             "loader REJECTED, read and not understood; "
             "unconsumed_observations lists series no declared "
             "indicator reads; unread_properties lists numeric entity "
-            "properties no declared indicator reads"
+            "properties no declared indicator reads; "
+            "axiom_parameters lists every evaluation parameter with the value "
+            "in effect and whether the model declared it"
         ),
     }
     # the mirror of `model.unreachable_declarations`, and deliberately
@@ -1540,8 +1612,12 @@ def traverse(session: EngineSession, start_nodes: Sequence[str],
         overrides=dict(overrides or {}),
         horizon_s=float(horizon_s),
     )
+    # The walk judges a flow deficit with the same parameters `check` uses. The
+    # model may declare them; a traverser built with its own defaults
+    # would answer the same question two ways in one session.
     traverser = TopologyTraverser(
-        topology, observation_history=_history_for(session))
+        topology, observation_history=_history_for(session),
+        axiom_params=getattr(session.reasoner, "params", None))
     projected_count = 0
     if value_mode == "projected":
         # the producer must run or PROJECTED silently reads present

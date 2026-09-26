@@ -204,6 +204,10 @@ Three things about it are promises and not accidents:
 - **Removing a member from `not_checked[].reason`**, or from the `severity` /
   `axiom` enums.
 - **Removing an indicator field, or changing its default.**
+- **Renaming or removing an `AxiomParameters` field.** A model declares them by
+  name under `axiom_parameters:`, so a renamed field would turn a declaration
+  into an `unknown_key` and quietly restore the default it was written to
+  replace. Their default VALUES remain calibration, below.
 - **Renaming or removing a tool**, or making an optional argument required.
 - **Raising the minimum Python version.**
 

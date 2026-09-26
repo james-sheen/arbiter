@@ -34,6 +34,26 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+## [0.2.11] — 2026-09-26
+
+### Added
+
+- **A model sets its own evaluation parameters.** `axiom_parameters:` in the
+  domain block sets any field of `AxiomParameters` -- `homeostasis_baseline_days`
+  among them, so a model observed monthly can give HOMEOSTASIS a baseline that
+  holds its captures. `model_describe` lists every parameter as `declared` or
+  `default`; an unknown key or a value of the wrong kind is refused, reported in
+  `unread_fields`, and the default used.
+
+### Fixed
+
+- **A state series goes through `add_observations`.** Readings of a property the
+  model declares `type: STATE` are kept as states; everything else is still read
+  as a number, and a word for a numeric property is refused with the remedy.
+  STABILITY's state arm could not be fed through the session before (issue #14).
+- `traverse` judges a flow deficit with the session's parameters, not defaults
+  of its own.
+
 ## [0.2.10] — 2026-09-26
 
 ### Fixed
