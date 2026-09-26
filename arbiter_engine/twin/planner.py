@@ -173,6 +173,8 @@ class PlanResult:
     #: makes them comparable with a `rollout`'s.
     predictions_filed: int = 0
     values_without_tolerance: int = 0
+    #:. The no-action row's held values, as the rollout counts them.
+    values_held: int = 0
     counterfactuals_not_filed: int = 0
     raced: List[Dict[str, Any]] = field(default_factory=list)
     #:. The union of every candidate rollout's crossed edges.
@@ -633,6 +635,7 @@ def search(session: Any, topology: Any, *,
             # nothing else's.
             result.predictions_filed += envelope.predictions_filed
             result.values_without_tolerance += envelope.values_without_tolerance
+            result.values_held += envelope.values_held
             result.raced.extend(envelope.raced)
         findings = [f for step in envelope.steps for f in step.findings]
         candidate = PlanCandidate(

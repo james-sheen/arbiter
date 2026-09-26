@@ -34,6 +34,16 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+## [0.2.10] — 2026-09-26
+
+### Fixed
+
+- **`no_declared_tolerance` no longer prescribes a spread for values nothing
+  moved.** A filing rollout's unfilable values are split by cause:
+  `checked.values_held` counts those no projected seed or coupling reached, and
+  the decline's remedy for them names the seed and the gain's adoption. A
+  declared spread cannot help them, and the old text said it would.
+
 ## [0.2.9] — 2026-09-25
 
 ### Fixed

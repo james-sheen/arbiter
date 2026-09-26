@@ -1949,6 +1949,9 @@ def rollout(session: EngineSession,
     simulation["checked"]["predictions_filed"] = result.predictions_filed
     simulation["checked"]["values_without_tolerance"] = (
         result.values_without_tolerance)
+    # the part of the count above that nothing moved. A spread
+    # cannot help these; the remaining difference is what one would.
+    simulation["checked"]["values_held"] = result.values_held
     simulation["checked"]["values_driven"] = result.values_driven
     if result.series_errors:
         # BESIDE THE STAMP, NOT INSTEAD OF IT. The assumption says
@@ -2144,6 +2147,7 @@ def plan(session: EngineSession,
             # *this verb cannot file*.
             "predictions_filed": result.predictions_filed,
             "values_without_tolerance": result.values_without_tolerance,
+            "values_held": result.values_held,
             "counterfactuals_not_filed": result.counterfactuals_not_filed,
         },
         findings=[],

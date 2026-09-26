@@ -178,6 +178,9 @@ class TestAValueWithNoDeclaredWindowIsNotFiled:
         assert simulation["checked"]["predictions_filed"] == 0
         assert simulation["checked"]["values_without_tolerance"] > 0
         assert "no_declared_tolerance" in _reasons(simulation)
+        # and they are all HELD: nothing moved any of them.
+        assert (simulation["checked"]["values_held"]
+                == simulation["checked"]["values_without_tolerance"])
 
     def test_a_projected_seed_alone_makes_a_value_filable(self, tmp_path):
         """The other half of the same fact, pinned so it cannot regress to a
@@ -209,6 +212,98 @@ class TestAValueWithNoDeclaredWindowIsNotFiled:
                 + checked["values_driven"]) == seen
         assert checked["values_driven"] > 0, (
             "the projected source is an input; it should be counted as one")
+        # `values_held` is a PART of the unfilable count, never a
+        # fourth bucket beside it, so the partition above is unchanged.
+        assert 0 <= checked["values_held"] <= checked["values_without_tolerance"]
+
+    def test_a_held_rollout_partitions_the_same_way(self, tmp_path):
+        """The other end of the same accounting: a current seed with
+        no action moves nothing, so every value is unfilable and every one of
+        them is held -- none is driven, none was moved without a spread."""
+        session = _session(tmp_path, "partition_held")
+        simulation = _forecast(session, seed_mode="current")
+        seen = sum(len(props) for step in simulation["per_step"]
+                   for props in step["values"].values())
+        checked = simulation["checked"]
+        assert checked["values_driven"] == 0
+        assert checked["values_without_tolerance"] == seen
+        assert checked["values_held"] == seen
+
+
+def _tolerance_detail(simulation):
+    [detail] = [d["detail"] for d in simulation["not_checked"]
+                if d["reason"] == "no_declared_tolerance"]
+    return detail
+
+
+class TestAHeldValueIsNotToldToDeclareASpread:
+    """`no_declared_tolerance` prescribed a spread for values nothing
+    moved, and a spread cannot help those.
+
+    Since a projected seed carries its forecast's band through every
+    coupling downstream, so the only values a filing rollout can leave without
+    a tolerance are ones nothing moved: every value of a current-seeded
+    rollout with no action, and everything behind a withheld gain. The remedy
+    the decline gave -- declare a spread -- fitted neither, and a tool that
+    relayed it verbatim told an operator to declare a spread on a gain its own
+    format refuses one for. The count now says which values were held, and the
+    remedy follows the count.
+    """
+
+    def test_a_declared_spread_changes_nothing_about_a_held_value(self, tmp_path):
+        """The measurement that exposed it: DECLARING `gain_sigma:` drew the
+        identical decline, because nothing moved the value it would widen."""
+        declared = _forecast(_session(tmp_path, "held_declared"),
+                             seed_mode="current")
+        bare = _forecast(_session(tmp_path, "held_bare", sigma=""),
+                         seed_mode="current")
+        assert declared["checked"]["values_held"] == bare["checked"]["values_held"] > 0
+        detail = _tolerance_detail(declared)
+        assert "seed_mode" in detail
+        assert "declare `gain_sigma:`" not in detail, (
+            "the author declared one; telling them to is the defect")
+
+    def test_a_withheld_gain_holds_its_target_and_says_adopt(self, tmp_path):
+        """The case the relayed text reached an operator in: the source is
+        seeded from its forecast, the gain is not yet written down, and the
+        target never moves."""
+        path = tmp_path / "withheld.yaml"
+        path.write_text(MODEL % {"gain": "estimate", "sigma": ""})
+        session = api.EngineSession()
+        session.load_model(str(path))
+        session.add_entity("pump1", "Pump", {"speed_rpm": BASE_SPEED})
+        session.add_entity("tank1", "Tank", {"level_pct": BASE_LEVEL})
+        session.add_relationship("pump1", "feeds", "tank1")
+        rng = random.Random(4)
+        now = api.now_utc()
+        for k in range(24):
+            session.add_observations(
+                "pump1", "speed_rpm",
+                [(now - timedelta(seconds=STEP_S * (24 - k)),
+                  BASE_SPEED + 50.0 * k + rng.gauss(0.0, 8.0))])
+        simulation = _forecast(session)
+        checked = simulation["checked"]
+        assert checked["values_driven"] == STEPS, "the seeded source is an input"
+        assert checked["values_held"] == checked["values_without_tolerance"] == STEPS
+        assert "gain_not_adopted" in _reasons(simulation), (
+            "this fixture must be the WITHHELD case, not a transition the "
+            "loader refused for some other missing key")
+        assert "adopt the gain" in _tolerance_detail(simulation)
+
+    def test_the_remedy_follows_the_count(self):
+        """The text for each population, including the one a projected seed's
+        band now makes hard to reach -- a value a coupling moved with
+        no band at all -- so that branch is pinned even though no fixture here
+        produces it."""
+        from arbiter_engine.twin.rollout import _no_tolerance_detail
+        moved_only = _no_tolerance_detail(3, 0)
+        assert "declare `gain_sigma:`" in moved_only and "seed_mode" not in moved_only
+        held_only = _no_tolerance_detail(3, 3)
+        assert "seed_mode" in held_only and "declare `gain_sigma:`" not in held_only
+        mixed = _no_tolerance_detail(5, 2)
+        assert mixed.startswith("5 imagined value(s) were not filed.")
+        assert "3 that a coupling moved" in mixed and "2 were held" in mixed
+        assert "1 was held" in _no_tolerance_detail(1, 1)
 
 
 class TestFilingIsOptIn:

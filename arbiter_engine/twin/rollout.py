@@ -131,6 +131,17 @@ class RolloutResult:
     #: counts as right.
     predictions_filed: int = 0
     values_without_tolerance: int = 0
+    #:. The part of `values_without_tolerance` that NOTHING MOVED: no
+    #: projected seed carried a forecast into it and no coupling drove it, so
+    #: it is its own reading held forward rather than a projection, and a
+    #: spread cannot make it filable. A projected seed's band now reaches
+    #: everything downstream of it, so this is the only population a
+    #: filing rollout can reach, and the remedy the decline used to give -- a
+    #: spread -- helped none of it: measured, a transition DECLARING
+    #: `gain_sigma:` drew the identical decline. Counted INSIDE
+    #: `values_without_tolerance` rather than beside it, so that count keeps
+    #: meaning what it always has and the partition below still holds.
+    values_held: int = 0
     #:. Per step, the product the walk composed against the exact
     #: convolution the declared dynamics imply, for every chain where a
     #: closed form exists. The `series_edges_compose_by_product` stamp says
@@ -1201,11 +1212,8 @@ def run(session: Any, topology: Any, *,
         # one missing declaration look like hundreds of different problems.
         result.declines.append(SimulationDecline(
             "no_declared_tolerance", "file_predictions",
-            f"{result.values_without_tolerance} imagined value(s) were not "
-            f"filed because no `gain_sigma:` reached them, so there is no "
-            f"declared window inside which a later reading would count as "
-            f"confirming them. Declare a spread on the transition that drives "
-            f"the property to make its projection gradeable."))
+            _no_tolerance_detail(result.values_without_tolerance,
+                                 result.values_held)))
 
     # THE AXIOMS WERE JUDGED AT THE STEPS AND NOWHERE BETWEEN THEM,
     # and this says so on the runs where it can cost something. A property that
@@ -1340,6 +1348,44 @@ def _assume(result: 'RolloutResult', assumption: str) -> None:
         result.assumptions.append(assumption)
 
 
+def _no_tolerance_detail(unfilable: int, held: int) -> str:
+    """Why these values were not filed, with the remedy that fits each kind.
+
+    THE REMEDY USED TO BE A SPREAD, WHATEVER THE CAUSE. A value a
+    coupling moved and no spread reached is fixed by declaring one; a value
+    NOTHING moved is not, because there is no projection to put a band around
+    -- and that second kind is every value of a current-seeded rollout with no
+    action, and every value behind a withheld gain. A downstream tool relayed
+    the old text verbatim beside its own *gain not adopted*, so an operator
+    was told two different things to do about one withheld number, and a
+    format version was once built on the wrong one.
+
+    THE REASON KEEPS ITS NAME. Renaming or removing a decline reason waits for
+    a major release by this package's own compatibility rule; what a reason
+    says in its detail is not the contract, so the split lives here and in
+    `checked.values_held`.
+    """
+    moved = unfilable - held
+    parts = [f"{unfilable} imagined value(s) were not filed."]
+    if moved:
+        parts.append(
+            f"{moved} that a coupling moved carried no spread, so there is no "
+            f"declared window inside which a later reading would count as "
+            f"confirming them: declare `gain_sigma:` on the transition that "
+            f"drives the property.")
+    if held:
+        parts.append(
+            f"{held} {'was' if held == 1 else 'were'} held: nothing in this "
+            f"rollout moved them -- no "
+            f"projected seed carried a forecast into them and no coupling with "
+            f"an adopted gain drove them -- so each is its own reading held "
+            f"forward, not a projection, and a spread cannot make one. Seed "
+            f"the rollout from the forecast (`seed_mode=\"projected\"`) for a "
+            f"property that declares `dynamics:`, or adopt the gain of the "
+            f"coupling that drives it.")
+    return " ".join(parts)
+
+
 def _file_step(session: Any, result: 'RolloutResult',
                step: 'RolloutStep', at_s: float,
                driven: Dict[Tuple[str, str], Dict[float, float]],
@@ -1379,6 +1425,11 @@ def _file_step(session: Any, result: 'RolloutResult',
             sigma = spreads.get(prop)
             if not sigma:
                 result.values_without_tolerance += 1
+                # WHICH KIND OF UNFILABLE. `drivers` names every
+                # coupling that contributed to this value at this instant, so
+                # an empty entry means nothing moved it at all.
+                if not step.drivers.get(entity_id, {}).get(prop):
+                    result.values_held += 1
                 continue
             try:
                 ledger.record_value_prediction(
