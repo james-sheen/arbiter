@@ -363,7 +363,9 @@ def run(session: Any, topology: Any, *,
     entities = dict(getattr(session, "entities", {}) or {})
     schedule: List[Tuple[ActionInstance, ActionTemplate]] = []
     for instance in actions or ():
-        template, refusal = resolve(instance, templates, entities)
+        template, refusal = resolve(
+            instance, templates, entities,
+            lineage=getattr(getattr(session, "model", None), "lineage", None))
         if refusal is not None:
             result.refused_actions.append(refusal)
             continue

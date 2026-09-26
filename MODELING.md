@@ -196,6 +196,39 @@ arrives through the same call as any number. Every other property is read as a n
 word sent for one is refused with this remedy -- declare the type, and add the entity before
 its observations, since the declaration is found through the entity's type.
 
+### A type that extends another: `extends:`
+
+Types that share indicators declare them once, on a parent:
+
+```yaml
+entity_types:
+  - Station
+  - {name: Station__ST_01, extends: Station}
+  - {name: Station__ST_02, extends: Station}
+indicators:
+  Station:
+    - name: cycle_time_s
+      type: NUMERIC
+      axioms: [HOMEOSTASIS]
+      homeostasis: {setpoint: 60, tolerance: 4}
+  Station__ST_02:
+    - name: cycle_time_s          # only the key it changes
+      homeostasis: {setpoint: 55, tolerance: 4}
+```
+
+**A subtype's indicators are its parent's plus its own**, resolved when the model loads, and an
+entry naming an inherited indicator replaces that indicator's keys one by one and keeps the rest.
+An action template for the parent applies to every subtype; relationship rules are not
+inherited, because an edge rule names the types it joins. `model_describe` lists who extends whom.
+
+**A partial change that contradicts itself is named, not resolved.** A subtype that changes only
+`warning:` on an inherited band whose `critical:` sits below the new value has written a band that
+no reading can satisfy, and neither declaration said that alone. The merged indicator is kept --
+BOUNDEDNESS declines on it at every check -- and the pair is reported as `inheritance_conflict`,
+in `unreachable_declarations` and by `entail`. Declare the whole band on the subtype, or none of
+it. A parent nobody declared, a cycle, and any key beside `name` and `extends` are refused when
+the model loads.
+
 ## Relationship indicators, and how a CONNECTIVITY check is declared
 
 Everything above measures a quantity. **CONNECTIVITY measures a shape**, and it is declared
@@ -628,6 +661,25 @@ have bound the rule's first atom and has no fact under that predicate produces
 
 This is the same discipline as every other refusal in this engine: the alternative is concluding
 from silence, and silence is what the `not_checked` leg exists to stop being mistaken for an answer.
+
+### `transitive:` — a roll-up without recursion
+
+*Everything within three hops upstream* is the one thing an author reaches for recursion to say,
+and recursion is what this evaluator refuses. The shorthand says it without any:
+
+```yaml
+rules:
+  - name: upstream_of
+    transitive: feeds
+    max_hops: 3
+```
+
+It compiles to one rule per hop count -- `upstream_of(X0, X1) :- feeds(X0, X1)`, then two `feeds`
+atoms, then three -- and **no compiled body names `upstream_of`**, so the evaluator never joins
+against its own output, not in one pass and not in the next after `adopt` has written the derived
+edges back. A hop count whose body passes the three-atom cap is declined `depth_exceeded`, as any
+long rule is. `transitive:` takes `name`, `transitive` and `max_hops` and nothing else; anything
+it cannot read is `malformed_rule`, named.
 
 ## Indicators the engine COMPUTES: `derived`
 
@@ -1124,6 +1176,12 @@ have set and the target's own worst severity. `hypothesize` carries the same
 row per candidate as `own_reading`, so a candidate the graph implicates can be
 read beside what its own meter already said.
 
+**A cause with no number says why.** A model that declares causal edges and no
+strengths gets `cpt_missing` from `infer`, by name. `hypothesize` carries every
+decline of the inferences behind its ranking into its own `not_checked`, and
+names them on each row as `declined`, so a ranking of `null` posteriors reads as
+the missing strengths it is rather than as an answer.
+
 ### What counts as faulty evidence: `causal.evidence_severity`
 
 `infer` reads the last `check()`. An entity in its `not_checked` leg is left
@@ -1200,6 +1258,29 @@ is not a positive number refuses the whole template as `malformed_action`, the
 refusal a non-numeric `settle_s:` gets. A value the action did not change is
 not filed at all: both arms say the same thing, and a pair that cannot disagree
 cannot say which world happened.
+
+## Following a problem: `cases`
+
+A finding is one check's verdict. A CASE is the problem somebody works: it opens
+on a subject and a declared indicator, every later check records itself into it,
+and it resolves when checks stop finding anything there. When is declared:
+
+```yaml
+cases:
+  severity: warning        # a finding at or above this keeps a case open
+  consecutive_checks: 3    # how many checks in a row without one close it
+```
+
+**Both numbers are the model's**, copied onto a case when it opens, so a case
+says what it was held to. Without the block, `open_case` declines
+`missing_config`; a severity off the finding scale, or a count below one, is
+refused the same way and named. **A check counts only if it looked**: one in
+which every axiom the indicator declares declined for that entity restarts the
+count, because a silent check is not a clean one. The rest of the loop is
+attached by the caller with `attach_stage` -- the ranking, the plan, the
+execution, the adoption -- by reference, with any decline, and the book calls
+none of them itself. `model_describe` reports, per stage, whether the model
+declares what that stage reads.
 
 ## Choosing between actions: `planning`
 

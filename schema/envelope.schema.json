@@ -298,6 +298,14 @@
     "execution": {
       "description": "The `execution` sub-envelope, carried by `file_action`: an action somebody took, filed as two predictions. Present only on that verb; NOT required, so an envelope from an engine predating it still validates.",
       "$ref": "#/$defs/execution_envelope"
+    },
+    "case": {
+      "description": "The `case` sub-envelope, carried by `open_case` and `attach_stage`: the case as it stands after the call. Present only on those verbs; NOT required.",
+      "$ref": "#/$defs/case_envelope"
+    },
+    "cases": {
+      "description": "The `cases` sub-envelope, carried by `case_book`: every case the session's ledger holds, with how many opened and how many resolved. Present only on that verb; NOT required.",
+      "$ref": "#/$defs/case_book_envelope"
     }
   },
   "additionalProperties": {
@@ -635,6 +643,93 @@
         "calibration": {
           "description": "The ledger's calibration after filing. `executions` inside it reports every pair by arm and by execution; no other figure in it counts them.",
           "type": "object"
+        }
+      }
+    },
+    "case_envelope": {
+      "title": "Case sub-envelope",
+      "description": "THE `case` SUB-ENVELOPE, carried by `open_case` and `attach_stage`. A sub-envelope in the shape above, PLUS the case. Its decline reasons are the `simulation` vocabulary's: `missing_config` when the model declares no usable `cases:` block, `missing_entity`, `malformed_request` for an undeclared indicator, an unknown case or stage, `precondition_unmet` with no ledger. The case's own keys are absent when the verb refused.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/sub_envelope"
+        }
+      ],
+      "properties": {
+        "case_id": {
+          "type": "string",
+          "description": "The case's id; `attach_stage` names it."
+        },
+        "entity_id": {
+          "type": "string",
+          "description": "The subject the case opened on."
+        },
+        "indicator": {
+          "type": "string",
+          "description": "The declared indicator it follows."
+        },
+        "opened_at": {
+          "type": "string",
+          "description": "When it opened, ISO 8601, naive UTC."
+        },
+        "basis": {
+          "type": "string",
+          "description": "Why it was opened, as the caller gave it."
+        },
+        "severity": {
+          "type": "string",
+          "description": "`cases.severity` when the case opened: a finding at or above it keeps the case open."
+        },
+        "consecutive_checks": {
+          "type": "integer",
+          "description": "`cases.consecutive_checks` when the case opened: how many clean checks in a row resolve it."
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "open",
+            "resolved"
+          ]
+        },
+        "resolved_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "When the last of those checks ran; null while open."
+        },
+        "clean_streak": {
+          "type": "integer",
+          "description": "Checks in a row that looked at the indicator and found nothing at or above `severity`."
+        },
+        "stages": {
+          "type": "object",
+          "description": "check, hypothesize, plan, act and learn, each a list of what was attached, oldest first; an empty list means nothing was. A check entry carries its `outcome` -- `found`, `clean` or `not_looked` -- and the run length after it; any other entry carries a `reference` and the reasons the stage `declined`."
+        }
+      }
+    },
+    "case_book_envelope": {
+      "title": "Case book sub-envelope",
+      "description": "THE `cases` SUB-ENVELOPE, carried by `case_book`: the counts side by side, and every case in the shape `case_envelope` gives it.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/sub_envelope"
+        }
+      ],
+      "properties": {
+        "opened": {
+          "type": "integer"
+        },
+        "resolved": {
+          "type": "integer"
+        },
+        "open": {
+          "type": "integer"
+        },
+        "cases": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
         }
       }
     }

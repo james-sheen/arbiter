@@ -69,6 +69,10 @@ the same four-part shape, with the recorded execution's `id`, `action`,
 `parameters`, `executed_at` and `basis` beside it, and the ledger's `calibration`.
 Its decline reasons are the `simulation` vocabulary's. It is declared as
 `$defs/execution_envelope`, and the promises above apply to it as written.
+**`case` and `cases` are two more of that kind**: `open_case` and `attach_stage`
+return the case as it stands in `case`, and `case_book` returns every case with
+its counts in `cases`, declared as `$defs/case_envelope` and
+`$defs/case_book_envelope`, with the same vocabulary and the same promises.
 
 Three things about it are promises and not accidents:
 

@@ -134,6 +134,61 @@ def parse_rule(raw: Dict[str, Any]) -> Tuple[Optional[Rule], Optional[str]]:
     return Rule(name=name, head=head, body=tuple(body)), None
 
 
+#: -- the keys a `transitive:` shorthand takes, and nothing else.
+_SHORTHAND_KEYS = frozenset({"name", "transitive", "max_hops"})
+
+
+def expand_rules(raw_rules: Any) -> Tuple[List[Any], List[Decline]]:
+    """The declared rules with every `transitive:` shorthand unrolled.
+
+    A ROLL-UP -- *everything within N hops upstream of this* -- is the
+    one thing an author reaches for recursion to say, and recursion is what
+    keeps this evaluator in P only by its absence. So the shorthand compiles to
+    what the author could have written by hand: `{name: upstream_of,
+    transitive: feeds, max_hops: 3}` becomes one rule per hop count, each body
+    a chain of the BASE predicate alone -- `feeds(X0, X1), feeds(X1, X2)` for
+    two hops -- under the head `upstream_of(X0, X2)`. No compiled body names
+    the head, so the evaluator never joins against its own output, in one pass
+    or in the next after `adopt` writes the derived edges back. A hop count
+    whose body passes the atom cap is declined `depth_exceeded` by the same
+    rule every other rule meets; a shorthand that cannot be read is
+    `malformed_rule`, naming it.
+    """
+    out: List[Any] = []
+    declines: List[Decline] = []
+    for raw in raw_rules or ():
+        if not isinstance(raw, dict) or "transitive" not in raw:
+            out.append(raw)
+            continue
+        name = raw.get("name")
+        base = raw.get("transitive")
+        hops = raw.get("max_hops")
+        why = ""
+        if set(raw) - _SHORTHAND_KEYS:
+            why = (f"a `transitive:` rule takes {sorted(_SHORTHAND_KEYS)} and "
+                   f"nothing else; got {sorted(set(raw) - _SHORTHAND_KEYS)}")
+        elif not isinstance(name, str) or not re.fullmatch(r"\w+", name or ""):
+            why = f"`name` is {name!r}; it is the derived predicate, one word"
+        elif not isinstance(base, str) or not re.fullmatch(r"\w+", base or ""):
+            why = f"`transitive` is {base!r}; it names the predicate to chain"
+        elif isinstance(hops, bool) or not isinstance(hops, int) or hops < 1:
+            why = (f"`max_hops` is {hops!r}; it is how many edges a derived "
+                   f"pair may span, a whole number of at least 1")
+        if why:
+            declines.append(Decline("malformed_rule", {"rule": str(name or raw)},
+                                    detail=why))
+            continue
+        for k in range(1, hops + 1):
+            variables = [f"X{i}" for i in range(k + 1)]
+            out.append({
+                "name": f"{name}/{k}",
+                "head": f"{name}({variables[0]}, {variables[k]})",
+                "body": [f"{base}({variables[i]}, {variables[i + 1]})"
+                         for i in range(k)],
+            })
+    return out, declines
+
+
 def predicate_cycles(rules: Sequence[Rule]) -> List[Tuple[str, ...]]:
     """Predicate cycles across the declared rule SET, shortest first.
 
@@ -287,6 +342,9 @@ def entail(model, graph, entities) -> Tuple[SubEnvelope, List[Tuple[str, str, st
     facts = _facts(graph)
     declared_predicates = set(model.relationship_types or ())
     closed = set(model.closure or ())
+    rules, shorthand_declines = expand_rules(model.rules)
+    declines.extend(shorthand_declines)
+    checked["rules_declared"] += len(shorthand_declines)
 
     # THE RULE SET IS THE SUBJECT, not the rule. Built from the rules that
     # would actually RUN -- one that fails to parse or busts the atom cap is
@@ -294,14 +352,14 @@ def entail(model, graph, entities) -> Tuple[SubEnvelope, List[Tuple[str, str, st
     # the loop because a cycle is not a property any single pass through it
     # can see.
     runnable: List[Rule] = []
-    for raw in model.rules or ():
+    for raw in rules:
         candidate, _why = parse_rule(raw)
         if candidate is not None and len(candidate.body) <= MAX_BODY_ATOMS:
             runnable.append(candidate)
     cycles = predicate_cycles(runnable)
     cyclic = {pred for cycle in cycles for pred in cycle}
 
-    for raw in model.rules or ():
+    for raw in rules:
         checked["rules_declared"] += 1
         rule, why = parse_rule(raw)
         if rule is None:
@@ -397,6 +455,18 @@ def entail(model, graph, entities) -> Tuple[SubEnvelope, List[Tuple[str, str, st
                 "a rule derives a predicate the model does not declare",
                 f"Declare `{rule.head.pred}` in `relationship_types:` so a "
                 f"check can read what `{rule.name}` derives."))
+
+    # -- a structural refusal the loader found, reported where the
+    # model's structure is: each inherited band a subtype turned into a
+    # contradiction. The loader kept the merged indicator, so BOUNDEDNESS
+    # declines on it at every check; this names why the band is what it is.
+    for conflict in getattr(model, "inheritance_conflicts", None) or ():
+        declines.append(Decline(
+            "inheritance_conflict",
+            {"entity_type": conflict["entity_type"],
+             "indicator": conflict["indicator"]},
+            detail=conflict["detail"],
+            evidence={"extends": conflict["extends"]}))
 
     checked["facts_derived"] = len(derived)
     findings.extend(_cardinality_contradictions(model, graph, entities, derived))

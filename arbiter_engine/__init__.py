@@ -17,6 +17,7 @@ from .history.sqlite_store import SqliteObservationHistory
 from .interfaces import Entity, Observation, Problem, RelationshipGraph
 from .ontology.domain_loader import DomainModel
 from .ontology.reasoner import UnifiedAxiomReasoner
+from .residual.cases import Case
 from .residual.sqlite_ledger import SqlitePredictionLedger
 from .twin.traverser import TopologyTraverser
 from .types import Axiom, Severity
@@ -31,6 +32,7 @@ __version__ = _engine_version()
 __all__ = [
     "Axiom",
     "CalendarHistory",
+    "Case",
     "DomainModel",
     "Entity",
     "InMemoryObservationHistory",

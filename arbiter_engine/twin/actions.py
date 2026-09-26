@@ -203,10 +203,27 @@ def _malformed_tolerance(schema: Any) -> str:
     return ""
 
 
+def applies(template: ActionTemplate, entity_type: Any,
+            lineage: Any = None) -> bool:
+    """Whether a template reaches an entity of this type.
+
+    - a template declared for a type reaches every type that
+    `extends:` it, which is what a subtype inheriting its parent's templates
+    means. `lineage` is the model's (`DomainModel.lineage`); without one only
+    the declared type matches, exactly as before.
+    """
+    if not template.applies_to or entity_type == template.applies_to:
+        return True
+    if lineage is None or not isinstance(entity_type, str):
+        return False
+    return template.applies_to in lineage(entity_type)
+
+
 def resolve(instance: ActionInstance,
             templates: Dict[str, ActionTemplate],
-            entities: Dict[str, Any]) -> Tuple[Optional[ActionTemplate],
-                                               Optional[ActionRefused]]:
+            entities: Dict[str, Any],
+            lineage: Any = None) -> Tuple[Optional[ActionTemplate],
+                                          Optional[ActionRefused]]:
     """Check one action instance against the model before it is applied."""
     location = f"{instance.template}@{instance.entity_id}"
     template = templates.get(instance.template)
@@ -221,7 +238,7 @@ def resolve(instance: ActionInstance,
             "missing_entity", location,
             f"this session holds no entity {instance.entity_id!r}")
     entity_type = getattr(entity, "type", None)
-    if template.applies_to and entity_type != template.applies_to:
+    if not applies(template, entity_type, lineage):
         return None, ActionRefused(
             "wrong_entity_type", location,
             f"{template.name!r} applies to {template.applies_to!r} and "

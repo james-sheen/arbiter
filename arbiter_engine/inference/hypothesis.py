@@ -158,12 +158,33 @@ def hypothesize(session: Any, entity_id: str, *,
     # the engine's evidence floor carried no `evidence_severity_not_declared`
     # while the verb's own docstring told the reader to check for it.
     stamps: set = set()
+    #: -- AND THEIR DECLINES, which the stamps' fix left behind. A
+    #: model declaring causal edges and no strengths makes `infer` decline
+    #: `cpt_missing`, by name; this verb ran that same inference per candidate
+    #: and returned each cause with `posterior: null` beside an EMPTY
+    #: `not_checked` -- a ranking with no numbers and no word on why. Found by
+    #: the first vertical to declare fault channels without strengths.
+    seen: set = set()
     for node, hops in candidates:
         sub = run_inference(session, Query(target=node), report_above=None)
         payload = sub.to_dict()
         checked_here = payload.get("checked") or {}
         posterior = checked_here.get("posterior")
         stamps.update(payload.get("assumptions") or ())
+        reasons: set = set()
+        for decline in getattr(sub, "not_checked", ()) or ():
+            if decline.reason == "no_report_probability":
+                # This verb asks each inference for its posterior with no
+                # report line, on purpose, and applies its own `report_above`
+                # below; the inference's word on that is about the call, not
+                # about the cause.
+                continue
+            reasons.add(decline.reason)
+            key = (decline.reason, tuple(sorted(
+                (str(k), str(v)) for k, v in (decline.scope or {}).items())))
+            if key not in seen:
+                seen.add(key)
+                declines.append(decline)
         entity_type = graph.entity_type.get(node, "")
         properties = _readable_properties(session.model, entity_type)
         ranked.append({
@@ -182,6 +203,10 @@ def hypothesize(session: Any, entity_id: str, *,
             # `None` means unread -- the case `evidence_needed` is written for.
             "own_reading": checked_here.get("target_reading"),
             "test_action": _test_action(session.model, entity_type),
+            # -- why this cause's inference answered less than a
+            # number, in the vocabulary `not_checked` above uses. Empty when
+            # it declined nothing.
+            "declined": sorted(reasons),
         })
 
     # Nearest first on a tie, because a cause two hops away explains a finding

@@ -49,6 +49,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from ..clock import as_naive_utc, as_of, now_utc
+from .cases import CaseBook
 # the id the yardstick is filed under, read from the module that
 # owns it rather than re-spelled here. Two spellings of one literal is how
 # the exclusion below would silently stop excluding anything.
@@ -441,6 +442,9 @@ class PredictionLedger:
         # count rather than swallow. Exposed via calibration() and the
         # /pump-state surface.
         self.evicted_pending = 0
+        #: -- the cases this session is working, kept beside the
+        #: predictions so the book lives exactly as long as they do.
+        self.case_book = CaseBook()
 
     def _append(self, record: PredictionRecord) -> None:
         """The ONE place a record enters the ledger.

@@ -20,6 +20,7 @@ whole relationship, and it points one way only.
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import (Any, Dict, Iterable, List, Optional, Sequence, Set,
@@ -1289,6 +1290,13 @@ def model_describe(session: EngineSession,
         # now, and an author proofreading the model should be able to see the
         # window HOMEOSTASIS will use without running it.
         "axiom_parameters": model.axiom_parameters_in_effect(),
+        # -- which declared types extend which. Their indicators are
+        # already folded into `indicators` above; this says where each came from.
+        "extends": dict(getattr(model, "extends", {}) or {}),
+        # -- per stage of the loop, whether this model declares what
+        # that stage reads. A stage marked undeclared declines by name when
+        # run; one marked declared may still decline on the data.
+        "stages": _stage_readiness(model),
         "note": (
             "declared_axioms is what the model declares, not what the engine "
             "evaluates; some axioms have evaluation paths that consult no "
@@ -1301,7 +1309,9 @@ def model_describe(session: EngineSession,
             "indicator reads; unread_properties lists numeric entity "
             "properties no declared indicator reads; "
             "axiom_parameters lists every evaluation parameter with the value "
-            "in effect and whether the model declared it"
+            "in effect and whether the model declared it; stages "
+            "says, per stage of the loop, whether the model declares what it "
+            "reads"
         ),
     }
     # the mirror of `model.unreachable_declarations`, and deliberately
@@ -1416,6 +1426,9 @@ def check(session: EngineSession) -> Envelope:
         # unscored.
         histories=[_history_for(session)],
     )
+    # -- and every open case, because a case resolves on checks. Like
+    # the grading above, this reports nothing here; `case_book` does.
+    _record_into_cases(session, result)
     envelope = build_envelope(result)
     # the one report this verb owes, and the only one carried here.
     # An internal ruling withdrew a check: a numeric property no indicator declares used to
@@ -2125,7 +2138,8 @@ def file_action(session: EngineSession, action: Any, executed_at: Any,
     location = {"location": f"{act.template}@{act.entity_id}"}
     refusals: List[Decline] = []
     templates, load_refusals = load_templates(session.model)
-    template, refusal = resolve(act, templates, session.entities)
+    template, refusal = resolve(act, templates, session.entities,
+                                lineage=getattr(session.model, "lineage", None))
     if refusal is not None:
         refusals.append(Decline(refusal.reason, location, detail=refusal.detail))
         refusals.extend(
@@ -2318,6 +2332,255 @@ def _execution_envelope(session: EngineSession, *, sub_checked: Dict[str, int],
             leg["calibration"] = session.ledger.calibration()
     payload["execution"] = leg
     return _WithPayload(envelope, payload)
+
+
+def open_case(session: EngineSession, entity_id: str, indicator: str,
+              basis: str = "") -> Envelope:
+    """Open a case on one subject and one declared indicator.
+
+    `Problem` is a finding -- one check's verdict. A case is the
+    problem an operator works: it opens here, every later `check` records
+    itself into it, the other stages are attached by whoever ran them
+    (`attach_stage`), and it resolves when `cases.consecutive_checks` checks
+    in a row LOOKED at the indicator and found nothing at or above
+    `cases.severity`. Both numbers come from the model; with no `cases:`
+    block the case is refused as `missing_config`, never opened against a
+    criterion chosen here. The book is `case_book(session)`.
+    """
+    if session.model is None:
+        return unavailable_envelope("no domain model loaded")
+    for value, name in ((entity_id, "entity_id"), (indicator, "indicator"),
+                        (basis, "basis")):
+        if not isinstance(value, str):
+            raise TypeError(f"open_case({name}=...) takes text; got "
+                            f"{type(value).__name__}")
+    declines: List[Decline] = []
+    severity, count, why = session.model.case_criterion()
+    if why:
+        declines.append(Decline("missing_config", {"location": "cases"},
+                                detail=why))
+    entity = session.entities.get(entity_id)
+    if entity is None:
+        declines.append(Decline(
+            "missing_entity", {"location": entity_id},
+            detail=f"this session holds no entity {entity_id!r}"))
+    elif _declared_spec(session, entity.type, indicator) is None:
+        declines.append(Decline(
+            "malformed_request", {"location": f"{entity_id}.{indicator}"},
+            detail=f"type {entity.type!r} declares no indicator {indicator!r}; "
+                   f"a case follows a declared indicator"))
+    book = _case_book_of(session)
+    if book is None:
+        declines.append(Decline(
+            "precondition_unmet", {"location": "ledger"},
+            detail="this session has no ledger, and the case book is kept "
+                   "beside it"))
+    if declines:
+        return _case_envelope(session, "case", {"cases_opened": 0}, declines)
+    case = book.open(entity_id=entity_id, indicator=indicator,
+                     opened_at=now_utc().isoformat(), basis=basis,
+                     severity=severity, consecutive_checks=count)
+    return _case_envelope(session, "case", {"cases_opened": 1}, [],
+                          case.to_dict())
+
+
+#: The payload leg each attachable stage answers in, and what a case keeps of
+#: it: a reference, never the envelope.
+_STAGE_LEGS = {"hypothesize": "hypothesis", "plan": "plan", "act": "execution"}
+
+
+def _stage_reference(stage: str, leg: Dict[str, Any]) -> Dict[str, Any]:
+    if stage == "hypothesize":
+        return {"causes": [
+            {"cause": c.get("cause"), "posterior": c.get("posterior")}
+            for c in (leg.get("candidates") or [])[:5]]}
+    if stage == "plan":
+        return {"best": leg.get("best"), "objective": leg.get("objective")}
+    if stage == "act":
+        return {"execution_id": leg.get("id"), "action": leg.get("action"),
+                "pairs_filed": (leg.get("checked") or {}).get("pairs_filed")}
+    return {}
+
+
+def attach_stage(session: EngineSession, case_id: str, stage: str,
+                 envelope: Any = None, *, reference: Any = None) -> Envelope:
+    """Attach what a stage did to a case, by reference.
+
+    THE BOOK CALLS NO STAGE: the caller ran `hypothesize`, `plan` or
+    `file_action` and hands the envelope here, and the case keeps a
+    reference -- the ranked causes, the chosen plan, the execution's id --
+    and every reason the stage declined. A stage that ran and declined is
+    attached with its decline, so it never reads like a stage nobody ran.
+    `learn` has no engine envelope: the adoption is the vertical's, and it
+    reports it as `reference`. `check` is not attached: every check records
+    itself into every open case, because resolution is counted in checks.
+    """
+    from arbiter_engine.residual.cases import STAGES
+
+    for value, name in ((case_id, "case_id"), (stage, "stage")):
+        if not isinstance(value, str):
+            raise TypeError(f"attach_stage({name}=...) takes text; got "
+                            f"{type(value).__name__}")
+    book = _case_book_of(session)
+    declines: List[Decline] = []
+    case = book.get(case_id) if book is not None else None
+    if book is None:
+        declines.append(Decline(
+            "precondition_unmet", {"location": "ledger"},
+            detail="this session has no ledger, and the case book is kept "
+                   "beside it"))
+    elif case is None:
+        declines.append(Decline("malformed_request", {"location": case_id},
+                                detail=f"this book holds no case {case_id!r}"))
+    if stage not in STAGES or stage == "check":
+        declines.append(Decline(
+            "malformed_request", {"location": stage},
+            detail=(f"a case attaches {', '.join(s for s in STAGES if s != 'check')}; "
+                    f"every check records itself") if stage == "check" else
+                   f"{stage!r} is not a stage; the stages are {', '.join(STAGES)}"))
+    if envelope is None and reference is None:
+        declines.append(Decline(
+            "malformed_request", {"location": stage},
+            detail="nothing to attach: pass the stage's envelope, or a "
+                   "reference for what the vertical did"))
+    if declines:
+        return _case_envelope(session, "case", {"stages_attached": 0}, declines)
+
+    entry: Dict[str, Any] = {"at": now_utc().isoformat()}
+    if envelope is not None:
+        payload = envelope.to_dict() if hasattr(envelope, "to_dict") else dict(envelope)
+        leg = payload.get(_STAGE_LEGS.get(stage, ""))
+        if not isinstance(leg, dict):
+            meta = payload.get("meta") or {}
+            entry["declined"] = [str(meta.get("reason") or "no leg for this stage")]
+        else:
+            entry["declined"] = sorted({str(d.get("reason")) for d in
+                                        leg.get("not_checked") or []
+                                        if d.get("reason")})
+            entry["reference"] = _stage_reference(stage, leg)
+    if reference is not None:
+        entry["reference"] = json.loads(json.dumps(reference, default=str))
+    book.attach(case, stage, entry)
+    return _case_envelope(session, "case", {"stages_attached": 1}, [],
+                          case.to_dict())
+
+
+def case_book(session: EngineSession) -> Envelope:
+    """Every case this session's ledger holds, and how many resolved.
+
+    `opened` and `resolved` are printed side by side and never as a
+    rate alone: a ratio carries the denominator it was taken over.
+    """
+    book = _case_book_of(session)
+    if book is None:
+        return _case_envelope(session, "cases", {"cases": 0}, [Decline(
+            "precondition_unmet", {"location": "ledger"},
+            detail="this session has no ledger, and the case book is kept "
+                   "beside it")])
+    summary = book.summary()
+    return _case_envelope(session, "cases", {"cases": summary["opened"]}, [],
+                          summary)
+
+
+def _stage_readiness(model: Any) -> Dict[str, Dict[str, Any]]:
+    """Per stage of the loop: does this model declare what the stage reads."""
+    rules = [r for r in (model.relationship_rules or ()) if isinstance(r, dict)]
+    templates = list(model.action_templates or ())
+    _, _, case_why = model.case_criterion()
+    return {
+        "check": {"declared": any(getattr(spec, "relevant_axioms", None)
+                                  for specs in (model.indicators or {}).values()
+                                  for spec in specs),
+                  "reads": "indicators that declare axioms"},
+        "hypothesize": {"declared": any(r.get("edge_direction") == "causal"
+                                        for r in rules),
+                        "reads": "relationship rules with edge_direction: causal"},
+        "plan": {"declared": bool(templates)
+                 and bool((model.planning or {}).get("objective")),
+                 "reads": "action_templates and planning.objective"},
+        "act": {"declared": bool(templates), "reads": "action_templates"},
+        "learn": {"declared": any(isinstance(r.get("transition"), dict)
+                                  for r in rules),
+                  "reads": "a relationship rule carrying a transition:"},
+        "case": {"declared": not case_why,
+                 "reads": "cases.severity and cases.consecutive_checks"},
+    }
+
+
+def _case_book_of(session: EngineSession) -> Any:
+    return getattr(getattr(session, "ledger", None), "case_book", None)
+
+
+def _declared_spec(session: EngineSession, entity_type: str,
+                   indicator: str) -> Any:
+    for spec in ((session.model.indicators or {}).get(entity_type) or ()):
+        if indicator in (spec.name, getattr(spec, "property_name", None)):
+            return spec
+    return None
+
+
+def _case_envelope(session: EngineSession, key: str, checked: Dict[str, int],
+                   declines: List[Decline],
+                   body: Optional[Dict[str, Any]] = None) -> Envelope:
+    """The envelope the case verbs answer in, with the book's leg beside it."""
+    sub = SubEnvelope(kind="simulation", checked=checked, findings=[],
+                      not_checked=declines, questions=[])
+    envelope = Envelope(
+        checked=CheckedSummary(invariants=0, entities=len(session.entities)),
+        findings=[], questions=[])
+    payload = envelope.to_dict()
+    leg = sub.to_dict()
+    leg.update(body or {})
+    payload[key] = leg
+    return _WithPayload(envelope, payload)
+
+
+def _record_into_cases(session: EngineSession, result: Any) -> None:
+    """Record one check into every open case.
+
+    `found` when a finding on the case's entity and indicator is at or above
+    the declared severity; `not_looked` when every axiom the indicator
+    declares declined for that entity -- nothing was judged, and silence is
+    not evidence of health; `clean` otherwise. Only `clean` extends a case's
+    run of checks.
+    """
+    from arbiter_engine.residual.predict_vs_mirror import \
+        _problem_indicator
+    from arbiter_engine.types import NotEvaluatedReason, Severity
+
+    book = _case_book_of(session)
+    if book is None:
+        return
+    open_cases = [c for c in book.cases() if c.status == "open"]
+    if not open_cases:
+        return
+    at = now_utc().isoformat()
+    problems = list(result.problems) + list(getattr(result, "warnings", []) or [])
+    declines = list(getattr(result, "not_evaluated", []) or [])
+    for case in open_cases:
+        threshold = Severity(case.severity).priority_score
+        found = sorted({
+            str(p.problem_type) for p in problems
+            if p.entity_id == case.entity_id
+            and _problem_indicator(p) == case.indicator
+            and Severity(getattr(p.severity, "value", p.severity)).priority_score
+            <= threshold})
+        entity = session.entities.get(case.entity_id)
+        spec = (_declared_spec(session, entity.type, case.indicator)
+                if entity is not None else None)
+        declared = {getattr(a, "value", str(a))
+                    for a in (getattr(spec, "relevant_axioms", None) or ())}
+        silent = {getattr(d.axiom, "value", str(d.axiom)) for d in declines
+                  if d.entity_id == case.entity_id and d.indicator == case.indicator
+                  and d.reason != NotEvaluatedReason.PARTIALLY_CHECKED}
+        if found:
+            outcome = "found"
+        elif entity is None or not declared or declared <= silent:
+            outcome = "not_looked"
+        else:
+            outcome = "clean"
+        book.record_check(case, {"at": at, "findings": found},
+                          outcome=outcome, at=at)
 
 
 # `_ROLLOUT_NON_AXIOM` is gone. It existed to subtract the rollout's

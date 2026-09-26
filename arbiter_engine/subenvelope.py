@@ -257,12 +257,14 @@ VOCABULARIES: Dict[str, frozenset] = {
         "malformed_rule",              # the head or a body atom did not parse
         "binding_budget_exhausted",    # polynomial is not the same as affordable
         "internal_error",
+        # -- RETURNED with the loader change that produces it, as the
+        # note below promised. A subtype that `extends:` a parent and changes
+        # part of an inherited band into a contradiction neither declaration
+        # had alone; the pair is named here and in `unreachable_declarations`.
+        "inheritance_conflict",
         # WITHDRAWN BEFORE THEY EVER FIRED, and recorded rather than deleted
-        # silently. The design named two more:
-        #
-        # `inheritance_conflict` belongs to `extends:` on an entity type, which
-        # is a second feature in the same section of that design and has not
-        # landed; it returns with the loader change that can produce it.
+        # silently. The design named two more. `inheritance_conflict` was the
+        # first, and came back above when `extends:` landed.
         #
         # `unit_mismatch` has no producer that could ever exist here: this
         # engine has no unit system at all, so nothing can declare two

@@ -290,7 +290,7 @@ fourteen. That is precisely the mistake `COMPATIBILITY.md` warns against, made
 by a reader who got everything else exactly right, because what they needed in
 order to avoid it was not published.
 
-Ninety-three names across seven sets. Each row below is complete: what it folds
+Ninety-four names across seven sets. Each row below is complete: what it folds
 in, plus what is its own, is the whole set.
 
 | sub-envelope | members | folds in | its own |
@@ -299,7 +299,7 @@ in, plus what is its own, is the whole set.
 | `shadow` | 18 | the fourteen | `internal_error`, `no_report_probability`, `not_a_producers_submission`, `tail_not_declared` |
 | `projection` | 9 | -- | `covariance_unbounded`, `insufficient_samples`, `internal_error`, `model_inconsistent`, `model_missing`, `no_lookback`, `no_report_probability`, `no_threshold`, `unidentifiable_parameter` |
 | `discovery` | 8 | -- | `faithfulness_unverifiable`, `insufficient_samples`, `internal_error`, `latent_confounding_possible`, `no_significance_level`, `nonstationary_series`, `orientation_undetermined`, `untested_pair` |
-| `entailment` | 7 | -- | `binding_budget_exhausted`, `depth_exceeded`, `internal_error`, `malformed_rule`, `open_world_undecidable`, `recursion_unsupported`, `rule_unreachable` |
+| `entailment` | 8 | -- | `binding_budget_exhausted`, `depth_exceeded`, `inheritance_conflict`, `internal_error`, `malformed_rule`, `open_world_undecidable`, `recursion_unsupported`, `rule_unreachable` |
 | `inference` | 7 | -- | `cpt_missing`, `cycle_unsupported`, `evidence_conflict`, `internal_error`, `no_report_probability`, `not_identifiable`, `treewidth_exceeded` |
 | `forecasts` | 5 | -- | `forecast_missing`, `internal_error`, `model_unknown`, `stale_forecast`, `ungradeable` |
 

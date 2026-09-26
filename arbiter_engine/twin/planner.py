@@ -47,7 +47,7 @@ from ..assumptions import (
     TIES_BREAK_TOWARD_THE_WIDER_MARGIN,
     WORST_STEP_BINDS_THE_HORIZON,
 )
-from .actions import ActionInstance, ActionRefused, load_templates
+from .actions import ActionInstance, ActionRefused, applies, load_templates
 from .topology import SimulationDecline
 
 #: The two objectives, and the direction each is good in.
@@ -248,9 +248,10 @@ def _expand_to_entities(candidates: Sequence[ActionInstance],
             out.append(candidate)
             continue
         template = templates.get(candidate.template)
-        applies_to = getattr(template, "applies_to", "") if template else ""
+        lineage = getattr(model, "lineage", None)
         for entity_id, entity in sorted(entities.items()):
-            if applies_to and getattr(entity, "type", None) != applies_to:
+            if template is not None and not applies(
+                    template, getattr(entity, "type", None), lineage):
                 continue
             out.append(ActionInstance(
                 template=candidate.template, entity_id=entity_id,

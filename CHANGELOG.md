@@ -34,6 +34,42 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+## [0.2.13] — 2026-09-26
+
+### Added
+
+- **The case book: `Case`, `open_case`, `attach_stage` and `case_book`.** A case
+  opens on a subject and a declared indicator, every later `check` records
+  itself into it, and the caller attaches what each other stage did, by
+  reference and with any decline. It resolves after `cases.consecutive_checks`
+  checks in a row that looked at the indicator and found nothing at or above
+  `cases.severity`, both declared in the new `cases:` block; a check that could
+  not look restarts the count. The book is kept beside the ledger and is durable
+  when the ledger is. `Case` joins the supported names, sixteen in all, and
+  `cases.STAGES` names the stages a case carries: check, hypothesize, plan, act
+  and learn.
+- `model_describe` reports, per stage of the loop, whether the model declares
+  what that stage reads.
+- **`extends:` on an entity type.** An entry written `{name: Subtype, extends:
+  Parent}` gives the subtype its parent's indicators plus its own, and the
+  parent's action templates; an inherited indicator may be changed key by key.
+  A partial change that makes a band contradict itself is kept and reported as
+  `inheritance_conflict`, in `unreachable_declarations` and by `entail`, whose
+  vocabulary gains the name. An undeclared parent, a cycle or an unknown key
+  refuses the model at load.
+- **A `transitive:` rule** compiles a roll-up to one rule per hop count, each
+  body a chain of the base predicate alone, so the evaluator never joins
+  against its own output; `max_hops` past the atom cap declines
+  `depth_exceeded` for those hops.
+
+### Fixed
+
+- **`hypothesize` says why a cause has no posterior.** With causal edges declared
+  and no strengths, `infer` declines `cpt_missing`; `hypothesize` ran the same
+  inference per candidate and returned each cause with `posterior: null` beside
+  an empty `not_checked`. It now carries those declines, and each candidate row
+  names its own as `declined`.
+
 ## [0.2.12] — 2026-09-26
 
 ### Added

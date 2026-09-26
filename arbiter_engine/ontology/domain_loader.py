@@ -55,7 +55,7 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 from pathlib import Path
 from collections.abc import Mapping
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import yaml
 
@@ -367,6 +367,52 @@ class DomainModel:
     #: default stands for that one key. Absent, every default stands, exactly
     #: as before this existed.
     axiom_parameters: Dict[str, Any] = field(default_factory=dict)
+    #: -- when a case resolves: `severity`, the finding severity at or
+    #: above which a check keeps a case open, and `consecutive_checks`, how
+    #: many checks in a row without one close it. Declared, because how clean
+    #: is clean enough is a domain fact. Absent, `open_case` declines
+    #: `missing_config` rather than choosing a number.
+    cases: Dict[str, Any] = field(default_factory=dict)
+    #: -- `{subtype: parent}`, from `entity_types:` entries written as
+    #: `{name: Subtype, extends: Parent}`. A subtype's indicators are the
+    #: parent's plus its own, resolved when the model loads, and an action
+    #: template for the parent applies to it. Relationship rules are NOT
+    #: inherited: an edge rule names the types it joins.
+    extends: Dict[str, str] = field(default_factory=dict)
+    #: -- each indicator whose inherited band and the subtype's own
+    #: keys MERGED into a contradiction neither had alone. The merged
+    #: indicator is kept, so BOUNDEDNESS declines on the band at every check,
+    #: and the pair is reported here, by `unreachable_declarations` and by
+    #: `entail`, as `inheritance_conflict`.
+    inheritance_conflicts: List[Dict[str, Any]] = field(default_factory=list)
+
+    def lineage(self, entity_type: str) -> Tuple[str, ...]:
+        """The type and every type it extends, nearest first."""
+        chain = [entity_type]
+        while chain[-1] in (self.extends or {}):
+            chain.append(self.extends[chain[-1]])
+        return tuple(chain)
+
+    def case_criterion(self) -> Tuple[Optional[str], Optional[int], str]:
+        """`(severity, consecutive_checks, "")`, or `(None, None, why)`."""
+        block = self.cases or {}
+        if not block:
+            return None, None, (
+                "the model declares no `cases:` block, so nothing says when a "
+                "case resolves; declare `severity:` (the finding severity that "
+                "keeps a case open) and `consecutive_checks:` (how many clean "
+                "checks in a row close it)")
+        severity = block.get("severity")
+        if not isinstance(severity, str) or severity.lower() not in _CASE_SEVERITIES:
+            return None, None, (
+                f"`cases.severity` is {severity!r}; it names a finding severity, "
+                f"one of {', '.join(_CASE_SEVERITIES)}")
+        count = block.get("consecutive_checks")
+        if isinstance(count, bool) or not isinstance(count, int) or count < 1:
+            return None, None, (
+                f"`cases.consecutive_checks` is {count!r}; it is a count of "
+                f"checks, a whole number of at least 1")
+        return severity.lower(), count, ""
 
     def declared_axiom_parameters(self) -> Dict[str, Any]:
         """The declared parameters this engine ACCEPTED, each as its own kind.
@@ -725,6 +771,7 @@ class DomainModel:
                            spec, _KNOWN_ACTION_PARAM_KEYS, label)
         report("planning", getattr(self, "planning", None),
                _KNOWN_PLANNING_KEYS, "")
+        report("cases", getattr(self, "cases", None), _KNOWN_CASES_KEYS, "")
         report("causal", getattr(self, "causal", None),
                _KNOWN_CAUSAL_KEYS, "")
         out.extend(self._unread_evidence_severity())
@@ -854,6 +901,15 @@ class DomainModel:
                         "declared_role": getattr(spec, "role", None),
                         "remedy": explain_absence(axiom, spec),
                     })
+        for conflict in self.inheritance_conflicts or ():
+            out.append({
+                "entity_type": conflict["entity_type"],
+                "indicator": conflict["indicator"],
+                "axiom": "BOUNDEDNESS",
+                "declared_role": None,
+                "reason": "inheritance_conflict",
+                "remedy": conflict["detail"],
+            })
         out.extend(self._unreachable_derivations())
         return out
 
@@ -1056,7 +1112,7 @@ _MODEL_KEYS = frozenset({
     "id", "domain_id", "name", "description", "entity_types",
     "relationship_types", "aliases", "rules", "closure", "relationship_rules",
     "calendar", "action_templates", "planning", "causal", "indicators",
-    "property_mapping", "axiom_parameters",
+    "property_mapping", "axiom_parameters", "cases",
 })
 
 _KNOWN_FORECAST_KEYS = frozenset({
@@ -1094,6 +1150,11 @@ _KNOWN_TRANSITION_KEYS = frozenset({
 _KNOWN_PLANNING_KEYS = frozenset({
     "objective", "min_severity", "max_rollouts", "max_depth",
 })
+
+#:. The `cases:` block, and the severities it may name -- the
+#: finding scale, most severe first.
+_KNOWN_CASES_KEYS = frozenset({"severity", "consecutive_checks"})
+_CASE_SEVERITIES = ("critical", "high", "medium", "low", "warning", "info")
 
 #: The domain-level `causal:` block. One member, and it is here from the first
 #: day rather than after a typo reached somebody: a misspelled key in a block
@@ -1594,6 +1655,130 @@ def parse_indicator(
         return None
 
 
+def _entity_types(raw: Any) -> Tuple[List[Any], Dict[str, str]]:
+    """The declared type names, and which of them extend which.
+
+    An entry is a name, or `{name: Subtype, extends: Parent}`. The mapping form
+    is new, so it is strict from its first day: a key it does not read, a
+    parent nobody declared, and a cycle are all refused at load rather than
+    reported later -- a hierarchy that cannot be resolved has no indicator
+    list to report on.
+    """
+    names: List[Any] = []
+    extends: Dict[str, str] = {}
+    for entry in _require_sequence(raw, "entity_types"):
+        if not isinstance(entry, dict):
+            names.append(entry)
+            continue
+        unknown = sorted(set(entry) - {"name", "extends"})
+        name = entry.get("name")
+        if unknown or not isinstance(name, str) or not name:
+            raise MalformedDomainModelError(
+                f"an `entity_types` entry written as a mapping takes `name` and "
+                f"`extends` and nothing else; got {entry!r}")
+        names.append(name)
+        parent = entry.get("extends")
+        if parent is not None:
+            if not isinstance(parent, str) or not parent:
+                raise MalformedDomainModelError(
+                    f"`{name}` extends {parent!r}; `extends` names one declared "
+                    f"entity type")
+            extends[name] = parent
+    declared = {n for n in names if isinstance(n, str)}
+    for child, parent in extends.items():
+        if parent not in declared:
+            raise MalformedDomainModelError(
+                f"`{child}` extends `{parent}`, which `entity_types` does not "
+                f"declare")
+    for start in extends:
+        seen = [start]
+        while seen[-1] in extends:
+            nxt = extends[seen[-1]]
+            if nxt in seen:
+                loop = seen[seen.index(nxt):] + [nxt]
+                raise MalformedDomainModelError(
+                    f"`extends` closes a cycle: {' -> '.join(loop)}; a type "
+                    f"cannot inherit from itself")
+            seen.append(nxt)
+    return names, extends
+
+
+_BAND_KEYS = ("warning", "critical", "lower_warning", "lower_critical")
+
+
+def _inherited_indicators(raw: Any, names: List[Any], extends: Dict[str, str]
+                          ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    """Each type's indicator ENTRIES, with every ancestor's folded in.
+
+    Resolved on the raw entries, before any is parsed, so a subtype may
+    declare only the keys it changes: an entry naming an inherited indicator
+    replaces that indicator's keys one by one and keeps the rest. A merge
+    whose band contradicts itself when neither declaration did alone is an
+    `inheritance_conflict`; the merged entry is still kept, so the band is
+    refused by name at every check rather than dropped in silence.
+    """
+    if not isinstance(raw, dict):
+        return raw, []
+    if not extends:
+        return dict(raw), []
+    from .axioms.boundedness import _contradictory_band
+
+    def band(entry: Dict[str, Any]) -> Optional[str]:
+        values = [entry.get(key) for key in _BAND_KEYS]
+        if not all(v is None or (isinstance(v, (int, float))
+                                 and not isinstance(v, bool)) for v in values):
+            return None
+        return _contradictory_band(*values)
+
+    resolved: Dict[str, List[Any]] = {}
+    conflicts: List[Dict[str, Any]] = []
+
+    def entries_for(entity_type: str) -> List[Any]:
+        if entity_type in resolved:
+            return resolved[entity_type]
+        own = list(raw.get(entity_type) or ()) if isinstance(
+            raw.get(entity_type) or (), (list, tuple)) else raw.get(entity_type)
+        parent = extends.get(entity_type)
+        if parent is None or not isinstance(own, list):
+            resolved[entity_type] = own
+            return own
+        merged: List[Any] = [dict(e) if isinstance(e, dict) else e
+                             for e in entries_for(parent) or ()]
+        position = {e.get("name"): i for i, e in enumerate(merged)
+                    if isinstance(e, dict)}
+        for entry in own:
+            name = entry.get("name") if isinstance(entry, dict) else None
+            if name is None or name not in position:
+                merged.append(entry)
+                continue
+            inherited = merged[position[name]]
+            combined = {**inherited, **entry}
+            contradiction = band(combined)
+            if contradiction and not band(inherited) and not band(entry):
+                conflicts.append({
+                    "entity_type": entity_type, "indicator": name,
+                    "extends": parent,
+                    "detail": (f"`{entity_type}` inherits `{name}` from "
+                               f"`{parent}` and changes part of its band, and "
+                               f"the result contradicts itself: "
+                               f"{contradiction}. Declare the whole band on "
+                               f"`{entity_type}`, or none of it"),
+                })
+            merged[position[name]] = combined
+        resolved[entity_type] = merged
+        return merged
+
+    out: Dict[str, Any] = {}
+    for entity_type in raw:
+        out[entity_type] = entries_for(entity_type)
+    for entity_type in extends:
+        if entity_type not in out:
+            inherited = entries_for(entity_type)
+            if inherited:
+                out[entity_type] = inherited
+    return out, conflicts
+
+
 def load_domain(source: Union[str, Path, Dict[str, Any]]) -> DomainModel:
     """Load a domain from a path, a YAML string, or an already-parsed dict.
 
@@ -1660,8 +1845,25 @@ def load_domain(source: Union[str, Path, Dict[str, Any]]) -> DomainModel:
         )
 
     property_mapping = domain.get("property_mapping") or {}
+    entity_types, extends = _entity_types(domain.get("entity_types"))
+    raw_indicators, conflicts = _inherited_indicators(
+        domain.get("indicators") or {}, entity_types, extends)
+    if extends and isinstance(property_mapping, dict):
+        # An inherited indicator keeps the parent's mapping to a property; the
+        # subtype's own entries win, as they do for the indicators themselves.
+        mapped = dict(property_mapping)
+        for child in extends:
+            chain, own = [child], {}
+            while chain[-1] in extends:
+                chain.append(extends[chain[-1]])
+            for ancestor in reversed(chain):
+                if isinstance(property_mapping.get(ancestor), dict):
+                    own.update(property_mapping[ancestor])
+            if own:
+                mapped[child] = own
+        property_mapping = mapped
     indicators: Dict[str, List[IndicatorSpec]] = {}
-    for entity_type, entries in (domain.get("indicators") or {}).items():
+    for entity_type, entries in raw_indicators.items():
         # shape-checked before iterating. A scalar here used to raise
         # a TypeError from this line, and a string used to yield one bogus
         # `indicator without a name` warning per CHARACTER.
@@ -1680,8 +1882,9 @@ def load_domain(source: Union[str, Path, Dict[str, Any]]) -> DomainModel:
         domain_id=domain.get("id") or domain.get("domain_id") or "",
         name=domain.get("name", ""),
         description=domain.get("description", ""),
-        entity_types=_require_sequence(
-            domain.get("entity_types"), "entity_types"),
+        entity_types=entity_types,
+        extends=extends,
+        inheritance_conflicts=conflicts,
         relationship_types=_require_sequence(
             domain.get("relationship_types"), "relationship_types"),
         aliases=[str(a) for a in
@@ -1704,6 +1907,7 @@ def load_domain(source: Union[str, Path, Dict[str, Any]]) -> DomainModel:
         indicators=indicators,
         axiom_parameters=_require_mapping(
             domain.get("axiom_parameters"), "axiom_parameters"),
+        cases=_require_mapping(domain.get("cases"), "cases"),
     )
 
     # say it at LOAD, not at cycle 1. Every fact needed to answer

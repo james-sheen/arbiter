@@ -37,6 +37,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
 
 from ..clock import as_naive_utc
+from .cases import SqliteCaseBook
 from .predict_vs_mirror import (PredictionLedger, PredictionRecord,
                                 PredictionResidualProblem)
 
@@ -123,6 +124,9 @@ class SqlitePredictionLedger(PredictionLedger):
         #: that quietly shrank is the shape this whole module exists to stop.
         self.unreadable_rows = 0
         self._load()
+        #: -- the case book in the same file, so a case outlives the
+        #: process exactly as the predictions it records do.
+        self.case_book = SqliteCaseBook(self._db)
 
     # -- persistence ---------------------------------------------------------
 
