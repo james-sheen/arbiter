@@ -34,7 +34,7 @@ def _examples_dir() -> pathlib.Path:
     """Whichever copy this tree has: the built package ships `examples/` at its
     root, the source tree keeps them under the publication docs.
 
-    - this was a hard-coded path into a directory that does not exist
+    this was a hard-coded path into a directory that does not exist
     in the published package, so the shipped copy of this test could only ever
     fail at import on a reader's machine. It was written where it happened to
     resolve and nothing between there and the wheel disagreed.

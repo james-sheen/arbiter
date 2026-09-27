@@ -238,6 +238,29 @@ class TestTheStagesAttachByReference:
         entry = session.ledger.case_book.get(case_id).stages["plan"][0]
         assert "no_objective" in entry["declined"]
 
+    def test_a_stage_that_could_not_run_declines_by_a_published_name(self):
+        """Its verb answered an unavailable envelope, which carries
+        a sentence and no leg; the sentence used to stand in `declined`."""
+        session = _planning_session(_planning_model())
+        case_id = api.open_case(session, "tank1", "level_pct").to_dict()["case"]["case_id"]
+        answered = api.attach_stage(session, case_id, "plan",
+                                    api.plan(api.EngineSession()))
+        assert answered.to_dict()["case"]["checked"]["stages_attached"] == 1
+        entry = session.ledger.case_book.get(case_id).stages["plan"][0]
+        assert entry["declined"] == ["precondition_unmet"]
+        assert entry["detail"] == "no domain model loaded"
+        assert set(entry["declined"]) <= VOCABULARIES["simulation"]
+
+    def test_another_verbs_envelope_is_refused_not_recorded(self):
+        """A `check` envelope handed in as the plan carries no plan
+        leg; kept, it would put a plan into a case that no plan ever ran for."""
+        session = _planning_session(_planning_model())
+        case_id = api.open_case(session, "tank1", "level_pct").to_dict()["case"]["case_id"]
+        answered = api.attach_stage(session, case_id, "plan", api.check(session)).to_dict()
+        assert _reasons(answered) == {"malformed_request"}
+        assert answered["case"]["checked"]["stages_attached"] == 0
+        assert session.ledger.case_book.get(case_id).stages["plan"] == []
+
 
 class TestTheBookIsKeptBesideTheLedger:
 

@@ -810,7 +810,7 @@ class IndicatorSpec:
     lower_warning_threshold: Optional[float] = None
     lower_critical_threshold: Optional[float] = None
     time_window: Optional[timedelta] = None
-    # (implements decision): HOMEOSTASIS direction gate.
+    # HOMEOSTASIS direction gate.
     # Default ``BIDIRECTIONAL`` preserves previously behavior (fire on
     # |z| > threshold). ``LOWER`` fires only on z < -threshold
     # (negative-space / drop-below-baseline). ``UPPER`` fires only on

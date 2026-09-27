@@ -144,7 +144,7 @@ def _weight_from(rule: Dict[str, Any],
                  learned: Optional[Tuple[float, int]]) -> EdgeWeight:
     causal = rule.get("causal")
     if not isinstance(causal, dict):
-        # -- `causal: 0.8` raised here and came back `internal_error`,
+        # `causal: 0.8` raised here and came back `internal_error`,
         # an engine fault's name for an author's mistake. Skipped as though
         # absent; the domain loader reports it.
         causal = {}

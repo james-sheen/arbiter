@@ -68,7 +68,7 @@ EVIDENCE_SEVERITY_NOT_DECLARED = "evidence_severity_not_declared"
 #: rather than instead of it: the first stamp's claim -- the floor was ours --
 #: stays exactly as true, and a consumer already matching on it keeps matching.
 #:
-#:, and it exists because four different author actions were one bare
+#: and it exists because four different author actions were one bare
 #: stamp. Writing `[critical, hihg]`, writing `[]`, writing `critical` as a
 #: scalar and writing nothing at all all returned the same disclosure, and
 #: three of the four are someone TRYING to declare the floor. An outside review
@@ -93,7 +93,7 @@ EVIDENCE_SEVERITY_UNUSABLE = "evidence_severity_unusable"
 #: `checked.target_reading`: the state it would have set, and the target's own
 #: worst severity at any level.
 #:
-#:, and it went unsaid for as long as the verb has existed. Measured on
+#: and it went unsaid for as long as the verb has existed. Measured on
 #: the substation specimen with the feeder unread: the supply at 9.0 kV, below
 #: its own critical floor, gets exactly the posterior it gets at a healthy
 #: 11.0 kV, 0.670634 both times, because the one reading that would have

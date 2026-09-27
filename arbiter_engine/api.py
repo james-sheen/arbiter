@@ -132,7 +132,7 @@ class EngineSession:
 
     def load_model(self, source: Any) -> None:
         self.model = load_domain(source)
-        # -- THE MODEL'S OWN PARAMETERS, not the engine's defaults. This
+        # THE MODEL'S OWN PARAMETERS, not the engine's defaults. This
         # built `UnifiedAxiomReasoner()` with nothing, so every caller that came
         # in through a session evaluated with a seven-day HOMEOSTASIS baseline
         # whatever its cadence, and the only way round it was to construct a
@@ -1285,15 +1285,15 @@ def model_describe(session: EngineSession,
         # second copy of it is the shape this package has been bitten by
         # before, and it goes stale the first time the predicate moves.
         "dropped_declarations": session.dropped_declarations(),
-        # -- the evaluation parameters in effect, every one, each marked
+        # the evaluation parameters in effect, every one, each marked
         # `declared` or `default`. A model may set them in `axiom_parameters:`
         # now, and an author proofreading the model should be able to see the
         # window HOMEOSTASIS will use without running it.
         "axiom_parameters": model.axiom_parameters_in_effect(),
-        # -- which declared types extend which. Their indicators are
+        # which declared types extend which. Their indicators are
         # already folded into `indicators` above; this says where each came from.
         "extends": dict(getattr(model, "extends", {}) or {}),
-        # -- per stage of the loop, whether this model declares what
+        # per stage of the loop, whether this model declares what
         # that stage reads. A stage marked undeclared declines by name when
         # run; one marked declared may still decline on the data.
         "stages": _stage_readiness(model),
@@ -1426,7 +1426,7 @@ def check(session: EngineSession) -> Envelope:
         # unscored.
         histories=[_history_for(session)],
     )
-    # -- and every open case, because a case resolves on checks. Like
+    # and every open case, because a case resolves on checks. Like
     # the grading above, this reports nothing here; `case_book` does.
     _record_into_cases(session, result)
     envelope = build_envelope(result)
@@ -2414,6 +2414,12 @@ def attach_stage(session: EngineSession, case_id: str, stage: str,
     `learn` has no engine envelope: the adoption is the vertical's, and it
     reports it as `reference`. `check` is not attached: every check records
     itself into every open case, because resolution is counted in checks.
+
+    An envelope with no leg for the stage is refused as
+    `malformed_request` -- it is some other verb's. The one exception is a
+    verb that could not run at all, which answers an unavailable envelope:
+    that stage is attached as `precondition_unmet`, with the verb's own
+    sentence as `detail`, so `declined` holds published names only.
     """
     from arbiter_engine.residual.cases import STAGES
 
@@ -2443,16 +2449,34 @@ def attach_stage(session: EngineSession, case_id: str, stage: str,
             "malformed_request", {"location": stage},
             detail="nothing to attach: pass the stage's envelope, or a "
                    "reference for what the vertical did"))
+    payload: Dict[str, Any] = {}
+    leg: Any = None
+    if envelope is not None:
+        payload = envelope.to_dict() if hasattr(envelope, "to_dict") else dict(envelope)
+        leg = payload.get(_STAGE_LEGS.get(stage, ""))
+        # ANOTHER VERB'S ENVELOPE IS REFUSED, not recorded. It
+        # used to be kept with a sentence standing in `declined`, where every
+        # other entry holds a published name, so a case could claim a stage ran
+        # on the strength of an envelope that was never that stage's.
+        live = (payload.get("meta") or {}).get("source") != SOURCE_UNAVAILABLE
+        if not isinstance(leg, dict) and live:
+            declines.append(Decline(
+                "malformed_request", {"location": stage},
+                detail=f"this envelope carries no {_STAGE_LEGS.get(stage, stage)!r} "
+                       f"leg; attach the envelope {stage!r} returned, or a "
+                       f"reference for what the vertical did"))
     if declines:
         return _case_envelope(session, "case", {"stages_attached": 0}, declines)
 
     entry: Dict[str, Any] = {"at": now_utc().isoformat()}
     if envelope is not None:
-        payload = envelope.to_dict() if hasattr(envelope, "to_dict") else dict(envelope)
-        leg = payload.get(_STAGE_LEGS.get(stage, ""))
         if not isinstance(leg, dict):
-            meta = payload.get("meta") or {}
-            entry["declined"] = [str(meta.get("reason") or "no leg for this stage")]
+            # The stage's verb could not run at all and said why in a
+            # sentence. The case keeps the published name beside that sentence,
+            # so its `declined` reads like every other stage's.
+            entry["declined"] = ["precondition_unmet"]
+            entry["detail"] = str((payload.get("meta") or {}).get("reason")
+                                  or "the stage's verb answered no leg")
         else:
             entry["declined"] = sorted({str(d.get("reason")) for d in
                                         leg.get("not_checked") or []

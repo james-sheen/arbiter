@@ -264,7 +264,7 @@ class KernelPipelineExecutor:
         result = TopologyTraverser(topology=topology).traverse(request)
         traversal_id = str(uuid.uuid4())
         try:
-            # (A-7): file impact predictions with the PREDICT-vs-
+            # file impact predictions with the PREDICT-vs-
             # MIRROR ledger (gated inside; no-op while OFF).
             from arbiter_engine.residual.predict_vs_mirror import (
                 record_traversal_impacts,

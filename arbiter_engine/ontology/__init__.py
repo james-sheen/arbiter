@@ -12,7 +12,7 @@ Key Features:
 - History-aware detection for temporal axioms
 """
 
-#: -- BOUND LAZILY, and the reason is that this file was the whole
+#: BOUND LAZILY, and the reason is that this file was the whole
 #: import chain. `domain_loader.py` imports `.axioms.roles`, importing any
 #: submodule executes THIS file first, and the two lines that used to sit here
 #: imported `loader`, which imports rdflib at module scope. So reading a YAML
@@ -28,7 +28,7 @@ Key Features:
 #: package rather than the shape of this import graph, and went red the day the
 #: extra became real.
 #:
-#: -- AND THIS BLOCK WAS NOT THE WHOLE CHAIN, though it says so above.
+#: AND THIS BLOCK WAS NOT THE WHOLE CHAIN, though it says so above.
 #: The sentence is kept rather than quietly corrected, because what was wrong
 #: with it is the point: it is true of THIS tree, whose package root binds its
 #: re-exports lazily too, and false of the derived one, whose root is

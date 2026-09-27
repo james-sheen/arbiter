@@ -49,7 +49,7 @@ from ...interfaces import (
 from ...types import (
     Axiom, Severity, AxiomParameters, DetectionLayer, NotEvaluatedReason,
 )
-# — call resolve_axiom_threshold at rate_warning/rate_critical
+# call resolve_axiom_threshold at rate_warning/rate_critical
 # read-sites so per-sample entity-property overrides win over global
 # AxiomParameters fallback during v2 perturbation runs. Precedence chain:
 # sentinel > indicator's mono_config > global params. The pre-existing
@@ -228,7 +228,7 @@ class MonotonicityChecker:
         # params; the window slice below is unchanged, because you can look at
         # the last 20 observations while holding 5.
         if len(values) < self.params.monotonicity_min_samples:
-            # corrected this floor from 20 to 3 precisely
+            # An internal ruling corrected this floor from 20 to 3 precisely
             # because the axiom was advertised live while emitting nothing.
             # Reporting the decline is what makes that class of gap visible
             # from the outside rather than only from a source audit.

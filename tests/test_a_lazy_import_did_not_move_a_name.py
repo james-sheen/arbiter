@@ -42,7 +42,7 @@ import textwrap
 
 import pytest
 
-# -- DERIVED, not written down. This used to be a string literal naming
+# DERIVED, not written down. This used to be a string literal naming
 # the source package, which the build substitutes in place: correct in effect,
 # and indistinguishable to a checker from the prose leaks that substitution
 # destroys. Reading it off an imported module's `__package__` puts the only

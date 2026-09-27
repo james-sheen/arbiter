@@ -100,7 +100,7 @@ SCENARIOS = {
     "MONOTONICITY": dict(
         indicators=[{"name": "v", "type": "NUMERIC", "axioms": ["MONOTONICITY"],
                      "window": "24h",
-                     # -- the rate arm no longer answers from an engine
+                     # the rate arm no longer answers from an engine
                      # default, so a scenario that declared no rate stopped
                      # firing and this row started reporting itself stale. The
                      # numbers are the scenario's own: they exist to make the

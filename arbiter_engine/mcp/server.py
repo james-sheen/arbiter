@@ -41,14 +41,16 @@ import sys
 from typing import Any, Dict, List
 
 from arbiter_engine.api import (
-    EngineSession, attest, check, discover, entail, file_action, gaps,
-    hypothesize, infer, model_describe, plan, project, rollout, traverse,
+    EngineSession, attach_stage, attest, case_book, check, discover, entail,
+    file_action, gaps, hypothesize, infer, model_describe, open_case, plan,
+    project, rollout, traverse,
 )
 from arbiter_engine.envelope import Envelope, unavailable_envelope
 
 #: The primitives, in the order that an internal ruling lists them, plus `project`
-#: since 2026-09-16, `rollout` / `plan` since and, and
-#: `hypothesize` / `file_action` since and.
+#: since 2026-09-16, `rollout` / `plan` since and,
+#: `hypothesize` / `file_action` since and, and the case
+#: book's three verbs since.
 #: Each entry is the
 #: name, a one-line description for the client, and the JSON-Schema input.
 TOOL_SPECS: List[Dict[str, Any]] = [
@@ -404,6 +406,62 @@ TOOL_SPECS: List[Dict[str, Any]] = [
         },
     },
     {
+        "name": "open_case",
+        "description": (
+            "Open a case on entity_id and one of the indicators its type "
+            "DECLARES: the problem an operator works, where a finding is one "
+            "check's verdict. Every later check records itself into it, and "
+            "it resolves on the model's own cases: block -- that many checks "
+            "in a row finding nothing at or above that severity. Refused by "
+            "name with no cases: block, a subject or indicator the model "
+            "cannot place, or no ledger. The book lives beside this server's "
+            "ledger: in memory unless the server was started with --ledger, "
+            "so without it a case lasts as long as the server process."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "entity_id": {"type": "string"},
+                "indicator": {"type": "string"},
+                "basis": {"type": "string"},
+            },
+            "required": ["entity_id", "indicator"],
+        },
+    },
+    {
+        "name": "attach_stage",
+        "description": (
+            "Attach what a stage did to an open case, by reference. For "
+            "hypothesize, plan or act, pass the envelope that verb returned "
+            "(file_action's for act) exactly as it arrived; for learn, which "
+            "the engine never runs, pass a reference saying what was adopted "
+            "and on what basis. The case keeps the reference and every reason "
+            "the stage declined, and runs nothing itself. Another verb's "
+            "envelope is refused."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "case_id": {"type": "string"},
+                "stage": {"type": "string",
+                          "enum": ["hypothesize", "plan", "act", "learn"]},
+                "envelope": {"type": "object"},
+                "reference": {"type": "object"},
+            },
+            "required": ["case_id", "stage"],
+        },
+    },
+    {
+        "name": "case_book",
+        "description": (
+            "Every case this server's book holds, each with its stages, and "
+            "how many opened and how many resolved side by side -- never as a "
+            "rate alone, because a ratio carries the denominator it was taken "
+            "over."
+        ),
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
         "name": "add_observations",
         "description": (
             "Feed a series for one entity property. Values are either bare "
@@ -555,6 +613,12 @@ _HANDLERS = {
     "rollout": _rollout,
     "plan": _plan,
     "file_action": _file_action,
+    "open_case": lambda s, a: open_case(
+        s, a["entity_id"], a["indicator"], a.get("basis") or ""),
+    "attach_stage": lambda s, a: attach_stage(
+        s, a["case_id"], a["stage"], a.get("envelope"),
+        reference=a.get("reference")),
+    "case_book": lambda s, a: case_book(s),
     "load_model": _load_model,
     "add_entity": _add_entity,
     "add_relationship": _add_relationship,
@@ -667,6 +731,21 @@ def build_server(session: EngineSession | None = None):
             "max_transitions": max_transitions,
         })
 
+    async def open_case_tool(entity_id: str, indicator: str,
+                             basis: str = "") -> str:
+        return _emit("open_case", {"entity_id": entity_id,
+                                   "indicator": indicator, "basis": basis})
+
+    async def attach_stage_tool(case_id: str, stage: str,
+                                envelope: Dict[str, Any] | None = None,
+                                reference: Dict[str, Any] | None = None) -> str:
+        return _emit("attach_stage", {"case_id": case_id, "stage": stage,
+                                      "envelope": envelope,
+                                      "reference": reference})
+
+    async def case_book_tool() -> str:
+        return _emit("case_book", {})
+
     async def gaps_tool(start_node: str | None = None) -> str:
         return _emit("gaps", {"start_node": start_node})
 
@@ -762,6 +841,9 @@ def build_server(session: EngineSession | None = None):
         "plan": plan_tool,
         "file_action": file_action_tool,
         "hypothesize": hypothesize_tool,
+        "open_case": open_case_tool,
+        "attach_stage": attach_stage_tool,
+        "case_book": case_book_tool,
     }
     missing = {spec["name"] for spec in TOOL_SPECS} - set(wrappers)
     if missing:
@@ -774,6 +856,23 @@ def build_server(session: EngineSession | None = None):
                         description=spec["description"])
 
     return server
+
+
+def start_session(ledger: str | None = None) -> EngineSession:
+    """The session a server starts with: on the durable ledger when ``ledger``
+    names a file, and on the in-memory one otherwise.
+
+    The case book is kept beside the ledger, so a server that only
+    ever held the in-memory one gave every client a book that emptied when
+    the process ended -- a case, the one thing meant to hold a problem across
+    checks, lasting exactly one session. The file is SQLite, and a second
+    process started on it reads the same cases and the same predictions.
+    """
+    if not ledger:
+        return EngineSession()
+    from arbiter_engine.residual.sqlite_ledger import (  # noqa: PLC0415
+        SqlitePredictionLedger)
+    return EngineSession(ledger=SqlitePredictionLedger(ledger))
 
 
 def main(argv: List[str] | None = None) -> int:
@@ -800,9 +899,18 @@ def main(argv: List[str] | None = None) -> int:
     parser.add_argument(
         "--model", metavar="PATH",
         help="domain model YAML to load at startup; tools can also load one")
+    parser.add_argument(
+        "--ledger", metavar="PATH",
+        help="a SQLite file for predictions and the case book, so both "
+             "outlive this process; without it they are kept in memory")
     args = parser.parse_args(argv)
 
-    session = EngineSession()
+    try:
+        session = start_session(args.ledger)
+    except Exception as exc:          # noqa: BLE001 — reported, then refused
+        print(f"arbiter-mcp: could not open the ledger {args.ledger}: "
+              f"{type(exc).__name__}: {exc}", file=sys.stderr)
+        return 2
     if args.model:
         try:
             session.load_model(args.model)

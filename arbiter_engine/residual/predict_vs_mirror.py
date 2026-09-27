@@ -91,13 +91,13 @@ class PredictionRecord:
     predicted_at: datetime
     hop_distance: int = 0
     path: Tuple[str, ...] = ()
-    # (#15 exercise): optional indicator scope. Entity-granular
+    # optional indicator scope. Entity-granular
     # confirmation reads any in-window problem on the entity as a hit —
     # which is exactly the Day-9 conflation corpus #15 exposed (two
     # signals decoupling on ONE entity). A scoped record confirms only
     # on a problem carrying the same indicator.
     indicator: Optional[str] = None
-    # (value-kind v1): a value prediction grades against the
+    # a value prediction grades against the
     # OBSERVATION stream, not the problem stream — predicted value vs the
     # observation closest to the horizon, within a caller-owned tolerance
     # (never guessed; the no-name-heuristics discipline).
@@ -119,7 +119,7 @@ class PredictionRecord:
     # callers have the entity in hand when they file, so the fact is free at
     # the one moment it is known and unrecoverable afterwards.
     entity_type: Optional[str] = None
-    #:. The couplings that drove this value, each `relation:from->to`.
+    #: The couplings that drove this value, each `relation:from->to`.
     #: A rollout supplies them; anything else filing a value leaves them
     #: empty, and an empty tuple means UNATTRIBUTED rather than *belongs to
     #: everyone* -- which is what a per-coupling confirm rate used to assume.
@@ -150,7 +150,7 @@ class PredictionRecord:
     # `None` means outside, because that is what every caller predating this
     # field was.
     source: Optional[str] = None
-    #:. Set only on the two records `file_action` files for each value
+    #: Set only on the two records `file_action` files for each value
     #: an EXECUTED action moved: the execution's `id`, which `arm` of the pair
     #: this is (`action` or `no_action`), the action, its parameters, when it
     #: took effect and who says so. Graded like any value record; kept out of
@@ -353,7 +353,7 @@ def _target_key(record: 'PredictionRecord') -> str:
             f"·{record.horizon_s:g}s")
 
 
-#:. The shape of `baseline` before anything has been raced. Every
+#: The shape of `baseline` before anything has been raced. Every
 #: figure `None` rather than zero, on the rule the rest of this ledger
 #: follows: a zero loss reads as a perfect forecast for a model that has
 #: never been graded.
@@ -437,12 +437,12 @@ class PredictionLedger:
                 ring_cap = _DEFAULT_RING_CAP
         self._records: Deque[PredictionRecord] = deque(maxlen=max(1, int(ring_cap)))
         self.grace_s = float(grace_s)
-        # (W-2 disposition): a still-PENDING record evicted at cap
+        # a still-PENDING record evicted at cap
         # is an ungraded prediction — a not-looking silence the ledger must
         # count rather than swallow. Exposed via calibration() and the
         # /pump-state surface.
         self.evicted_pending = 0
-        #: -- the cases this session is working, kept beside the
+        #: the cases this session is working, kept beside the
         #: predictions so the book lives exactly as long as they do.
         self.case_book = CaseBook()
 

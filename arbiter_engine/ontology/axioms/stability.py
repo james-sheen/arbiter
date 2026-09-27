@@ -36,7 +36,7 @@ from ...interfaces import (
 from ...types import (
     Axiom, Severity, AxiomParameters, DetectionLayer, NotEvaluatedReason,
 )
-# — call resolve_axiom_threshold at oscillation_threshold
+# call resolve_axiom_threshold at oscillation_threshold
 # read-sites (the firing gate). Per sentinel override > global params
 # fallback. epsilon/delta/window_size kept as global — they are
 # distance-metric / sample-count parameters, not the per-axiom firing

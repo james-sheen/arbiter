@@ -207,7 +207,7 @@ def applies(template: ActionTemplate, entity_type: Any,
             lineage: Any = None) -> bool:
     """Whether a template reaches an entity of this type.
 
-    - a template declared for a type reaches every type that
+    a template declared for a type reaches every type that
     `extends:` it, which is what a subtype inheriting its parent's templates
     means. `lineage` is the model's (`DomainModel.lineage`); without one only
     the declared type matches, exactly as before.

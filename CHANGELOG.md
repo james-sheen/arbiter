@@ -34,6 +34,29 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+## [0.2.15] — 2026-09-27
+
+### Added
+
+- **`open_case`, `attach_stage` and `case_book` are MCP tools**, twenty in all.
+  `arbiter-mcp --ledger PATH` keeps predictions and the case book in a SQLite
+  file, so a case outlives the server; without it both last as long as the process.
+- **`declined_reasons` and `unpublished_reasons`, in `subenvelope`**, beside
+  `DECLINE_KEYS` and `PUBLISHED_REASONS`: every decline reason in an envelope,
+  read from every list one is reported under, and any no published set holds.
+
+### Fixed
+
+- **A case no longer records a sentence as a stage's decline.** A stage whose verb
+  could not run attaches as `precondition_unmet`, the verb's sentence as `detail`;
+  another verb's envelope is refused as `malformed_request` instead of recorded.
+
+### Documentation
+
+- **`not_identifiable` is shared by three conditions, and the spec now says so.**
+  `hypothesize` gives it for a subject outside the causal subgraph or at its root,
+  as `infer` does for an open backdoor; the `detail` says which, for a person.
+
 ## [0.2.14] — 2026-09-27
 
 ### Fixed

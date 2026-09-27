@@ -25,7 +25,7 @@ shortcut. Partially applying `[critical, hihg]` as `[critical]` would leave an
 author reading a posterior computed against a floor they did not write and
 cannot see -- the same defect one level down.
 
-- AND IT WAS INDISTINGUISHABLE FROM NEVER HAVING TRIED. The round that
+AND IT WAS INDISTINGUISHABLE FROM NEVER HAVING TRIED. The round that
 shipped the two things above closed the KEY side of this and left the VALUE
 side open: a third outside review measured four different author actions
 returning one bare stamp, three of them someone attempting to declare the

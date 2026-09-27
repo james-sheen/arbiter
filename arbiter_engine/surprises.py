@@ -579,7 +579,7 @@ def _refuse(session: Any, entry: Surprise) -> Optional[Decline]:
 
 
 #: What a proposal's replay says when there is no corpus to replay against.
-#: -- the SAME rule the scorer already applies to a window that never
+#: the SAME rule the scorer already applies to a window that never
 #: observed its subject: the absence is reported, never scored as a zero.
 REPLAY_UNAVAILABLE = "replay_unavailable"
 

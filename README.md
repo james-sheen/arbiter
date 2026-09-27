@@ -305,11 +305,12 @@ from arbiter_engine import (
 ```
 
 **Fifteen of those are types and the kernel; the sixteenth is a module, and the split is
-deliberate.** `arbiter_engine.api` is the tool surface: thirteen verbs over a session, each returning the
+deliberate.** `arbiter_engine.api` is the tool surface: sixteen verbs over a session, each returning the
 envelope above. Five answer for the eight axioms; four answer for a DISCIPLINE — work of a different
 kind, with its own denominator and its own vocabulary of refusals, reported in a payload beside the
-legs rather than inside them. The other four run the model forward (`rollout`, `plan`), record an
-action somebody took (`file_action`), and rank what could explain a finding (`hypothesize`).
+legs rather than inside them. Four more run the model forward (`rollout`, `plan`), record an
+action somebody took (`file_action`), and rank what could explain a finding (`hypothesize`); the
+last three keep the case book (`open_case`, `attach_stage`, `case_book`).
 
 ```python
 from importlib.resources import files
@@ -358,7 +359,7 @@ its membership is documented here and does not change inside a minor version.
 
 Those verbs, and the four session-setup calls beside them — `load_model`, `add_entity`,
 `add_relationship`, `add_observations` — are exposed over MCP by
-`arbiter_engine.mcp.server` — seventeen tools, a thin transport over exactly these functions, needing
+`arbiter_engine.mcp.server` — twenty tools, a thin transport over exactly these functions, needing
 the optional `mcp` extra. That module is a deep path: importable, and not one of the supported names
 above. The sentence here read *the same five … not part of the eleven* through 0.1.16, naming a verb
 count that was never five and a name count two releases stale.

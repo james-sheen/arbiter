@@ -54,7 +54,8 @@ from .envelope import (
 from .interfaces import Problem
 from .types import NotEvaluatedReason
 
-__all__ = ["VOCABULARIES", "Decline", "SubEnvelope"]
+__all__ = ["VOCABULARIES", "Decline", "SubEnvelope", "DECLINE_KEYS",
+           "PUBLISHED_REASONS", "declined_reasons", "unpublished_reasons"]
 
 
 #: The closed decline vocabulary of each discipline.
@@ -98,7 +99,7 @@ _SHADOW_VOCABULARY = frozenset({
     "internal_error",
 }) | {reason.value for reason in NotEvaluatedReason}
 
-#:. Hoisted out of `VOCABULARIES` so the simulation set can
+#: Hoisted out of `VOCABULARIES` so the simulation set can
 #: fold it in. `seed_mode="projected"` runs the declared projector, so a
 #: simulation carries whatever that projector declined with -- and a
 #: second copy of a closed set is how two vocabularies drift apart.
@@ -257,7 +258,7 @@ VOCABULARIES: Dict[str, frozenset] = {
         "malformed_rule",              # the head or a body atom did not parse
         "binding_budget_exhausted",    # polynomial is not the same as affordable
         "internal_error",
-        # -- RETURNED with the loader change that produces it, as the
+        # RETURNED with the loader change that produces it, as the
         # note below promised. A subtype that `extends:` a parent and changes
         # part of an inherited band into a contradiction neither declaration
         # had alone; the pair is named here and in `unreachable_declarations`.
@@ -275,7 +276,20 @@ VOCABULARIES: Dict[str, frozenset] = {
     }),
     "projection": _PROJECTION_VOCABULARY,
     "inference": frozenset({
-        "not_identifiable",            # an open backdoor through a declared latent
+        # ONE REASON FOR THREE CONDITIONS, ON PURPOSE. `infer` gives
+        # it for an open backdoor through a declared latent, and `hypothesize`
+        # for a subject outside the causal subgraph and for one at its root.
+        # Each says the declared graph gives the question no answer, and that a
+        # declaration would if the world has one. This project splits a reason
+        # on WHO OWES SOMETHING, as `NotEvaluatedReason` was split, and outside
+        # the graph against at its root does not track it: one edge into the
+        # subject mends either, and one root needs an edge where another needs a
+        # rule. The detail names the condition for a person; matching on it is
+        # unsupported. Split it when a consumer must act on a difference -- on
+        # whether the model owes a rule or the topology an edge, not on which
+        # detail came back -- as a change to this published set in its own
+        # right, never inside a feature.
+        "not_identifiable",
         "cpt_missing",                 # a weight on an active path is a default
         "cycle_unsupported",
         "evidence_conflict",           # the model gives this evidence probability zero
@@ -300,6 +314,75 @@ VOCABULARIES: Dict[str, frozenset] = {
         "internal_error",
     }),
 }
+
+#: EVERY KEY THIS ENGINE REPORTS A DECLINE UNDER, wherever it is
+#: mounted. `not_checked` carries decline RECORDS, the top-level envelope's and
+#: every sub-envelope's, and `not_fitted` carries the learn leg's, one per
+#: coupling it could not fit. `declines` and `declined` carry refusals already
+#: flattened to their reasons: a rollout step's and a plan candidate's, a ranked
+#: cause's and a case's attached stage.
+#:
+#: Written here because two verticals each copied a walker over these keys into
+#: their own tests, and the copies drifted: one read all four, the other read two,
+#: so a refusal under `not_fitted` passed its published-name check unread. A key
+#: an envelope reports reasons under and this tuple lacks is a refusal no reader
+#: counts, and the engine's suite fails when a builder starts reporting one.
+DECLINE_KEYS: Tuple[str, ...] = ("not_checked", "declines", "not_fitted", "declined")
+
+#: Every decline name this engine publishes: the axiom enum and each
+#: discipline's set, as one union. It answers one question -- *is this a name the
+#: engine publishes at all* -- and nothing more. Everywhere a reason is read
+#: against ONE discipline the sets stay separate, for the reason the module
+#: docstring gives.
+PUBLISHED_REASONS: frozenset = frozenset(
+    reason.value for reason in NotEvaluatedReason).union(*VOCABULARIES.values())
+
+
+def declined_reasons(payload: Any) -> List[str]:
+    """Every decline reason in an envelope or payload, however deeply mounted.
+
+    Reads each list under a key in :data:`DECLINE_KEYS`: a record gives its
+    ``reason`` and a flattened entry is the reason itself. Takes an envelope
+    (anything with ``to_dict``), a mapping or a list. Reasons come back in the
+    order met, repeats kept, so a caller counting refusals and one asking which
+    names occur read the same walk.
+    """
+    found: List[str] = []
+
+    def walk(node: Any) -> None:
+        if not isinstance(node, (Mapping, list, tuple)) and callable(
+                getattr(node, "to_dict", None)):
+            node = node.to_dict()
+        if isinstance(node, Mapping):
+            for key, value in node.items():
+                if key in DECLINE_KEYS and isinstance(value, (list, tuple)):
+                    for item in value:
+                        if isinstance(item, Mapping):
+                            reason = item.get("reason")
+                            if isinstance(reason, str):
+                                found.append(reason)
+                        elif isinstance(item, str):
+                            found.append(item)
+                walk(value)
+        elif isinstance(node, (list, tuple)):
+            for item in node:
+                walk(item)
+
+    walk(payload)
+    return found
+
+
+def unpublished_reasons(payload: Any) -> List[str]:
+    """The decline reasons in a payload that no published vocabulary holds.
+
+    Sorted, each once. Empty is the answer a consumer's test asserts: every
+    stage it ran either answered or declined by a name this engine publishes.
+    A name listed here is one no reader of :data:`PUBLISHED_REASONS` can
+    classify, which is the defect, whichever side of the envelope it is on.
+    """
+    return sorted({reason for reason in declined_reasons(payload)
+                   if reason not in PUBLISHED_REASONS})
+
 
 #: Keys a :class:`Decline` writes itself when it serialises. A ``scope`` key
 #: with one of these names would overwrite the record's own field and produce a

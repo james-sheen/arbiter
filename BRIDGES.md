@@ -326,6 +326,13 @@ Three things the shape of the table is telling you:
   `subenvelope.py` beside the sets. A member nobody can construct an input for
   makes the set a worse instrument.
 
+**To check a payload against them in a test, do not write the walker.**
+`subenvelope.unpublished_reasons(payload)` returns every decline reason no set
+here holds, read from every list the engine reports one under, and
+`declined_reasons` returns them all. Two verticals each carried their own copy
+of that walk, and the copies drifted: one read four lists and the other two, so
+a refusal from the learn leg passed its check unread.
+
 This table is DERIVED from `subenvelope.py`, not transcribed beside it, and a
 test fails when the two disagree. A table maintained by hand next to a
 frozenset is a second copy of one closed set, which is the drift the module

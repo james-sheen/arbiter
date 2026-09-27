@@ -98,7 +98,7 @@ class PlanCandidate:
     interval: Optional[Tuple[float, float]] = None
     findings: List[str] = field(default_factory=list)
     declines: List[str] = field(default_factory=list)
-    #:. The assumptions THIS candidate's number rests on. `score`
+    #: The assumptions THIS candidate's number rests on. `score`
     #: has always returned them per candidate; they were merged into the
     #: plan-level list and the per-candidate fact dropped, so one plan
     #: carrying both `deterministic_transitions` and
@@ -107,7 +107,7 @@ class PlanCandidate:
     #: is what a deterministic candidate reports AND what a sampled one
     #: reports when no sample cleared.
     assumptions: List[str] = field(default_factory=list)
-    #:. How close the nearest threshold decision was, in units of the
+    #: How close the nearest threshold decision was, in units of the
     #: value's OWN declared spread -- the closest any imagined value came to
     #: a line it was judged against, divided by the spread the model declared
     #: for it. `None` when nothing declared a spread that reached the
@@ -159,7 +159,7 @@ class PlanResult:
     assumptions: List[str] = field(default_factory=list)
     rollouts_run: int = 0
     plans_untested: int = 0
-    #:. THE LIMITS, beside the counts that were measured against them.
+    #: THE LIMITS, beside the counts that were measured against them.
     #: `rollouts_run: 5` alone cannot say whether the budget was 5 or 200, and
     #: `max_depth` is the one a reader most needs: without it a field of
     #: single-action rows is indistinguishable from a search that ran two deep
@@ -167,17 +167,17 @@ class PlanResult:
     max_rollouts: int = 0
     max_depth: int = 0
     invariants: int = 0
-    #:. The no-action row's filing, and only its own. Every other
+    #: The no-action row's filing, and only its own. Every other
     #: candidate is a counterfactual and is never asked to file, so these
     #: figures describe one trajectory rather than the field -- which is what
     #: makes them comparable with a `rollout`'s.
     predictions_filed: int = 0
     values_without_tolerance: int = 0
-    #:. The no-action row's held values, as the rollout counts them.
+    #: The no-action row's held values, as the rollout counts them.
     values_held: int = 0
     counterfactuals_not_filed: int = 0
     raced: List[Dict[str, Any]] = field(default_factory=list)
-    #:. The union of every candidate rollout's crossed edges.
+    #: The union of every candidate rollout's crossed edges.
     #: A plan rests on all of them, so it owes a question about any of
     #: them whose declaration this engine had to supply.
     edges_traversed: Set[str] = field(default_factory=set)
@@ -609,7 +609,7 @@ def search(session: Any, topology: Any, *,
             "supplied and no action template declares `candidates:`"))
         return result
 
-    # -- STAMPED HERE, not where the limit was read, and gated on the
+    # STAMPED HERE, not where the limit was read, and gated on the
     # field being wide enough for the limit to bite.
     #
     # Keyed on the KEY BEING ABSENT rather than on the value being 1: a model

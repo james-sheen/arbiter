@@ -30,7 +30,7 @@ import pytest
 
 from arbiter_engine.api import EngineSession, check
 
-#: -- TAKEN WHEN THE SERIES IS BUILT, NOT WHEN THE MODULE IS IMPORTED.
+#: TAKEN WHEN THE SERIES IS BUILT, NOT WHEN THE MODULE IS IMPORTED.
 #: This was a module-level `datetime.now(...)` constant, and the observations
 #: below are anchored to it while `check()` evaluates the declared `window`
 #: against the real clock. Collection imports this file minutes before the

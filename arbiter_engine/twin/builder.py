@@ -431,7 +431,7 @@ class TopologyBuilder:
             return
         temporal_block = rule.get('temporal')
         if not isinstance(temporal_block, dict):
-            # -- a list or a number here raised `AttributeError` out
+            # a list or a number here raised `AttributeError` out
             # of `model_describe`. Skipped as though absent; the loader
             # reports it.
             temporal_block = {}
@@ -442,7 +442,7 @@ class TopologyBuilder:
                 'time_constant_s'), edge.time_constant_s)
             edge.coupling_strength = _number_or(temporal_block.get(
                 'coupling_strength'), edge.coupling_strength)
-            # -- see `resolve_response_model`. An absent key keeps
+            # see `resolve_response_model`. An absent key keeps
             # whatever the edge already carries; a present one resolves by
             # case or falls back visibly rather than silently.
             if temporal_block.get('response_model') not in (None, ""):
@@ -479,7 +479,7 @@ class TopologyBuilder:
         if not transitions:
             return ()
         declared = temporal_block if isinstance(temporal_block, dict) else {}
-        # -- a value that is not a number is left to the engine as
+        # a value that is not a number is left to the engine as
         # surely as an absent one, so the question is asked of it too.
         return tuple(k for k in TIME_COURSE_KEYS
                      if resolve_number(declared.get(k))[0] is None)
@@ -713,7 +713,7 @@ class TopologyBuilder:
                 temporal_block.get('time_constant_s'), time_const)
             coupling = _number_or(
                 temporal_block.get('coupling_strength'), coupling)
-            # -- as above.
+            # as above.
             if temporal_block.get('response_model') not in (None, ""):
                 resp_model, _unresolved = resolve_response_model(
                     temporal_block.get('response_model'))

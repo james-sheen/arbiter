@@ -127,7 +127,7 @@ DT_INGEST_CALLER_TAG_ENABLED: bool = (
 
 # Frames inside the ingest funnel itself; the interesting caller is above these.
 #
-# -- DERIVED FROM THIS MODULE, and it used to be two written-out paths
+# DERIVED FROM THIS MODULE, and it used to be two written-out paths
 # that named the tree this file was AUTHORED in rather than the one it is
 # running in. The package is published under a different root, and a path
 # written without that root's prefix is not rewritten on the way out, so the

@@ -59,7 +59,7 @@ from ...interfaces import (
 from ...types import (
     Axiom, Severity, AxiomParameters, DetectionLayer, NotEvaluatedReason,
 )
-# — call resolve_axiom_threshold at z_warning/z_critical
+# call resolve_axiom_threshold at z_warning/z_critical
 # read-sites so per-sample entity-property overrides win over global
 # AxiomParameters fallback during v2 perturbation runs. Non-calibration
 # reads (baseline_days, min_samples) stay as global params — those are
@@ -406,7 +406,7 @@ class HomeostasisChecker:
             bound="both",
         )
 
-        # (implements): direction gate.
+        # direction gate.
         # BIDIRECTIONAL (default) preserves previously behavior: fire on
         # |z| > threshold. LOWER fires only on z < -threshold (negative-space,
         # e.g. silent moderation failure when rejected_input rate drops to

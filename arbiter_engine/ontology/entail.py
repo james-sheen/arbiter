@@ -134,7 +134,7 @@ def parse_rule(raw: Dict[str, Any]) -> Tuple[Optional[Rule], Optional[str]]:
     return Rule(name=name, head=head, body=tuple(body)), None
 
 
-#: -- the keys a `transitive:` shorthand takes, and nothing else.
+#: the keys a `transitive:` shorthand takes, and nothing else.
 _SHORTHAND_KEYS = frozenset({"name", "transitive", "max_hops"})
 
 
@@ -456,7 +456,7 @@ def entail(model, graph, entities) -> Tuple[SubEnvelope, List[Tuple[str, str, st
                 f"Declare `{rule.head.pred}` in `relationship_types:` so a "
                 f"check can read what `{rule.name}` derives."))
 
-    # -- a structural refusal the loader found, reported where the
+    # a structural refusal the loader found, reported where the
     # model's structure is: each inherited band a subtype turned into a
     # contradiction. The loader kept the merged indicator, so BOUNDEDNESS
     # declines on it at every check; this names why the band is what it is.

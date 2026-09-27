@@ -207,7 +207,7 @@ class BoundednessChecker:
                     f"but its value is not: {current!r}"),
             )
 
-        #: resolve effective thresholds through the optional
+        # resolve effective thresholds through the optional
         # RuntimeYAMLOverlay. When no overlay is wired or no override
         # exists, the calls return the original IndicatorSpec values.
         # B-2.7 — the four bounds may not be on the spec at all. One call, and

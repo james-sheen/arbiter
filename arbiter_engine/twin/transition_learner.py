@@ -80,13 +80,13 @@ class LearnedTransition:
     ci_high: float
     declared_gain: Optional[float] = None
     source: str = "learned"
-    #:. The response model this gain was fitted THROUGH. A steady-
+    #: The response model this gain was fitted THROUGH. A steady-
     #: state gain estimated under `step` and one estimated through a
     #: first-order lag are different computations on the same two series, and
     #: a reader comparing a proposal against a datasheet needs to know which
     #: one produced the number.
     response_model: str = "step"
-    #:. The STANDARD ERROR of the fitted gain -- how well these
+    #: The STANDARD ERROR of the fitted gain -- how well these
     #: readings pin the slope down. Proposed as a `gain_sigma:` because that
     #: is the quantity `gain_sigma:` declares: how sure anyone is of the gain.
     #:
@@ -98,11 +98,11 @@ class LearnedTransition:
     #: True when the block said `gain_sigma: estimate`, so a reader can tell a
     #: spread the author ASKED for from one this engine measured anyway.
     sigma_requested: bool = False
-    #:. Lag-1 autocorrelation of the fit's own residuals: whether the
+    #: Lag-1 autocorrelation of the fit's own residuals: whether the
     #: independence `gain_standard_error` assumes actually held. Near -0.5 on
     #: BOTH fit paths, because both difference the target's readings.
     residual_autocorrelation: float = 0.0
-    #:. Whether `gain_standard_error` can be read the way its own
+    #: Whether `gain_standard_error` can be read the way its own
     #: docstring says: as how well these readings pin the slope down.
     #:
     #: True on a `step` fit, where the regressor is differenced along with

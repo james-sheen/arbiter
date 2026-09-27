@@ -239,7 +239,7 @@ class MonteCarloPredictor:
             else random.Random()
         )
 
-        # — wall-clock cost-budget tracking. Start
+        # wall-clock cost-budget tracking. Start
         # timer when the loop begins so it doesn't penalize setup time.
         import time as _time
         start_time = _time.perf_counter()
@@ -321,7 +321,7 @@ class MonteCarloPredictor:
 
 
 # ===========================================================================
-# — Threshold-perturbation simulation_step factory
+# Threshold-perturbation simulation_step factory
 # ===========================================================================
 
 
@@ -456,7 +456,7 @@ def uniform_threshold_perturbation_strategy(
 
 
 # ============================================================
-# — real axiom-threshold perturbation v2 substrate
+# real axiom-threshold perturbation v2 substrate
 # ============================================================
 
 # Per substrate-only scope (a sub-split of the full scope): 3 pure-helper functions ship today — deepcopy_snapshot()
@@ -652,7 +652,7 @@ def make_real_perturbation_simulation_step_v2(
 
 
 # ===========================================================================
-# — Reference detection_callable factory for v2 substrate.
+# Reference detection_callable factory for v2 substrate.
 #
 # An internal ruling ships the deep-copy + threshold-extraction substrate (sync,
 # caller-supplied detection_callable). An internal ruling wires a reference
@@ -816,7 +816,7 @@ async def make_layered_detector_runtime_callable_async(
 
 
 # ===========================================================================
-# — Canonical AxiomParameters threshold_injector.
+# Canonical AxiomParameters threshold_injector.
 #
 # The v2 substrate hook (`threshold_injector: Optional[Callable]`) is already
 # on the reference detection_callable factory. What lands here is the canonical
@@ -975,7 +975,7 @@ def make_entity_properties_threshold_injector() -> Callable[
 
 
 # ===========================================================================
-# — Shared override-precedence resolver for axiom checkers.
+# Shared override-precedence resolver for axiom checkers.
 #
 # Each axiom-checker that integrates override (scope items
 # #1/#2/#3) calls this helper at every threshold read-site. Precedence:

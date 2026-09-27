@@ -88,6 +88,16 @@ Three things about it are promises and not accidents:
 - **A leg is present only on the verb that produces it**, and is never
   required. An envelope from an engine that predates a discipline validates.
 
+**Every decline in one call.** `declined_reasons(payload)` returns each reason an
+envelope or payload carries, from every list in `DECLINE_KEYS` -- `not_checked`
+and `not_fitted` hold records, `declines` and `declined` hold reasons already
+flattened -- and `unpublished_reasons` returns any that `PUBLISHED_REASONS`, the
+union of the axiom enum and every set above, does not hold. All four live in
+`arbiter_engine.subenvelope` beside `VOCABULARIES`, a deep path under the rule
+below. A patch release may add a key to `DECLINE_KEYS` when an envelope gains a
+list a decline is reported under, with the same three-valued reading as a new
+member.
+
 ## What a PATCH release may change
 
 - **Add a key** to any envelope leg, to `meta`, or to a tool's payload. Every
@@ -110,7 +120,7 @@ Three things about it are promises and not accidents:
   turning a zero denominator that had been reported with no reason beside it
   into one that names what it set aside and whose it was.
 
-  - **and the sets this rule permits growing are now published.**
+  **and the sets this rule permits growing are now published.**
   `BRIDGES.md` Sec. 2a carries all seven, ninety-three names, derived from
   `subenvelope.py` rather than transcribed beside it. Until then this entry had
   the defect that an internal ruling closed one bullet down, and closed first: a consumer told a
@@ -132,7 +142,7 @@ Three things about it are promises and not accidents:
   60 s dead time and time constant, standing in wherever a `temporal:` block
   was absent or short of a key.
 
-  - **and the list this rule permits growing is now published.**
+  **and the list this rule permits growing is now published.**
   `MODELING.md` carries every stamp the engine emits and what each one
   discloses, derived from the engine's own vocabulary rather than transcribed
   beside it. Until then this rule stood alone: a consumer told the list may

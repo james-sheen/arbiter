@@ -35,7 +35,7 @@ from .peers import parse_reference, resolve_peer
 from ...types import (
     Axiom, Severity, AxiomParameters, DetectionLayer, NotEvaluatedReason,
 )
-# — resolve_axiom_threshold at conservation_loss_margin
+# resolve_axiom_threshold at conservation_loss_margin
 # read-sites (firing-gate threshold). 3-tier precedence: sentinel >
 # indicator.conservation_config > global params. window_seconds + min_samples
 # preserved as global params (sample-window / sample-count, not calibration).

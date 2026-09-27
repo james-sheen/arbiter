@@ -147,7 +147,7 @@ def shadow_entities(session: Any) -> Tuple[List[Entity], List[Decline]]:
     """
     by_entity: Dict[str, Dict[str, float]] = {}
     declines: List[Decline] = []
-    #:. WHO WAS SET ASIDE, counted and named. See the decline below.
+    #: WHO WAS SET ASIDE, counted and named. See the decline below.
     set_aside: Dict[str, int] = {}
     for record in getattr(session.ledger, "pending", lambda: [])():
         if record.kind != "distribution" or not record.quantiles:
@@ -189,7 +189,7 @@ def shadow_entities(session: Any) -> Tuple[List[Entity], List[Decline]]:
         by_entity.setdefault(record.entity_id, {})[str(record.indicator)] = float(median)
 
     if set_aside:
-        # -- ONE DECLINE, COUNTED, NAMING THE SOURCES.
+        # ONE DECLINE, COUNTED, NAMING THE SOURCES.
         #
         # Every other skip in this loop files a decline, and this docstring
         # says why: *a forecast that went nowhere is exactly what the ingest

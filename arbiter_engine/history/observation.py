@@ -135,7 +135,7 @@ class InMemoryObservationHistory(ObservationHistory):
             if self._total_observation_count > self._max_total_observations:
                 self._evict_oldest_keys()
 
-        # (callsite) — emit per-observation production record
+        # emit per-observation production record
         # for source-health monitoring. `record_observation` internally checks
         # DT_OBSERVATION_PRODUCTION_ENABLED gate (no-op when off) + hybrid
         # emit-policy fires on health-transition OR stale-freshness. Outside
@@ -225,7 +225,7 @@ class InMemoryObservationHistory(ObservationHistory):
         # Update entity metadata
         with self._lock:
             prev_meta = self._entity_metadata.get(entity_id)
-            # (softened): Log type mismatch but preserve observations.
+            # Log type mismatch but preserve observations.
             # Entity IDs are now type-qualified (e.g. "deployment/ns/name"),
             # so cross-type collisions no longer reach here. If they do,
             # observations under different property names don't interfere

@@ -165,7 +165,7 @@ class UnifiedAxiomReasoner(OntologyReasonerInterface):
         self._readiness_thresholds = readiness_thresholds or {}
         self._family_registry = family_registry
         self._derived_engine = derived_engine
-        #: optional RuntimeYAMLOverlay threaded through to
+        # optional RuntimeYAMLOverlay threaded through to
         # axiom checkers. BoundednessChecker is the first integration
         # (first adjustment dimension). Sibling axiom checkers
         # gain overlay-awareness as later CDs land their thresholds.
@@ -596,7 +596,7 @@ class UnifiedAxiomReasoner(OntologyReasonerInterface):
             else:
                 problems = checker.check(entity, indicator, graph, history)
             _record_fires(axiom, entity, indicator, problems)
-            # (callsite) — emit axiom-verdict (axiom, entity)
+            # emit axiom-verdict (axiom, entity)
             # at production-readiness shape. Verdict semantics: empty problems
             # → PASS, non-empty → FAIL (with max problem confidence as the
             # verdict confidence). `record_axiom_verdict` internally checks
@@ -624,7 +624,7 @@ class UnifiedAxiomReasoner(OntologyReasonerInterface):
                 )
             except Exception:  # noqa: BLE001 — defensive; substrate-unavailable
                 pass
-            # (callsite) — emit prediction at production-readiness
+            # emit prediction at production-readiness
             # shape. Complementary to verdict callsite above: verdict
             # = PASS/FAIL/UNKNOWN (categorical); prediction = scalar severity
             # value + tier. PASS → prediction_severity=0.0 + LOW (routine);

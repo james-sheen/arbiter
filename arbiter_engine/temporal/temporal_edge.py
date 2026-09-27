@@ -202,11 +202,11 @@ class TemporalAnnotationStore:
         store = cls()
         for rule in relationship_rules:
             temporal = rule.get('temporal')
-            # -- a block of the wrong shape is skipped, not read: the
+            # a block of the wrong shape is skipped, not read: the
             # domain loader reports it.
             if not temporal or not isinstance(temporal, dict):
                 continue
-            # -- resolves case, and does not resolve a typo by
+            # resolves case, and does not resolve a typo by
             # accident. The unresolved value is reported by the domain
             # loader, which is the layer that owns reporting; this one is
             # here so the VALUE is not silently wrong either way.
@@ -334,7 +334,7 @@ class TemporalPropagationChecker:
                     propagation_path=path + [target_id],
                 ))
 
-                # (callsite) — emit per-edge temporal record at
+                # emit per-edge temporal record at
                 # production-readiness shape. Severity derived from
                 # path_coupling (attenuated coupling strength along the
                 # propagation path): coupling >= 0.7 → HIGH; >= 0.4 →

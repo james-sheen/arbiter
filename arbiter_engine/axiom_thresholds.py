@@ -118,7 +118,7 @@ OVERRIDE_CONSULTED_BY = {
 #: Axioms that CALL the resolver on a path the engine's own entry points never
 #: reach. An override for these is accepted, stored, and never read.
 OVERRIDE_DECLARED_BUT_UNREACHABLE: dict = {}
-#:, executed. Its one entry was BOUNDEDNESS, whose only call to the
+#: executed. Its one entry was BOUNDEDNESS, whose only call to the
 #: resolver sat inside `check_capacity_ratio` -- a used/limit method nothing in
 #: the package invoked, so a per-entity override was accepted and ignored. The
 #: ruling deleted the method rather than wiring it: wiring means designing a

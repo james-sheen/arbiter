@@ -42,7 +42,7 @@ from ...types import (
     NotEvaluatedReason,
     IORelationship,
 )
-# — resolve_axiom_threshold at the primary firing-gate
+# resolve_axiom_threshold at the primary firing-gate
 # read-site (correlation_drop_threshold). The other 2 calibration scalars
 # (latency_spike_factor + max_lag_seconds) stay as global params —
 # sentinel key only has 1 override slot per (indicator, axiom) tuple, so

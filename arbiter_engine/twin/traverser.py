@@ -74,7 +74,7 @@ _FLOW_OUT_TOKENS: FrozenSet[str] = frozenset({'out', 'output', 'sent'})
 
 
 
-#:. Below this the exact cascade response carries no significant
+#: Below this the exact cascade response carries no significant
 #: digit: it is computed as `1 - (a value near 1)`, so when the product of the
 #: stage responses is at the ULP of 1.0 the ratio between them is rounding
 #: noise -- measured, 39.97 where the true correction is 0.5. A property of
@@ -367,7 +367,7 @@ class TopologyTraverser:
                 bucket = imagined_spread.setdefault(eid, {}).setdefault(prop, {})
                 bucket.setdefault(("seed", eid, prop), math.sqrt(variance))
         imagined_via: Dict[str, Dict[str, str]] = {}
-        #:. (entity, property) pairs whose value arrived through an
+        #: (entity, property) pairs whose value arrived through an
         #: edge that SHAPES the transient rather than merely delaying it. A
         #: transition reading one of these is the second lag of a chain, and
         #: the walk composes chains by MULTIPLYING the two step responses --
@@ -384,12 +384,12 @@ class TopologyTraverser:
         #: is stamped and not quantified.
         shaped: Dict[Tuple[str, str], Tuple[Optional[Tuple[float, float]], ...]] = {}
         edges_without_dynamics: Set[str] = set()
-        #:. (node, sink) pairs whose axioms are evaluated after
+        #: (node, sink) pairs whose axioms are evaluated after
         #: the walk, once every contribution has landed. Simulating
         #: walks only; a reachability walk derives no values, so its
         #: per-node evaluation is already final when the node is popped.
         deferred_evaluations: List[Tuple[TwinNode, List[Problem]]] = []
-        #:. Every declared transition the walk reached, held until the
+        #: Every declared transition the walk reached, held until the
         #: whole reachable subgraph is known. Applied in DEPENDENCY order
         #: afterwards, so a node's value is complete before anything reads it.
         pending_transitions: List[Tuple[Any, str, str, float, TwinNode]] = []
@@ -951,7 +951,7 @@ class TopologyTraverser:
         #: refused. Kept apart from `undeclared_dynamics` because the two
         #: send an author in opposite directions.
         self.projection_refusals = []
-        #:. (entity, property) -> a callable taking a horizon in
+        #: (entity, property) -> a callable taking a horizon in
         #: seconds and returning `(value, sigma)`. Kept because a ROLLOUT does
         #: not want one forecast, it wants the CURVE: every step of it is a
         #: different instant, and holding one horizon's answer across all of
@@ -1586,7 +1586,7 @@ class TopologyTraverser:
                                  else SERIES_EDGES_COMPOSE_BY_PRODUCT)
                         if stamp not in result.assumptions:
                             result.assumptions.append(stamp)
-                        # /WHAT THE APPROXIMATION WOULD HAVE
+                        # WHAT THE APPROXIMATION WOULD HAVE
                         # COST. Recorded for the solved chains only, where it
                         # is now the size of the error AVOIDED rather than
                         # the size of one carried: an author reading a
@@ -2143,7 +2143,7 @@ class NLTraversalTranslator:
 
 
 # ---------------------------------------------------------------------------
-#: 3-tier escalation decision
+# 3-tier escalation decision
 # ---------------------------------------------------------------------------
 
 # The canonical-invariant shape (promotion).

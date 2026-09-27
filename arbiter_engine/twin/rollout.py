@@ -78,17 +78,17 @@ class RolloutStep:
     declines: List[SimulationDecline] = field(default_factory=list)
     actions_applied: List[str] = field(default_factory=list)
     transitions_applied: int = 0
-    #:. The response fractions the declared edges actually reached at
+    #: The response fractions the declared edges actually reached at
     #: this instant. Surfaced because a `0.0` here is the difference between
     #: `the model says nothing moves yet` and `the rollout never asked`, and
     #: the envelope carried no way to tell those apart.
     response_fractions: List[float] = field(default_factory=list)
-    #:. entity -> {property -> standard deviation of the imagined
+    #: entity -> {property -> standard deviation of the imagined
     #: value at this instant}. Present only where a declared `gain_sigma:`
     #: reached it, on the same rule the walk follows: an absent entry means
     #: nobody declared a spread, not that the spread is zero.
     sigma: Dict[str, Dict[str, float]] = field(default_factory=dict)
-    #:. entity -> {property -> the couplings that drove this value},
+    #: entity -> {property -> the couplings that drove this value},
     #: each as `relation:from->to`. Taken from the per-source spread
     #: breakdown the walk already computes, so it costs nothing to derive and
     #: cannot drift from what actually contributed. It is what lets a
@@ -97,7 +97,7 @@ class RolloutStep:
     #: target property alone, so two rules into one property each claimed
     #: every record and four records produced eight attributions.
     drivers: Dict[str, Dict[str, List[str]]] = field(default_factory=dict)
-    #:. What the reasoner ATTEMPTED over this imagined state, taken
+    #: What the reasoner ATTEMPTED over this imagined state, taken
     #: from `DetectionResult.evaluations_attempted`. Not derivable from
     #: `findings` and `declines`: an evaluation that ran and found nothing
     #: appears in neither, so summing those two is a denominator that moves
@@ -114,24 +114,24 @@ class RolloutResult:
     assumptions: List[str] = field(default_factory=list)
     transitions_attempted: int = 0
     transitions_applied: int = 0
-    #:. Which declared couplings this rollout actually crossed,
+    #: Which declared couplings this rollout actually crossed,
     #: as `source->target`. Recorded so that the verb which USED an
     #: undeclared number can name it: a `missing_declaration` question
     #: about an edge nothing traversed would be asking an author to
     #: declare a number this result does not rest on.
     edges_traversed: Set[str] = field(default_factory=set)
-    #:. Sum of the per-step `invariants`, for `CheckedSummary`.
+    #: Sum of the per-step `invariants`, for `CheckedSummary`.
     invariants: int = 0
-    #:. True when any declared `gain_sigma:` reached any imagined
+    #: True when any declared `gain_sigma:` reached any imagined
     #: value. What it gates is the difference between a clearance figure that
     #: is a PROBABILITY and one that is a boolean wearing a decimal point.
     has_declared_spread: bool = False
-    #:. Per-step value predictions filed into the session ledger, and
+    #: Per-step value predictions filed into the session ledger, and
     #: the values that could not be filed because nobody declared how close
     #: counts as right.
     predictions_filed: int = 0
     values_without_tolerance: int = 0
-    #:. The part of `values_without_tolerance` that NOTHING MOVED: no
+    #: The part of `values_without_tolerance` that NOTHING MOVED: no
     #: projected seed carried a forecast into it and no coupling drove it, so
     #: it is its own reading held forward rather than a projection, and a
     #: spread cannot make it filable. A projected seed's band now reaches
@@ -142,19 +142,19 @@ class RolloutResult:
     #: `values_without_tolerance` rather than beside it, so that count keeps
     #: meaning what it always has and the partition below still holds.
     values_held: int = 0
-    #:. Per step, the product the walk composed against the exact
+    #: Per step, the product the walk composed against the exact
     #: convolution the declared dynamics imply, for every chain where a
     #: closed form exists. The `series_edges_compose_by_product` stamp says
     #: an approximation was used; these say what it cost.
     series_errors: List[Dict[str, Any]] = field(default_factory=list)
-    #:. One row per filed prediction saying whether a random walk was
+    #: One row per filed prediction saying whether a random walk was
     #: fitted beside it and, when it was not, WHICH of the reasons applied --
     #: the same vocabulary `ingest_forecasts` reports for a producer. A bare
     #: count would leave *this projection did not beat a random walk* and
     #: *nothing ran a random walk* reading identically, which is the pair
     #: this engine exists to keep apart.
     raced: List[Dict[str, Any]] = field(default_factory=list)
-    #:. Values this rollout did not predict because it was TOLD them:
+    #: Values this rollout did not predict because it was TOLD them:
     #: a projected seed (whose forecast `project` files itself) and anything
     #: an action set. Counted rather than skipped so the three numbers
     #: partition every imagined value -- filed, unfilable, and not ours to
@@ -383,7 +383,7 @@ def run(session: Any, topology: Any, *,
     if unreadable is not None:
         result.declines.append(unreadable)
     now = _now(session)
-    #:. ONE id for everything this rollout files. A rollout is one
+    #: ONE id for everything this rollout files. A rollout is one
     #: trajectory however many instants it reports, so the records it files
     #: are one episode -- which is what `traversal_id` has always meant on an
     #: impact record, and what a calibration needs in order to say whether
@@ -462,7 +462,7 @@ def run(session: Any, topology: Any, *,
     #: instant}. The response is re-derived from each instant at every step
     #: and the contributions superpose.
     #:
-    #:. This held ONE instant per property -- the latest movement's --
+    #: This held ONE instant per property -- the latest movement's --
     #: while `state` held the cumulative delta, so a property that moved twice
     #: was walked once as though the whole displacement had arrived at the
     #: second instant. The progress the first movement had made along its own
@@ -473,7 +473,7 @@ def run(session: Any, topology: Any, *,
     #: The steady state was right throughout, which is why a test that checks
     #: where a trajectory ENDS could not see it.
     movements: Dict[Tuple[str, str], Dict[float, float]] = {}
-    #:. (entity, property) -> what the declared couplings had
+    #: (entity, property) -> what the declared couplings had
     #: delivered to it by the END OF THE LAST COMPLETED STEP, and the signed
     #: doubt that came with it.
     #:
@@ -497,16 +497,16 @@ def run(session: Any, topology: Any, *,
     #: the last one. A second copy here would be the staler of two records of
     #: one fact, which is how the two come to disagree.
     received: Dict[Tuple[str, str], float] = {}
-    #:. (entity, property) -> a reader over the fitted forecast. A
+    #: (entity, property) -> a reader over the fitted forecast. A
     #: rollout wants the CURVE, not one horizon's answer: every step is a
     #: different instant, and holding one across all of them says the source
     #: finished moving before the first step ran.
     curves: Dict[Tuple[str, str], Any] = {}
-    #:. (entity, property) pairs an action has moved, cumulative
+    #: (entity, property) pairs an action has moved, cumulative
     #: across steps. A forecast describes the unmanaged trajectory, so it
     #: stops being overlaid on a property somebody has intervened on.
     acted: Set[Tuple[str, str]] = set()
-    #:. The forecast's own spread, and how much of it each movement
+    #: The forecast's own spread, and how much of it each movement
     #: of the property carries. A seeded property that is then acted on has
     #: its action's delta measured FROM the seeded value, so the two
     #: movements depend on the one forecast with OPPOSITE signs and the
@@ -517,7 +517,7 @@ def run(session: Any, topology: Any, *,
     seed_sigma: Dict[Tuple[str, str], float] = {}
     seed_sensitivity: Dict[Tuple[str, str], Dict[float, float]] = {}
     seed_carried: Dict[Tuple[str, str], float] = {}
-    #:. (entity, property) -> {instant -> {uncertainty source -> the
+    #: (entity, property) -> {instant -> {uncertainty source -> the
     #: SIGNED doubt this action's own movement carries from it}}. The same
     #: quantity `seed_sensitivity` holds for a forecast band, for doubt that
     #: arrived through a declared `gain_sigma:` instead. An action whose delta
@@ -726,7 +726,7 @@ def run(session: Any, topology: Any, *,
         #: An internal ruling moved that instant INTO the keys below rather than keeping
         #: it in a table beside them, because a table keyed by property can
         #: hold one instant and a step can carry two.
-        #:. (entity, property) -> [(effect, value, label)] for EVERY
+        #: (entity, property) -> [(effect, value, label)] for EVERY
         #: effect this step carries, additive ones included.
         #:
         #: Recording only the non-additive ones was the first version and it
@@ -738,7 +738,7 @@ def run(session: Any, topology: Any, *,
         #: set has to be complete before anything is decided.
         intents: Dict[Tuple[str, str, float],
                       List[Tuple[str, float, str]]] = {}
-        #:. (label, the (entity, property) pairs that instance asked
+        #: (label, the (entity, property) pairs that instance asked
         #: for), one entry per instance that got this far. `actions_applied`
         #: is rebuilt from it once the refusals are known, so an instance
         #: survives when ANY of its effects did -- an action touching two

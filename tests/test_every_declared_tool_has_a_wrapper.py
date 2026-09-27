@@ -40,7 +40,7 @@ import pytest
 # package that does not exist on the other side -- measured, it refused a
 # release build.
 #
-# -- the note that stood here said the same thing by naming the tool
+# the note that stood here said the same thing by naming the tool
 # that performs the derivation and quoting a dotless import as the example.
 # Neither survives the crossing: the tool is not in this tree, and the example
 # is an absolute import, so it was substituted in place and the published

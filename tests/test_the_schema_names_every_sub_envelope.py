@@ -94,7 +94,7 @@ class TestEverySubEnvelopeSharesOneShape:
     def test_no_sub_envelope_is_declared_inline(self, schema):
         """A second inline shape is how the two contracts drift apart.
 
-        - the check is now *reaches the shared shape*, not *is the
+        the check is now *reaches the shared shape*, not *is the
         shared shape*. Three sub-envelopes carry payload the others do not and
         have their own definitions; all three still compose this one, so there
         is exactly one description of the five legs in the document.

@@ -277,8 +277,8 @@ class TwinNode:
     # unread `degradation_fitter` parameter went, and measurement showed it
     # did not, because THIS was the carrier.
     #
-    # Third instance of the shape (`axiom_checkers`) and
-    # (`degradation_fitter`), and the first that is a field rather
+    # Third instance of the shape after `axiom_checkers` and
+    # `degradation_fitter`, and the first that is a field rather
     # than a parameter. `DegradationCurve` itself is live and unaffected —
     # An internal ruling wired it into the full system, which is where
     # degradation belongs.
@@ -420,7 +420,7 @@ class Transition:
     observation_count: int = 0
     confidence: float = 1.0
 
-    #:. The `source:` values MODELING.md documents for a transition.
+    #: The `source:` values MODELING.md documents for a transition.
     #: Named here so the property below and the guide cannot drift apart
     #: silently, which they had: the check accepted `runbook`, which is an
     #: ACTION TEMPLATE's provenance and has never been a documented
@@ -724,7 +724,7 @@ class TraversalResult:
     #: asks for no values and therefore projects none.
     transitions_applied: List['TransitionApplied'] = field(
         default_factory=list)
-    #:. One row per chain of shaping edges whose composition the walk
+    #: One row per chain of shaping edges whose composition the walk
     #: APPROXIMATED and could also solve exactly -- the product it used, the
     #: convolution the declared dynamics imply, and the signed gap. Empty
     #: when no chain formed AND when a chain formed that has no closed form,
@@ -770,7 +770,7 @@ class TraversalResult:
     questions_generated: List[TopologyQuestion] = field(default_factory=list)
     conservation_violations: List[Problem] = field(default_factory=list)
     traversal_time_ms: float = 0.0
-    #:. Axiom evaluations this traversal ATTEMPTED, counted where they
+    #: Axiom evaluations this traversal ATTEMPTED, counted where they
     #: happen. The envelope's denominator was previously derived in `api.py` by
     #: counting `axiom_states` on each walked node, which counts what the
     #: builder SEEDED rather than what ran: a node carries one state per

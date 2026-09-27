@@ -81,6 +81,13 @@ ARGUMENTS = {
     "file_action": {"action": {"template": "none", "entity_id": ENTITY_ID},
                     "executed_at": "2026-01-01T00:00:00",
                     "basis": "the roundtrip walk"},
+    # The case book's three verbs. The session's model declares no
+    # `cases:` block and holds no case, so each answers with its refusal by
+    # name -- an envelope like any other, which is what this walk is about.
+    "open_case": {"entity_id": ENTITY_ID, "indicator": "level_pct"},
+    "attach_stage": {"case_id": "no-such-case", "stage": "learn",
+                     "reference": {"why": "the roundtrip walk"}},
+    "case_book": {},
     "load_model": {"model": _MINIMAL_MODEL},
     "add_entity": {"entity_id": "x", "entity_type": "Unit"},
     # The session's own entity joined to itself by a relation type
@@ -124,7 +131,11 @@ class TestTheRoutingTable:
         # an execution into the prediction ledger, which no read and no
         # feeder touches.
         records = {"file_action"}
-        assert reads | feeders | records == set(TOOL_NAMES)
+        # AND THE BOOK THE STAGES ARE KEPT IN. Without these a
+        # client could run every stage of the loop and hold none of them
+        # together: the case book was reachable from Python only.
+        cases = {"open_case", "attach_stage", "case_book"}
+        assert reads | feeders | records | cases == set(TOOL_NAMES)
 
     @pytest.mark.parametrize("name", TOOL_NAMES)
     def test_every_advertised_tool_is_routable(self, name):

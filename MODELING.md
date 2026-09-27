@@ -1191,6 +1191,13 @@ decline of the inferences behind its ranking into its own `not_checked`, and
 names them on each row as `declined`, so a ranking of `null` posteriors reads as
 the missing strengths it is rather than as an answer.
 
+**`not_identifiable` covers three conditions, on purpose.** `infer` gives it for
+an open backdoor; `hypothesize` gives it for a subject outside the causal
+subgraph, and for one at its root. Each says the declared graph gives the
+question no answer, and the last two are mended the same way, by a causal edge
+into the subject. The `detail` says which condition held -- for a person, since
+matching on it is unsupported.
+
 ### What counts as faulty evidence: `causal.evidence_severity`
 
 `infer` reads the last `check()`. An entity in its `not_checked` leg is left

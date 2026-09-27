@@ -126,9 +126,9 @@ class TestItRanksOnlyWhatWasDeclared:
             "not_identifiable"}
 
     def test_the_two_refusals_are_distinguished_by_detail(self):
-        """They share a reason deliberately -- growing a published closed
-        vocabulary has a measured cost -- so the DETAIL has to tell them
-        apart or the sharing is a loss of information."""
+        """They share a reason on purpose -- the test below says why -- so the
+        DETAIL has to tell a person which one held, or the sharing loses
+        information."""
         session = _session(*CRITICAL)
         session.add_entity("orphan-1", "Panel", {"voltage_v": 200.0})
         outside = _ranked(session, "orphan-1")["not_checked"][0]["detail"]
@@ -136,6 +136,43 @@ class TestItRanksOnlyWhatWasDeclared:
         assert outside != root
         assert "causal subgraph" in outside
         assert "ancestor" in root
+
+    def test_which_refusal_came_back_does_not_say_what_is_owed(self):
+        """WHY THE TWO SHARE A REASON. A reason is split on who owes
+        something, and outside the graph against at its root does not track
+        that: one edge mends an orphan and a root alike, while a second root is
+        mended by no edge, because no causal rule reaches its type."""
+        session = _session(*CRITICAL)
+        session.add_entity("orphan-1", "Panel", {"voltage_v": 200.0})
+        session.add_entity("fdr-2", "Feeder", {"current_a": 300.0})
+        session.add_entity("pnl-c", "Panel", {"voltage_v": 200.0})
+        session.add_relationship("fdr-2", "powers", "pnl-c")
+        details = {}
+        for subject in ("orphan-1", "fdr-2"):
+            payload = _ranked(session, subject)
+            assert not payload["candidates"]
+            (decline,) = payload["not_checked"]
+            assert decline["reason"] == "not_identifiable"
+            details[subject] = decline["detail"]
+        assert "causal subgraph" in details["orphan-1"]
+        assert "ancestor" in details["fdr-2"]
+
+        # The same declaration mends both: an edge INTO the subject.
+        session.add_relationship("fdr-1", "powers", "orphan-1")
+        session.add_relationship("sub-1", "powers", "fdr-2")
+        orphan = [c["cause"] for c in _ranked(session, "orphan-1")["candidates"]]
+        root = [c["cause"] for c in _ranked(session, "fdr-2")["candidates"]]
+        assert "fdr-1" in orphan
+        assert root == ["sub-1"]
+
+        # And one arm owes different things. The supply is a root too, and an
+        # edge into it changes nothing: the specimen declares no causal rule
+        # into a Supply, so what is owed there is a rule.
+        session.add_relationship("fdr-1", "powers", "sub-1")
+        payload = _ranked(session, "sub-1")
+        assert not payload["candidates"]
+        assert {d["reason"] for d in payload["not_checked"]} == {
+            "not_identifiable"}
 
 
 class TestTheWalkIsBounded:

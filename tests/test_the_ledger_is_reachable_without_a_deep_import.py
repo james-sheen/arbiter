@@ -19,7 +19,7 @@ one-shot process still reports every rate null -- correctly, because nothing in
 that run matured. A promotion that quietly made calibration start working would
 be a behaviour change wearing an ergonomics costume.
 
-- THE TWO FACTS BELOW COST THREE ATTEMPTS EACH. The author burned
+THE TWO FACTS BELOW COST THREE ATTEMPTS EACH. The author burned
 three probes discovering the grace window and an outside reviewer burned two;
 both then reported it as *a thing a consumer discovers by trial*. They are in
 the README now, and pinned here so the prose and the behaviour move together.

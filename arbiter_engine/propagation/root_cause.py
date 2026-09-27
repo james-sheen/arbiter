@@ -367,7 +367,7 @@ class RootCauseIdentifier:
         anomalies = frozenset(anomalous_entities)
 
         # Determine candidate roots: entities with outgoing relationships.
-        #: delegate to collect_upstream_candidates module helper
+        # delegate to collect_upstream_candidates module helper
         # so TopologyTraverser.find_root_causes can use the same canonical
         # upstream walk under its own graph abstraction.
         if candidate_roots is not None:
@@ -427,7 +427,7 @@ class RootCauseIdentifier:
             )
         else:
             # Default: greedy set cover with O(ln n) guarantee.
-            #: delegate to select_root_causes_via_set_cover
+            # delegate to select_root_causes_via_set_cover
             # module helper, shared with TopologyTraverser.find_root_causes.
             result = select_root_causes_via_set_cover(
                 footprints={cid: cov for cid, (cov, _, _) in footprints.items()},
@@ -457,7 +457,7 @@ class RootCauseIdentifier:
             except Exception as e:
                 logger.warning("LP confidence computation failed: %s", e)
 
-        # (callsite) — emit per-candidate RCA record at
+        # emit per-candidate RCA record at
         # production-readiness shape. One record per RootCauseCandidate
         # (not per covered anomaly) — per-candidate is the substrate intent
         # ProductionRCACandidate dataclass shape. target_entity

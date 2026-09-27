@@ -85,7 +85,7 @@ def greedy_set_cover(
 
 
 # ============================================================
-# — RootCauseIdentifier production-readiness substrate
+# RootCauseIdentifier production-readiness substrate
 # ============================================================
 # Re-activates RCA axis-25 substrate (RootCauseIdentifier
 # foundation; greedy_set_cover above + the analyzer, causal_graph,

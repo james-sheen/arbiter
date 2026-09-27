@@ -150,7 +150,7 @@ health:criticalThreshold a owl:DatatypeProperty;
     rdfs:domain health:NumericIndicator;
     rdfs:range xsd:float.
 
-# -- the same two thresholds pointing down. Both pairs may be declared
+# the same two thresholds pointing down. Both pairs may be declared
 # on one indicator, which makes the pair of pairs a band.
 health:lowerWarningThreshold a owl:DatatypeProperty;
     rdfs:label "lower warning threshold";

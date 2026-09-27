@@ -327,13 +327,13 @@ class DomainModel:
     #: that, a rule declaring 120s/600s/0.9 produced an edge carrying
     #: 60.0/60.0/1.0 and stamped `auto`.
     relationship_rules: List[Dict[str, Any]] = field(default_factory=list)
-    #: -- entries of `relationship_rules:`, `rules:` and
+    #: entries of `relationship_rules:`, `rules:` and
     #: `action_templates:` that are not mappings, as `{section, index,
     #: value}`. Every reader calls `.get` on an entry, so these cannot sit in
     #: the lists; they were dropped there in silence, and `unread_fields` now
     #: reports each one instead.
     set_aside_entries: List[Dict[str, Any]] = field(default_factory=list)
-    #: -- every key the domain declared at its own top level, so
+    #: every key the domain declared at its own top level, so
     #: `unread_fields` can name one this engine does not read. A misspelled
     #: `relationship_rule:` dropped every rule with nothing said.
     top_level_keys: Tuple[str, ...] = ()
@@ -369,7 +369,7 @@ class DomainModel:
     #: windows measured in open time by `CalendarHistory`.
     calendar: Dict[str, Any] = field(default_factory=dict)
     indicators: Dict[str, List[IndicatorSpec]] = field(default_factory=dict)
-    #: -- the evaluation parameters this model sets for itself, as the
+    #: the evaluation parameters this model sets for itself, as the
     #: author wrote them. `evaluation_parameters()` reads them into the
     #: `AxiomParameters` the session's reasoner is built with. A key that is
     #: not a parameter, or a value that is not a number of that parameter's
@@ -377,19 +377,19 @@ class DomainModel:
     #: default stands for that one key. Absent, every default stands, exactly
     #: as before this existed.
     axiom_parameters: Dict[str, Any] = field(default_factory=dict)
-    #: -- when a case resolves: `severity`, the finding severity at or
+    #: when a case resolves: `severity`, the finding severity at or
     #: above which a check keeps a case open, and `consecutive_checks`, how
     #: many checks in a row without one close it. Declared, because how clean
     #: is clean enough is a domain fact. Absent, `open_case` declines
     #: `missing_config` rather than choosing a number.
     cases: Dict[str, Any] = field(default_factory=dict)
-    #: -- `{subtype: parent}`, from `entity_types:` entries written as
+    #: `{subtype: parent}`, from `entity_types:` entries written as
     #: `{name: Subtype, extends: Parent}`. A subtype's indicators are the
     #: parent's plus its own, resolved when the model loads, and an action
     #: template for the parent applies to it. Relationship rules are NOT
     #: inherited: an edge rule names the types it joins.
     extends: Dict[str, str] = field(default_factory=dict)
-    #: -- each indicator whose inherited band and the subtype's own
+    #: each indicator whose inherited band and the subtype's own
     #: keys MERGED into a contradiction neither had alone. The merged
     #: indicator is kept, so BOUNDEDNESS declines on the band at every check,
     #: and the pair is reported here, by `unreachable_declarations` and by
@@ -665,7 +665,7 @@ class DomainModel:
             ("", "edge_direction", *_exact_member(EdgeDirection)),
             ("", "flow_type", *_exact_member(FlowType)),
         )
-        #: -- `(block, key, resolver)` for each NUMBER a rule's readers
+        #: `(block, key, resolver)` for each NUMBER a rule's readers
         #: take, each resolver the one its reader calls. `float()` on `120s`
         #: raised out of `model_describe`, and a strength written `"0.8"` was
         #: read as no strength at all. A transition's numbers are not here:
@@ -680,7 +680,7 @@ class DomainModel:
         )
 
         out: List[Dict[str, Any]] = []
-        # -- an entry that is not a mapping, set aside at
+        # an entry that is not a mapping, set aside at
         # load. It was dropped there with no row, so a rule written as a bare
         # word simply did not exist.
         for entry in (getattr(self, "set_aside_entries", None) or ()):
@@ -704,7 +704,7 @@ class DomainModel:
             label = (f"{rule.get('source_type', '?')}"
                      f"-{rule.get('type', '?')}->"
                      f"{rule.get('target_type', '?')}")
-            # -- a block of the wrong shape. Every reader now skips it
+            # a block of the wrong shape. Every reader now skips it
             # as though absent rather than raising; this row is where the
             # author hears about it.
             for where in ("temporal", "causal"):
@@ -799,7 +799,7 @@ class DomainModel:
                 field_name = f"{where}.{key}" if where else key
                 moved = (elsewhere or {}).get(key)
                 if moved is not None:
-                    # -- the right key at the wrong level. The nearest
+                    # the right key at the wrong level. The nearest
                     # spelling of some OTHER key would send the author after a
                     # typo that is not there.
                     near = moved
@@ -836,7 +836,7 @@ class DomainModel:
             label = (f"{rule.get('source_type', '?')}"
                      f"-{rule.get('type', '?')}->"
                      f"{rule.get('target_type', '?')}")
-            # -- the rule's OWN level, checked like the blocks inside
+            # the rule's OWN level, checked like the blocks inside
             # it, with the keys another reader owns let through by name.
             places = _rule_places(rule)
             report("", rule, _KNOWN_RULE_KEYS | _NON_ENGINE_RULE_KEYS, label,
@@ -844,7 +844,7 @@ class DomainModel:
             for where, known in _COUPLING_BLOCKS:
                 block = rule.get(where)
                 if where == "transition" and isinstance(block, list):
-                    # -- the builder takes a LIST of transitions, one
+                    # the builder takes a LIST of transitions, one
                     # per property a relationship drives, and only the single
                     # mapping was ever checked: measured, `gain_sgima` inside
                     # a one-item list reported nothing.
@@ -884,13 +884,13 @@ class DomainModel:
                     # beside each one has a closed set.
                     report(f"action_templates.parameters_schema.{parameter}",
                            spec, _KNOWN_ACTION_PARAM_KEYS, label)
-        # -- the domain's OWN top level. A misspelled
+        # the domain's OWN top level. A misspelled
         # `relationship_rule:` dropped every rule with nothing said; the
         # orchestrator's keys pass by name.
         report("", {key: None for key in
                     (getattr(self, "top_level_keys", None) or ())},
                _MODEL_KEYS | _NON_ENGINE_MODEL_KEYS, "")
-        # -- the calendar, and each session in it.
+        # the calendar, and each session in it.
         calendar = getattr(self, "calendar", None)
         report("calendar", calendar, _KNOWN_CALENDAR_KEYS, "")
         if isinstance(calendar, dict) and isinstance(
@@ -898,7 +898,7 @@ class DomainModel:
             for position, session in enumerate(calendar["sessions"]):
                 report(f"calendar.sessions[{position}]", session,
                        _KNOWN_SESSION_KEYS, "")
-        # -- an entailment rule written out. A `transitive:` shorthand
+        # an entailment rule written out. A `transitive:` shorthand
         # carrying anything else is refused whole by `entail`, by name, and is
         # not picked over here: the posture action templates already take.
         for raw in (getattr(self, "rules", None) or ()):
@@ -1105,7 +1105,7 @@ class DomainModel:
         return out
 
 
-#:. Which axiom READS each optional indicator field.
+#: Which axiom READS each optional indicator field.
 #:
 #: A hand-written map, because the fact it records lives in checker code and
 #: cannot be derived from a field name -- `expect_variation` is read by
@@ -1251,7 +1251,7 @@ _MODEL_KEYS = frozenset({
     "property_mapping", "axiom_parameters", "cases",
 })
 
-#: -- the members of `_MODEL_KEYS` that name or describe a document
+#: the members of `_MODEL_KEYS` that name or describe a document
 #: rather than model anything. Every YAML format has words for these, so a
 #: document WITHOUT a `domain:` key that shares only these is not a model.
 _IDENTIFYING_KEYS = frozenset({"id", "domain_id", "name", "description"})
@@ -1292,7 +1292,7 @@ _KNOWN_PLANNING_KEYS = frozenset({
     "objective", "min_severity", "max_rollouts", "max_depth",
 })
 
-#:. The `cases:` block, and the severities it may name -- the
+#: The `cases:` block, and the severities it may name -- the
 #: finding scale, most severe first.
 _KNOWN_CASES_KEYS = frozenset({"severity", "consecutive_checks"})
 _CASE_SEVERITIES = ("critical", "high", "medium", "low", "warning", "info")
@@ -1345,7 +1345,7 @@ _KNOWN_ACTION_PARAM_KEYS = frozenset({
     "type", "entity_property", "candidates", "tolerance",
 })
 
-#: -- a relationship rule's OWN level, which nothing compared against
+#: a relationship rule's OWN level, which nothing compared against
 #: anything. Measured: `source:`, `edge_directon:` and a `latent_confounder` one
 #: level too deep all loaded clean, and a misspelled `leak` moved `infer`'s
 #: answer with no row anywhere. These are the keys the readers take off a rule:
@@ -1377,7 +1377,7 @@ _NON_ENGINE_RULE_KEYS = frozenset({
 
 #: Keys a domain's top level carries that NO READER IN THIS ENGINE reads -- the
 #: same ruling as `_NON_ENGINE_RULE_KEYS`, at the scale it was named for in
-#:. They are the orchestrator's: its domain registry and the services
+#: They are the orchestrator's: its domain registry and the services
 #: around it read each one, and this package includes none of them. Measured
 #: 2026-09-26 across the model files beside this engine: 25 keys outside
 #: `_MODEL_KEYS`, of which these 23 have a reader there. The other two --
@@ -1397,7 +1397,7 @@ _NON_ENGINE_MODEL_KEYS = frozenset({
     "traversal_rules",
 })
 
-#: -- the `calendar:` block and each of its sessions, as
+#: the `calendar:` block and each of its sessions, as
 #: `history/calendar.py` reads them. Measured: `sesions:` loaded clean and left
 #: the world always open, and a session's `timezone:` left its hours read as
 #: UTC -- hours off, with nothing said. Derived, not transcribed, by
@@ -1405,7 +1405,7 @@ _NON_ENGINE_MODEL_KEYS = frozenset({
 _KNOWN_CALENDAR_KEYS = frozenset({"sessions", "holidays"})
 _KNOWN_SESSION_KEYS = frozenset({"days", "open", "close", "tz"})
 
-#: -- an entailment rule written out: the keys `entail.parse_rule`
+#: an entailment rule written out: the keys `entail.parse_rule`
 #: reads. A `transitive:` shorthand is not checked here, because `entail`
 #: already refuses one carrying anything else, whole and by name.
 _KNOWN_ENTAILMENT_RULE_KEYS = frozenset({"name", "head", "body"})
@@ -1421,7 +1421,7 @@ _ENTRY_SHAPES = {
                          "`applies_to` and `parameters_schema`"),
 }
 
-#: -- the `causal:` block ON A RULE: a noisy-OR weight and its leak,
+#: the `causal:` block ON A RULE: a noisy-OR weight and its leak,
 #: read by causal inference. Not the domain's own `causal:` block, whose one
 #: key is `_KNOWN_CAUSAL_KEYS` above. Measured before this check: `lek: 0.5`
 #: left the leak at the engine's 0.01 and moved an observed posterior from
@@ -2125,7 +2125,7 @@ def load_domain(source: Union[str, Path, Dict[str, Any]]) -> DomainModel:
     # and is still a model; a document sharing NO key with this vocabulary is
     # not one, whatever else it contains. Derived from the key set below rather
     # than written out, so a field added there is covered here for free.
-    # -- AND NOT ONLY A WORD EVERY FORMAT USES. `id`, `name` and
+    # AND NOT ONLY A WORD EVERY FORMAT USES. `id`, `name` and
     # `description` are keys a GitHub workflow, a compose file and half the
     # YAML in a repository declare, so sharing one of those alone made a CI
     # workflow a model: it loaded, and the top-level check then reported
@@ -2183,7 +2183,7 @@ def load_domain(source: Union[str, Path, Dict[str, Any]]) -> DomainModel:
         if specs:
             indicators[entity_type] = specs
 
-    # -- the three lists whose entries every reader `.get`s.
+    # the three lists whose entries every reader `.get`s.
     # An entry that is not a mapping is set aside and reported, where it used
     # to be dropped with nothing said.
     sequences = {

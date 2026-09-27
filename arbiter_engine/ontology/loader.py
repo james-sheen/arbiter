@@ -4,7 +4,7 @@ Ontology loader for RDF/TTL files.
 This module handles loading and parsing ontologies using rdflib.
 """
 
-# -- annotations are not evaluated at definition time, so the rdflib
+# annotations are not evaluated at definition time, so the rdflib
 # names may stay unbound until something actually wants a graph. Eight
 # signatures below annotate `URIRef`; without this line every one of those
 # `def`s would resolve that name during import, which is the single thing the
@@ -21,7 +21,7 @@ from ..types import Axiom, IndicatorType, Severity
 
 logger = logging.getLogger(__name__)
 
-# -- `rdflib` IS IMPORTED ON FIRST USE, NOT AT MODULE SCOPE.
+# `rdflib` IS IMPORTED ON FIRST USE, NOT AT MODULE SCOPE.
 #
 # It stood here as a `try`/`except ImportError` pair, which reads as the right
 # way to hold an optional dependency and is, for a module nobody reaches unless
@@ -59,7 +59,7 @@ logger = logging.getLogger(__name__)
 # asks whether rdflib is here, and still takes the built-in path when it is
 # not. They ask a function now rather than read a constant, and it decides once.
 #
-# -- AND THE NAMES ARE NOT PRE-BOUND TO `None`, which is how the first
+# AND THE NAMES ARE NOT PRE-BOUND TO `None`, which is how the first
 # version of this block got them wrong. Binding them here made the lazy import
 # invisible to the module's own code and VISIBLE, wrongly, to everyone else:
 # `from ...ontology.loader import HEALTH` takes a COPY at import time, so it
@@ -113,7 +113,7 @@ _have_rdflib = None
 # this module may declare is pinned by a test, two-sided, so it cannot quietly
 # become three again.
 #
-# -- they are BUILT inside `_rdflib_ready()` below rather than standing
+# they are BUILT inside `_rdflib_ready()` below rather than standing
 # here, because `Namespace(...)` is an rdflib call and this module no longer
 # makes one at import. Both URIs are unchanged, and the two-sided test that
 # pins the set reads this file as text, so it still sees exactly two.
@@ -179,7 +179,7 @@ def __getattr__(name: str):
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
-# (implements): HOMEOSTASIS direction allow-list.
+# HOMEOSTASIS direction allow-list.
 # Module-level frozenset for grep-auditability + family-loader-warn
 # pattern (typos surface in operator logs but don't crash YAML parse).
 _VALID_HOMEOSTASIS_DIRECTIONS = frozenset({"UPPER", "LOWER", "BIDIRECTIONAL"})
@@ -789,7 +789,7 @@ class OntologyLoader:
             window = self._parse_duration(data.get('window', '1h')) or timedelta(hours=1)
             timeout = self._parse_duration(data.get('timeout', '5m')) or timedelta(minutes=5)
 
-            # (implements): HOMEOSTASIS direction field.
+            # HOMEOSTASIS direction field.
             # Defaults to BIDIRECTIONAL (previously behavior). Unrecognized
             # values WARN + fall back to BIDIRECTIONAL (family-loader
             # pattern: typos surface but never crash the parse).

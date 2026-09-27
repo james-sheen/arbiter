@@ -28,12 +28,10 @@ also the truer answer: this runs that discipline's machinery on a causal
 question, and an eighth name for the seventh engine would be a second record of
 one thing.
 
-Its two refusals therefore share `not_identifiable`, distinguished by their
-detail. This project normally SPLITS a reason into named arms rather than
-sharing one, so that is a debt and not a design: growing a published closed
-vocabulary has a measured cost on a fail-closed consumer -- one broke this month
-on exactly such an addition -- and that decision should not ride along inside
-the commit that ships a feature.
+Its two refusals therefore share `not_identifiable`, ON PURPOSE: a
+subject outside the causal subgraph and one at its root both lack a declared
+causal edge in, and declaring one is what mends either. The reasoning is
+written once, beside the member in `subenvelope.VOCABULARIES`.
 
 WHAT IT REFUSES. It ranks only DECLARED causal ancestors. It does not search for
 a cause outside the graph, does not invent an edge, and does not rank an entity
@@ -158,7 +156,7 @@ def hypothesize(session: Any, entity_id: str, *,
     # the engine's evidence floor carried no `evidence_severity_not_declared`
     # while the verb's own docstring told the reader to check for it.
     stamps: set = set()
-    #: -- AND THEIR DECLINES, which the stamps' fix left behind. A
+    #: AND THEIR DECLINES, which the stamps' fix left behind. A
     #: model declaring causal edges and no strengths makes `infer` decline
     #: `cpt_missing`, by name; this verb ran that same inference per candidate
     #: and returned each cause with `posterior: null` beside an EMPTY
@@ -203,7 +201,7 @@ def hypothesize(session: Any, entity_id: str, *,
             # `None` means unread -- the case `evidence_needed` is written for.
             "own_reading": checked_here.get("target_reading"),
             "test_action": _test_action(session.model, entity_type),
-            # -- why this cause's inference answered less than a
+            # why this cause's inference answered less than a
             # number, in the vocabulary `not_checked` above uses. Empty when
             # it declined nothing.
             "declined": sorted(reasons),
