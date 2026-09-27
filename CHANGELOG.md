@@ -34,6 +34,12 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+### Documentation
+
+- **The evidence preface names the eight paths its documents cite and this
+  repository does not hold**, each part of the unpublished platform they
+  describe. The documents themselves are unchanged.
+
 ## [0.2.16] — 2026-09-27
 
 ### Fixed

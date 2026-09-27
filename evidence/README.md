@@ -39,6 +39,15 @@ and it is the reason they are not being rewritten.
   still reads as a live offer it is a defect worth reporting.
 - **They cite records that are not published.** Named for provenance so a claim
   can be checked against a specific document on request, not as links.
+- **They name paths this repository does not hold.** Each is part of the
+  platform described above, which is not published:
+  - `tech_brief.md`: `domains/k8s.yaml`, `domains/trading.yaml`,
+    `domains/ai-ml-serving.yaml` and `/openapi.json`;
+  - `customer_deployment_runbook.md`: `deploy/docker-compose.yml`,
+    `dispatch_policy.yaml`, `gateway/app.py` and `proxy/main.py`.
+
+  The list is derived from the documents, and a check fails when the two
+  disagree.
 - **They are not documentation of the engine.** For that, read the top-level
   `README.md` and `examples/water_tank.yaml`.
 
