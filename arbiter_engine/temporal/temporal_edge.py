@@ -93,6 +93,27 @@ def resolve_response_model(raw: Any) -> Tuple[ResponseModel, Optional[str]]:
     return ResponseModel.EXPONENTIAL, str(raw)
 
 
+def resolve_number(raw: Any) -> Tuple[Optional[float], Optional[str]]:
+    """`(value, unresolved)` for a number declared on a rule -- never raises.
+
+    `float()` on an author's `120s` raised out of `model_describe`,
+    the one tool that exists to name a model's mistakes, so a model carrying
+    one could not be described at all. A value `float()` cannot read now
+    falls back as an absent one does and comes back `unresolved` for the
+    domain loader to report. Every reader and the loader's check ask THIS
+    function, so they cannot disagree about what a number is.
+
+    ABSENT IS NOT UNRESOLVED, as for `resolve_response_model`: `None` and an
+    empty string are not declarations.
+    """
+    if raw is None or raw == "":
+        return None, None
+    try:
+        return float(raw), None
+    except (TypeError, ValueError):
+        return None, str(raw)
+
+
 @dataclass
 class TemporalEdge:
     """Time-annotated relationship edge."""
@@ -181,7 +202,9 @@ class TemporalAnnotationStore:
         store = cls()
         for rule in relationship_rules:
             temporal = rule.get('temporal')
-            if not temporal:
+            # -- a block of the wrong shape is skipped, not read: the
+            # domain loader reports it.
+            if not temporal or not isinstance(temporal, dict):
                 continue
             # -- resolves case, and does not resolve a typo by
             # accident. The unresolved value is reported by the domain
@@ -194,13 +217,21 @@ class TemporalAnnotationStore:
                 source_type=rule.get('source_type', ''),
                 target_type=rule.get('target_type', ''),
                 relation_type=rule.get('type', ''),
-                propagation_delay_s=float(temporal.get('propagation_delay_s', 0)),
-                time_constant_s=float(temporal.get('time_constant_s', 60)),
-                coupling_strength=float(temporal.get('coupling_strength', 1.0)),
+                propagation_delay_s=_number_or(
+                    temporal.get('propagation_delay_s'), 0.0),
+                time_constant_s=_number_or(temporal.get('time_constant_s'), 60.0),
+                coupling_strength=_number_or(
+                    temporal.get('coupling_strength'), 1.0),
                 response_model=model,
             )
             store.add(edge)
         return store
+
+
+def _number_or(raw: Any, default: float) -> float:
+    """`raw` as a number, or `default` where `resolve_number` cannot read one."""
+    value, _unresolved = resolve_number(raw)
+    return default if value is None else value
 
 
 @dataclass

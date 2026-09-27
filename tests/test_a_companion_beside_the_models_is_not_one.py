@@ -66,6 +66,20 @@ class TestTheFilterRefusesWhatItWasWrittenFor:
         with pytest.raises(NotADomainModelError):
             load_domain(source)
 
+    @pytest.mark.parametrize("source", [
+        {"name": "release", True: {"push": {"tags": ["v*"]}},
+         "jobs": {"build": {"runs-on": "ubuntu-latest"}}},
+        {"name": "x", "description": "y"},
+        {"id": "a", "domain_id": "b"},
+    ])
+    def test_a_document_sharing_only_an_identifying_word_is_refused(
+            self, source):
+        """`name:` is a word every YAML format has. A GitHub workflow
+        declares it -- and its `on:` reads as the key `True` -- and loaded as a
+        model until the top-level check reported its `jobs` and `on` as
+        unread."""
+        assert is_domain_model(source) is False
+
     def test_the_refusal_names_what_it_looked_at(self):
         """A refusal that does not say what it wanted sends the author to guess.
         The constraints-companion message one line up names its own cause; this
@@ -102,6 +116,9 @@ class TestTheFilterStillAcceptsEveryModel:
         and making it do so here would refuse models that load today."""
         assert is_domain_model({"indicators": {}}) is True
         assert is_domain_model({"domain": {}}) is True
+
+    def test_a_name_beside_a_structural_key_is_still_a_model(self):
+        assert is_domain_model({"name": "x", "entity_types": []}) is True
 
     def test_an_explicit_domain_key_is_taken_at_its_word(self):
         """`domain:` present and a mapping is an author saying what this file

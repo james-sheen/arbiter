@@ -795,11 +795,18 @@ With this declared, `traverse` in a value mode reports what the downstream
 value BECOMES rather than only who is reachable, and `rollout` steps that
 forward under actions.
 
-**A key this engine does not read is reported, not ignored.** Every key inside
-`temporal:`, `transition:` and `planning:` is compared against the set the
+**A key this engine does not read is reported, not ignored.** Every key of a
+relationship rule -- at its own level and inside `temporal:`, `transition:` and
+`causal:` -- and every key inside `planning:` is compared against the set the
 loader actually reads, and anything else comes back under
 `model_describe`'s `unread_fields` with a did-you-mean where there is a near
-match. This matters more here than elsewhere because the failures are silent in
+match, or with the place it IS read when it was written one level off. An
+`edge_direction` or `flow_type` outside its set, and a rule that is not a
+mapping, come back there as `unknown_value` -- and so do a `temporal:` or
+`causal:` block that is not a mapping and a number the engine cannot read as
+one, each skipped as though absent. The same comparison runs at the domain's
+own top level, in `calendar:` and each of its sessions, and on an entailment
+rule written out. This matters more here than elsewhere because the failures are silent in
 both directions: a mistyped `propagation_delay_s` leaves the edge on the
 engine's default dead time, and a mistyped `gain_sigma` leaves the coupling
 with no spread at all -- which stops `clearance_probability` being a
@@ -1141,7 +1148,7 @@ domain:
       causal:
         weight: 0.80        # P(this parent alone explains a faulty child)
         leak: 0.02          # P(child faulty with no parent at fault)
-        # latent_confounder: shared_supply   # optional, and see below
+      # latent_confounder: shared_supply   # optional, on the rule; see below
 ```
 
 `weight` and `leak` are noisy-OR parameters, so several parents compose without
@@ -1155,7 +1162,9 @@ specimen; its header states one question answered three ways.
 
 `latent_confounder` names an unobserved common cause on an edge. Under an
 intervention it makes the query unidentifiable, and `infer` says so
-(`not_identifiable`) instead of returning a number that ignores it.
+(`not_identifiable`) instead of returning a number that ignores it. It sits on
+the rule itself, beside `edge_direction` -- inside `causal:` it is not read, and
+`unread_fields` says where it belongs.
 
 **`do` is an intervention and not an observation.** The intervened node's
 incoming edges are CUT before the query is answered, which is the whole reason

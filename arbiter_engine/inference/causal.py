@@ -124,23 +124,40 @@ def _rule_index(model) -> Dict[Tuple[str, str, str], Dict[str, Any]]:
     return index
 
 
+def resolve_strength(raw: Any) -> Tuple[Optional[float], Optional[str]]:
+    """`(value, unresolved)` for a declared `weight` or `leak` -- never raises.
+
+    A strength is a NUMBER in the model file. A quoted `"0.8"` or a
+    word was taken as no weight at all -- `cpt_missing`, asking for the number
+    the author wrote -- or as the engine's own leak, with nothing said. The
+    domain loader asks this same function, so its report and this reader
+    cannot disagree about what a strength is.
+    """
+    if raw is None:
+        return None, None
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        return float(raw), None
+    return None, str(raw)
+
+
 def _weight_from(rule: Dict[str, Any],
                  learned: Optional[Tuple[float, int]]) -> EdgeWeight:
-    causal = rule.get("causal") or {}
-    declared = causal.get("weight")
-    leak = causal.get("leak")
-    if isinstance(declared, (int, float)) and not isinstance(declared, bool):
-        return EdgeWeight(float(declared),
-                          float(leak) if isinstance(leak, (int, float)) else DEFAULT_LEAK,
-                          SOURCE_DECLARED)
+    causal = rule.get("causal")
+    if not isinstance(causal, dict):
+        # -- `causal: 0.8` raised here and came back `internal_error`,
+        # an engine fault's name for an author's mistake. Skipped as though
+        # absent; the domain loader reports it.
+        causal = {}
+    declared, _unresolved = resolve_strength(causal.get("weight"))
+    leak_value, _unresolved = resolve_strength(causal.get("leak"))
+    leak = DEFAULT_LEAK if leak_value is None else leak_value
+    if declared is not None:
+        return EdgeWeight(declared, leak, SOURCE_DECLARED)
     if learned is not None:
         value, count = learned
-        return EdgeWeight(float(value),
-                          float(leak) if isinstance(leak, (int, float)) else DEFAULT_LEAK,
-                          SOURCE_LEARNED, observations=int(count))
-    return EdgeWeight(DEFAULT_WEIGHT,
-                      float(leak) if isinstance(leak, (int, float)) else DEFAULT_LEAK,
-                      SOURCE_DEFAULT)
+        return EdgeWeight(float(value), leak, SOURCE_LEARNED,
+                          observations=int(count))
+    return EdgeWeight(DEFAULT_WEIGHT, leak, SOURCE_DEFAULT)
 
 
 def causal_subgraph(model, graph, entities,

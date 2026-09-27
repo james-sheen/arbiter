@@ -34,6 +34,36 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+## [0.2.14] — 2026-09-27
+
+### Fixed
+
+- **A relationship rule's own keys, and its `causal:` block, are checked.** A key
+  this engine does not read comes back in `unread_fields`, one written at the
+  wrong level names where it is read, and an `edge_direction` or `flow_type`
+  outside its set, or a rule that is not a mapping, comes back as
+  `unknown_value`; a list of `transition:` blocks is checked like a single one.
+  **Earlier releases ignore a `latent_confounder` written inside `causal:`**,
+  where the guide's example showed it, and answer a `do()` query it makes
+  unidentifiable; it belongs on the rule itself.
+- **A rule's block of the wrong shape no longer stops `model_describe`.** A
+  `temporal:` written as a list or a number, or a temporal number written with
+  its unit (`120s`), raised out of `model_describe`, and a `causal:` that is not
+  a mapping made `infer` decline `internal_error`. Each is now skipped as though
+  absent and named in `unread_fields`, as is a `weight` or `leak` that is not a
+  number -- which earlier releases read as no weight, or as the engine's leak.
+- **The rest of a model is checked too.** `unread_fields` names a key this
+  engine does not read at the domain's own top level -- a misspelled
+  `relationship_rule:` dropped every rule with nothing said -- in `calendar:`
+  or one of its sessions, and on an entailment rule written out; an entry of
+  `rules:` or `action_templates:` that is not a mapping comes back as
+  `unknown_value`. The orchestrator's own top-level keys pass by name.
+- **`is_domain_model` no longer takes another format's file for a model.** A
+  document without a `domain:` key that shared only `id`, `name` or
+  `description` with the model format -- a GitHub workflow is one -- loaded as
+  a model. It must now declare something only a model does, such as
+  `entity_types` or `indicators`, and the refusal lists those.
+
 ## [0.2.13] — 2026-09-26
 
 ### Added

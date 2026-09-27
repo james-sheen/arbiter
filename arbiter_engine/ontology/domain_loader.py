@@ -327,6 +327,16 @@ class DomainModel:
     #: that, a rule declaring 120s/600s/0.9 produced an edge carrying
     #: 60.0/60.0/1.0 and stamped `auto`.
     relationship_rules: List[Dict[str, Any]] = field(default_factory=list)
+    #: -- entries of `relationship_rules:`, `rules:` and
+    #: `action_templates:` that are not mappings, as `{section, index,
+    #: value}`. Every reader calls `.get` on an entry, so these cannot sit in
+    #: the lists; they were dropped there in silence, and `unread_fields` now
+    #: reports each one instead.
+    set_aside_entries: List[Dict[str, Any]] = field(default_factory=list)
+    #: -- every key the domain declared at its own top level, so
+    #: `unread_fields` can name one this engine does not read. A misspelled
+    #: `relationship_rule:` dropped every rule with nothing said.
+    top_level_keys: Tuple[str, ...] = ()
     #: the EFFECT model of an operator action, and only that.
     #:
     #: `evidence/tech_brief.md` shows the unpublished operator half carrying
@@ -513,7 +523,7 @@ class DomainModel:
         reading them as one backlog is how the wrong fix gets applied.
 
         The third arrived the way the second did: from outside, against the
-        field the previous one added. compared every key the author
+        field the previous one added. An internal ruling compared every key the author
         typed against the set the loader reads, which catches `directon`.
         Nothing compared VALUES, so `direction: hihger` passed through the same
         gap one level down, and `type: numric` did it without even a log line.
@@ -640,42 +650,117 @@ class DomainModel:
         The accepted set is imported, never transcribed: the resolver owns it,
         for the reason `_record_unresolved` already states.
         """
+        from ..inference.causal import resolve_strength
         from ..temporal.temporal_edge import (
-            RESPONSE_MODEL_NAMES, resolve_response_model,
+            RESPONSE_MODEL_NAMES, resolve_number, resolve_response_model,
         )
+        from ..twin.topology import EdgeDirection, FlowType
 
-        #: `(block, key, resolver, valid)`. One row today; a tuple because the
-        #: next closed vocabulary inside a coupling block should be added here
-        #: rather than beside it.
+        #: `(block, key, resolver, valid)`; an empty block is the rule's OWN
+        #: level. A tuple because the next closed vocabulary on a
+        #: relationship rule should be added here rather than beside it.
         vocabularies = (
             ("temporal", "response_model", resolve_response_model,
              list(RESPONSE_MODEL_NAMES)),
+            ("", "edge_direction", *_exact_member(EdgeDirection)),
+            ("", "flow_type", *_exact_member(FlowType)),
+        )
+        #: -- `(block, key, resolver)` for each NUMBER a rule's readers
+        #: take, each resolver the one its reader calls. `float()` on `120s`
+        #: raised out of `model_describe`, and a strength written `"0.8"` was
+        #: read as no strength at all. A transition's numbers are not here:
+        #: the builder refuses such a block by name, in `transitions`.
+        numbers = (
+            ("temporal", "propagation_delay_s", resolve_number),
+            ("temporal", "time_constant_s", resolve_number),
+            ("temporal", "coupling_strength", resolve_number),
+            ("", "conservation_tolerance", resolve_number),
+            ("causal", "weight", resolve_strength),
+            ("causal", "leak", resolve_strength),
         )
 
         out: List[Dict[str, Any]] = []
+        # -- an entry that is not a mapping, set aside at
+        # load. It was dropped there with no row, so a rule written as a bare
+        # word simply did not exist.
+        for entry in (getattr(self, "set_aside_entries", None) or ()):
+            section = entry.get("section")
+            value, index = entry.get("value"), entry.get("index")
+            what = ("empty" if value is None
+                    else f"{_kind(value)}, not a mapping")
+            out.append({
+                "field": f"{section}[{index}]",
+                "reason": "unknown_value",
+                "value": _as_reported(value),
+                "read_by": [],
+                "did_you_mean": None,
+                "remedy": (f"entry {index} of `{section}:` is {what}, so "
+                           f"nothing was read from it; "
+                           f"{_ENTRY_SHAPES.get(section, 'it is a mapping')}"),
+            })
         for rule in (getattr(self, "relationship_rules", None) or ()):
             if not isinstance(rule, dict):
                 continue
             label = (f"{rule.get('source_type', '?')}"
                      f"-{rule.get('type', '?')}->"
                      f"{rule.get('target_type', '?')}")
-            for where, key, resolve, valid in vocabularies:
+            # -- a block of the wrong shape. Every reader now skips it
+            # as though absent rather than raising; this row is where the
+            # author hears about it.
+            for where in ("temporal", "causal"):
                 block = rule.get(where)
+                if block is None or isinstance(block, dict):
+                    continue
+                known = sorted(dict(_COUPLING_BLOCKS)[where])
+                out.append({
+                    "field": where,
+                    "reason": "unknown_value",
+                    "value": _as_reported(block),
+                    "read_by": [],
+                    "did_you_mean": None,
+                    "remedy": (f"`{where}:` on this rule is {_kind(block)}, "
+                               f"not a mapping, so nothing in it was read; it "
+                               f"is a mapping of {', '.join(known)}"),
+                    "rule": label,
+                })
+            for where, key, resolve in numbers:
+                block = rule.get(where) if where else rule
+                if not isinstance(block, dict) or key not in block:
+                    continue
+                _value, unresolved = resolve(block.get(key))
+                if unresolved is None:
+                    continue
+                field_name = f"{where}.{key}" if where else key
+                out.append({
+                    "field": field_name,
+                    "reason": "unknown_value",
+                    "value": unresolved,
+                    "read_by": [],
+                    "did_you_mean": None,
+                    "remedy": (f"`{field_name}: {unresolved}` is not a "
+                               f"number, so the declaration was not applied "
+                               f"and the engine's own default was used "
+                               f"instead; write it as a bare number"),
+                    "rule": label,
+                })
+            for where, key, resolve, valid in vocabularies:
+                block = rule.get(where) if where else rule
                 if not isinstance(block, dict) or key not in block:
                     continue
                 _model, unresolved = resolve(block.get(key))
                 if unresolved is None:
                     continue
+                field_name = f"{where}.{key}" if where else key
                 near = _did_you_mean(unresolved, valid, cutoff=0.7)
                 remedy = (
-                    f"`{where}.{key}: {unresolved}` is not a value this "
+                    f"`{field_name}: {unresolved}` is not a value this "
                     f"engine recognises, so the declaration was not applied "
                     f"and the engine's own default was used instead; valid "
                     f"values are {', '.join(valid)}")
                 if near:
                     remedy += f" — did you mean `{near}`?"
                 out.append({
-                    "field": f"{where}.{key}",
+                    "field": field_name,
                     "reason": "unknown_value",
                     "value": unresolved,
                     "read_by": [],
@@ -704,17 +789,31 @@ class DomainModel:
         """
         out: List[Dict[str, Any]] = []
 
-        def report(where: str, block: Any, known: frozenset, rule: str) -> None:
+        def report(where: str, block: Any, known: frozenset, rule: str,
+                   elsewhere: Optional[Dict[str, str]] = None) -> None:
             if not isinstance(block, dict):
                 return
             for key in sorted(set(block) - known):
-                near = _did_you_mean(key, sorted(known), cutoff=0.8)
-                remedy = (f"`{where}.{key}` is not a key this engine reads, "
-                          f"so nothing will ever consume it")
-                if near:
-                    remedy += f" — did you mean `{near}`?"
+                # An empty `where` is a rule's OWN level: the row names the
+                # key from the rule, as a `temporal.*` row names its own.
+                field_name = f"{where}.{key}" if where else key
+                moved = (elsewhere or {}).get(key)
+                if moved is not None:
+                    # -- the right key at the wrong level. The nearest
+                    # spelling of some OTHER key would send the author after a
+                    # typo that is not there.
+                    near = moved
+                    remedy = (f"`{field_name}` is not read there; this engine "
+                              f"reads it on the same rule as `{moved}`, so "
+                              f"move it")
+                else:
+                    near = _did_you_mean(key, sorted(known), cutoff=0.8)
+                    remedy = (f"`{field_name}` is not a key this engine "
+                              f"reads, so nothing will ever consume it")
+                    if near:
+                        remedy += f" — did you mean `{near}`?"
                 row = {
-                    "field": f"{where}.{key}",
+                    "field": field_name,
                     "reason": "unknown_key",
                     "read_by": [],
                     "did_you_mean": near,
@@ -737,8 +836,24 @@ class DomainModel:
             label = (f"{rule.get('source_type', '?')}"
                      f"-{rule.get('type', '?')}->"
                      f"{rule.get('target_type', '?')}")
+            # -- the rule's OWN level, checked like the blocks inside
+            # it, with the keys another reader owns let through by name.
+            places = _rule_places(rule)
+            report("", rule, _KNOWN_RULE_KEYS | _NON_ENGINE_RULE_KEYS, label,
+                   _read_elsewhere(places, ""))
             for where, known in _COUPLING_BLOCKS:
-                report(where, rule.get(where), known, label)
+                block = rule.get(where)
+                if where == "transition" and isinstance(block, list):
+                    # -- the builder takes a LIST of transitions, one
+                    # per property a relationship drives, and only the single
+                    # mapping was ever checked: measured, `gain_sgima` inside
+                    # a one-item list reported nothing.
+                    for position, item in enumerate(block):
+                        report(f"{where}[{position}]", item, known, label,
+                               _read_elsewhere(places, where))
+                    continue
+                report(where, block, known, label,
+                       _read_elsewhere(places, where))
         # ONLY TEMPLATES THIS ENGINE ACCEPTED. `action_templates:` is the one
         # block with a COMPETING schema: eleven of the nineteen models this
         # repository ships declare the orchestrator's richer shape -- `params`,
@@ -769,6 +884,27 @@ class DomainModel:
                     # beside each one has a closed set.
                     report(f"action_templates.parameters_schema.{parameter}",
                            spec, _KNOWN_ACTION_PARAM_KEYS, label)
+        # -- the domain's OWN top level. A misspelled
+        # `relationship_rule:` dropped every rule with nothing said; the
+        # orchestrator's keys pass by name.
+        report("", {key: None for key in
+                    (getattr(self, "top_level_keys", None) or ())},
+               _MODEL_KEYS | _NON_ENGINE_MODEL_KEYS, "")
+        # -- the calendar, and each session in it.
+        calendar = getattr(self, "calendar", None)
+        report("calendar", calendar, _KNOWN_CALENDAR_KEYS, "")
+        if isinstance(calendar, dict) and isinstance(
+                calendar.get("sessions"), list):
+            for position, session in enumerate(calendar["sessions"]):
+                report(f"calendar.sessions[{position}]", session,
+                       _KNOWN_SESSION_KEYS, "")
+        # -- an entailment rule written out. A `transitive:` shorthand
+        # carrying anything else is refused whole by `entail`, by name, and is
+        # not picked over here: the posture action templates already take.
+        for raw in (getattr(self, "rules", None) or ()):
+            if isinstance(raw, dict) and "transitive" not in raw:
+                report("rules", raw, _KNOWN_ENTAILMENT_RULE_KEYS,
+                       str(raw.get("name") or "?"))
         report("planning", getattr(self, "planning", None),
                _KNOWN_PLANNING_KEYS, "")
         report("cases", getattr(self, "cases", None), _KNOWN_CASES_KEYS, "")
@@ -1097,11 +1233,11 @@ _NON_AXIOM_KEYS = frozenset({"plausible_range"})
 #: not report an unknown key -- it reported `missing_property` on
 #: `forecasts_expected`, which sends the author to look at their feed.
 #: the top-level names a domain model may declare, and the test for
-#: whether a document IS one. Not a validation set: an unknown key here is not
-#: refused, because `domain:` has never checked its own top level and making it
-#: do so would refuse models that load today. What this answers is narrower and
-#: is the question `is_domain_model` exists to answer -- does this document
-#: declare ANYTHING this loader reads.
+#: whether a document IS one. An unknown key at the top level is not refused,
+#: because refusing would refuse models that load today; since it is
+#: REPORTED, by `unread_fields`, unless it is one `_NON_ENGINE_MODEL_KEYS` names.
+#: What this set answers is narrower and is the question `is_domain_model`
+#: exists to answer -- does this document declare ANYTHING this loader reads.
 #:
 #: Every member is read by `load_domain` below. A name added there and not here
 #: makes this filter narrower than the loader, which turns a real model into a
@@ -1114,6 +1250,11 @@ _MODEL_KEYS = frozenset({
     "calendar", "action_templates", "planning", "causal", "indicators",
     "property_mapping", "axiom_parameters", "cases",
 })
+
+#: -- the members of `_MODEL_KEYS` that name or describe a document
+#: rather than model anything. Every YAML format has words for these, so a
+#: document WITHOUT a `domain:` key that shares only these is not a model.
+_IDENTIFYING_KEYS = frozenset({"id", "domain_id", "name", "description"})
 
 _KNOWN_FORECAST_KEYS = frozenset({
     "expected", "models", "expected_from", "max_age",
@@ -1204,9 +1345,164 @@ _KNOWN_ACTION_PARAM_KEYS = frozenset({
     "type", "entity_property", "candidates", "tolerance",
 })
 
+#: -- a relationship rule's OWN level, which nothing compared against
+#: anything. Measured: `source:`, `edge_directon:` and a `latent_confounder` one
+#: level too deep all loaded clean, and a misspelled `leak` moved `infer`'s
+#: answer with no row anywhere. These are the keys the readers take off a rule:
+#: `twin/builder.py`, `inference/causal.py`, `temporal/temporal_edge.py`,
+#: `surprises.py` and `api.py`. DERIVED, NOT TRANSCRIBED:
+#: `test_a_relationship_rule_is_checked_at_its_own_level` re-reads those five
+#: modules and fails on a difference in EITHER direction -- a key read and
+#: missing here is reported as unread, and a key here that nothing reads is the
+#: defect this set exists to end.
+_KNOWN_RULE_KEYS = frozenset({
+    "type", "source_type", "target_type", "edge_direction", "flow_type",
+    "temporal", "transition", "causal", "conservation_tolerance",
+    "latent_confounder",
+})
+
+#: Keys a relationship rule carries that NO READER IN THIS ENGINE reads -- the
+#: rule-level twin of `_NON_AXIOM_KEYS`, and the same ruling.
+#: `match`, `source_property` and `target_property` are the orchestrator's edge
+#: derivation, read by its relationship builder, which this package does not
+#: include. 53 of the 58 rules measured beside this engine carry them, so
+#: reporting each as unknown would put 107 rows on models valid in the schema
+#: their authors wrote. The cost is stated rather than hidden: an engine-only
+#: caller who writes one hears nothing about it and gets no edge from it --
+#: edges come from `add_relationship`. Acceptable because no guide teaches
+#: them, and a misspelling of one is still reported, with the right name.
+_NON_ENGINE_RULE_KEYS = frozenset({
+    "match", "source_property", "target_property",
+})
+
+#: Keys a domain's top level carries that NO READER IN THIS ENGINE reads -- the
+#: same ruling as `_NON_ENGINE_RULE_KEYS`, at the scale it was named for in
+#:. They are the orchestrator's: its domain registry and the services
+#: around it read each one, and this package includes none of them. Measured
+#: 2026-09-26 across the model files beside this engine: 25 keys outside
+#: `_MODEL_KEYS`, of which these 23 have a reader there. The other two --
+#: `connectivity_requirements` and `flow_types` -- have none anywhere, so they
+#: are NOT here and are reported like any other unread key. The cost is the
+#: one `_NON_AXIOM_KEYS` states: an engine-only caller who writes one of these
+#: hears nothing about it, which is acceptable only because no guide teaches
+#: them.
+_NON_ENGINE_MODEL_KEYS = frozenset({
+    "action_mappings", "action_traversal", "active_mode_policy",
+    "approval_chain", "category_mapping", "causal_chains",
+    "causal_harvest_confidence", "causal_rules", "chaos_scenarios",
+    "classification_mappings", "consistency_rules", "cross_domain_refs",
+    "domain_checks", "evidence_sources", "family", "intervention_sensitivity",
+    "knowledge_anchors", "knowledge_mapping", "metric_mappings",
+    "observation_mappings", "property_schema", "section_templates",
+    "traversal_rules",
+})
+
+#: -- the `calendar:` block and each of its sessions, as
+#: `history/calendar.py` reads them. Measured: `sesions:` loaded clean and left
+#: the world always open, and a session's `timezone:` left its hours read as
+#: UTC -- hours off, with nothing said. Derived, not transcribed, by
+#: `test_the_rest_of_a_model_is_checked_too`.
+_KNOWN_CALENDAR_KEYS = frozenset({"sessions", "holidays"})
+_KNOWN_SESSION_KEYS = frozenset({"days", "open", "close", "tz"})
+
+#: -- an entailment rule written out: the keys `entail.parse_rule`
+#: reads. A `transitive:` shorthand is not checked here, because `entail`
+#: already refuses one carrying anything else, whole and by name.
+_KNOWN_ENTAILMENT_RULE_KEYS = frozenset({"name", "head", "body"})
+
+#: What an entry of each list is, for the row reporting one that is not a
+#: mapping.
+_ENTRY_SHAPES = {
+    "relationship_rules": ("a relationship rule is a mapping naming `type`, "
+                           "`source_type` and `target_type`"),
+    "rules": ("an entailment rule is a mapping of `name`, `head` and `body`, "
+              "or of `name`, `transitive` and `max_hops`"),
+    "action_templates": ("an action template is a mapping naming `name`, "
+                         "`applies_to` and `parameters_schema`"),
+}
+
+#: -- the `causal:` block ON A RULE: a noisy-OR weight and its leak,
+#: read by causal inference. Not the domain's own `causal:` block, whose one
+#: key is `_KNOWN_CAUSAL_KEYS` above. Measured before this check: `lek: 0.5`
+#: left the leak at the engine's 0.01 and moved an observed posterior from
+#: 0.5175 to 0.04465 with nothing reported.
+_KNOWN_RULE_CAUSAL_KEYS = frozenset({"weight", "leak"})
+
 #: Which nested block each is checked against, and the label a row carries.
 _COUPLING_BLOCKS = (("temporal", _KNOWN_TEMPORAL_KEYS),
-                    ("transition", _KNOWN_TRANSITION_KEYS))
+                    ("transition", _KNOWN_TRANSITION_KEYS),
+                    ("causal", _KNOWN_RULE_CAUSAL_KEYS))
+
+
+def _rule_places(rule: Dict[str, Any]) -> List[Tuple[str, frozenset]]:
+    """Every level of `rule` a key can be read at: its own, always, and each
+    nested block the rule declares (`transition:` may be a list).."""
+    places: List[Tuple[str, frozenset]] = [("", _KNOWN_RULE_KEYS)]
+    for where, known in _COUPLING_BLOCKS:
+        block = rule.get(where)
+        if isinstance(block, dict) or (
+                where == "transition" and isinstance(block, list)):
+            places.append((where, known))
+    return places
+
+
+def _read_elsewhere(places: List[Tuple[str, frozenset]],
+                    here: str) -> Dict[str, str]:
+    """`{key: path}` for each key read at exactly ONE other level of the rule.
+
+    A key written one level off is told where it IS read, instead of
+    being offered the nearest spelling of something else: `latent_confounder`
+    inside `causal:`, where the guide's own example put it, is read off the
+    rule itself. Only levels the rule already HAS count -- its own, and the
+    blocks it declares -- so `source:` on a rule with no `transition:` is
+    reported like any other unread key rather than sent to a block its author
+    never wrote, and a key read at two such levels names neither.
+    """
+    found: Dict[str, List[str]] = {}
+    for where, known in places:
+        if where == here:
+            continue
+        for key in known:
+            found.setdefault(key, []).append(f"{where}.{key}" if where else key)
+    return {key: paths[0] for key, paths in found.items() if len(paths) == 1}
+
+
+def _exact_member(members: Any) -> Tuple[Any, List[str]]:
+    """`(resolver, valid)` for a closed vocabulary its readers match EXACTLY.
+
+    `edge_direction` and `flow_type` are read by value with no case
+    folding -- `EdgeDirection(raw)` in the builder, `== "causal"` in causal
+    inference -- so `Causal` is not applied, and this must not pass it either:
+    a check more forgiving than its readers reports a clean model the readers
+    then ignore. Absent or empty is not unresolved, as for `response_model`.
+    """
+    valid = [member.value for member in members]
+
+    def resolve(raw: Any) -> Tuple[Any, Optional[str]]:
+        if raw is None or raw == "":
+            return None, None
+        return (raw, None) if raw in valid else (None, str(raw))
+    return resolve, valid
+
+
+def _kind(value: Any) -> str:
+    """What an author wrote where a mapping belongs, in words.."""
+    if isinstance(value, bool):
+        return "a boolean"
+    if isinstance(value, (int, float)):
+        return "a number"
+    if isinstance(value, str):
+        return "a string"
+    if isinstance(value, (list, tuple)):
+        return "a list"
+    return f"a {type(value).__name__}"
+
+
+def _as_reported(value: Any) -> Any:
+    """A value fit for a report row: a scalar as written, anything else as text."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)
 
 _KNOWN_INDICATOR_KEYS = frozenset({
     "name", "type", "axioms", "window", "warning", "critical", "role",
@@ -1829,7 +2125,14 @@ def load_domain(source: Union[str, Path, Dict[str, Any]]) -> DomainModel:
     # and is still a model; a document sharing NO key with this vocabulary is
     # not one, whatever else it contains. Derived from the key set below rather
     # than written out, so a field added there is covered here for free.
-    if "domain" not in data and not (set(domain) & _MODEL_KEYS):
+    # -- AND NOT ONLY A WORD EVERY FORMAT USES. `id`, `name` and
+    # `description` are keys a GitHub workflow, a compose file and half the
+    # YAML in a repository declare, so sharing one of those alone made a CI
+    # workflow a model: it loaded, and the top-level check then reported
+    # its `jobs` and `on` as unread. A document without `domain:` has to share
+    # something only a model says.
+    if "domain" not in data and not (
+            set(domain) & (_MODEL_KEYS - _IDENTIFYING_KEYS)):
         # THE WHOLE SET, not a slice of it. The first draft printed
         # `sorted(_MODEL_KEYS)[:6]`, which is an alphabetical accident: it named
         # `action_templates` and `aliases` and stopped before `entity_types`,
@@ -1838,8 +2141,10 @@ def load_domain(source: Union[str, Path, Dict[str, Any]]) -> DomainModel:
         # one does not save anybody anything.
         raise NotADomainModelError(
             f"no `domain:` key and nothing this loader reads: "
-            f"{sorted(domain)[:8]}. A domain model declares at least one of "
-            f"{sorted(_MODEL_KEYS)} — this looks like a companion (a file "
+            f"{sorted(str(key) for key in domain)[:8]}. A domain model "
+            f"declares at least one of "
+            f"{sorted(_MODEL_KEYS - _IDENTIFYING_KEYS)} — this looks like a "
+            f"companion, or another format's file (a file "
             f"whose subject is a model rather than being one). Use "
             f"is_domain_model() to filter these when scanning a directory."
         )
@@ -1878,6 +2183,16 @@ def load_domain(source: Union[str, Path, Dict[str, Any]]) -> DomainModel:
         if specs:
             indicators[entity_type] = specs
 
+    # -- the three lists whose entries every reader `.get`s.
+    # An entry that is not a mapping is set aside and reported, where it used
+    # to be dropped with nothing said.
+    sequences = {
+        "rules": _require_sequence(domain.get("rules"), "rules"),
+        "relationship_rules": _require_sequence(
+            domain.get("relationship_rules"), "relationship_rules"),
+        "action_templates": _require_sequence(
+            domain.get("action_templates"), "action_templates"),
+    }
     model = DomainModel(
         domain_id=domain.get("id") or domain.get("domain_id") or "",
         name=domain.get("name", ""),
@@ -1889,19 +2204,20 @@ def load_domain(source: Union[str, Path, Dict[str, Any]]) -> DomainModel:
             domain.get("relationship_types"), "relationship_types"),
         aliases=[str(a) for a in
                  _require_sequence(domain.get("aliases"), "aliases")],
-        rules=[r for r in _require_sequence(domain.get("rules"), "rules")
-               if isinstance(r, dict)],
+        rules=[r for r in sequences["rules"] if isinstance(r, dict)],
         closure=[str(c) for c in
                  _require_sequence(domain.get("closure"), "closure")],
         relationship_rules=[
-            r for r in _require_sequence(
-                domain.get("relationship_rules"), "relationship_rules")
-            if isinstance(r, dict)],
+            r for r in sequences["relationship_rules"] if isinstance(r, dict)],
+        set_aside_entries=[
+            {"section": section, "index": index, "value": entry}
+            for section, entries in sequences.items()
+            for index, entry in enumerate(entries)
+            if not isinstance(entry, dict)],
+        top_level_keys=tuple(sorted(str(key) for key in domain)),
         calendar=dict(domain.get("calendar") or {}),
         action_templates=[
-            t for t in _require_sequence(
-                domain.get("action_templates"), "action_templates")
-            if isinstance(t, dict)],
+            t for t in sequences["action_templates"] if isinstance(t, dict)],
         planning=dict(domain.get("planning") or {}),
         causal=dict(domain.get("causal") or {}),
         indicators=indicators,

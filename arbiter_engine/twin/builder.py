@@ -14,7 +14,8 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from ..interfaces import Entity, RelationshipGraph
 from ..types import Axiom, Severity
 from ..temporal.temporal_edge import (
-    TemporalAnnotationStore, ResponseModel, resolve_response_model,
+    TemporalAnnotationStore, ResponseModel, resolve_number,
+    resolve_response_model,
 )
 from ..propagation.weight_learner import LearnedWeight
 
@@ -61,6 +62,14 @@ def _min_cardinality(indicator) -> int:
         return int(raw or 0)
     except (TypeError, ValueError):
         return 0
+
+
+def _number_or(raw: Any, default: float) -> float:
+    """ -- `raw` as a number, or `default` where `resolve_number` cannot
+    read one. `float()` on an author's `120s` raised out of `model_describe`;
+    the value now falls back as an absent one does, and the loader reports it."""
+    value, _unresolved = resolve_number(raw)
+    return default if value is None else value
 
 
 class TopologyBuilder:
@@ -420,14 +429,19 @@ class TopologyBuilder:
         """
         if not rule:
             return
-        temporal_block = rule.get('temporal') or {}
+        temporal_block = rule.get('temporal')
+        if not isinstance(temporal_block, dict):
+            # -- a list or a number here raised `AttributeError` out
+            # of `model_describe`. Skipped as though absent; the loader
+            # reports it.
+            temporal_block = {}
         if temporal_block:
-            edge.propagation_delay_s = float(temporal_block.get(
-                'propagation_delay_s', edge.propagation_delay_s))
-            edge.time_constant_s = float(temporal_block.get(
-                'time_constant_s', edge.time_constant_s))
-            edge.coupling_strength = float(temporal_block.get(
-                'coupling_strength', edge.coupling_strength))
+            edge.propagation_delay_s = _number_or(temporal_block.get(
+                'propagation_delay_s'), edge.propagation_delay_s)
+            edge.time_constant_s = _number_or(temporal_block.get(
+                'time_constant_s'), edge.time_constant_s)
+            edge.coupling_strength = _number_or(temporal_block.get(
+                'coupling_strength'), edge.coupling_strength)
             # -- see `resolve_response_model`. An absent key keeps
             # whatever the edge already carries; a present one resolves by
             # case or falls back visibly rather than silently.
@@ -465,8 +479,10 @@ class TopologyBuilder:
         if not transitions:
             return ()
         declared = temporal_block if isinstance(temporal_block, dict) else {}
+        # -- a value that is not a number is left to the engine as
+        # surely as an absent one, so the question is asked of it too.
         return tuple(k for k in TIME_COURSE_KEYS
-                     if declared.get(k) is None)
+                     if resolve_number(declared.get(k))[0] is None)
 
     @staticmethod
     def _time_course_gap(edge: 'TwinEdge', temporal_block: Dict[str, Any],
@@ -688,16 +704,15 @@ class TopologyBuilder:
                 resp_model = te.response_model
 
         temporal_block = rule.get('temporal', {})
+        if not isinstance(temporal_block, dict):
+            temporal_block = {}           # as in `_apply_declared_rule`
         if temporal_block:
-            prop_delay = float(
-                temporal_block.get('propagation_delay_s', prop_delay)
-            )
-            time_const = float(
-                temporal_block.get('time_constant_s', time_const)
-            )
-            coupling = float(
-                temporal_block.get('coupling_strength', coupling)
-            )
+            prop_delay = _number_or(
+                temporal_block.get('propagation_delay_s'), prop_delay)
+            time_const = _number_or(
+                temporal_block.get('time_constant_s'), time_const)
+            coupling = _number_or(
+                temporal_block.get('coupling_strength'), coupling)
             # -- as above.
             if temporal_block.get('response_model') not in (None, ""):
                 resp_model, _unresolved = resolve_response_model(
@@ -714,7 +729,7 @@ class TopologyBuilder:
                 obs_count = pair_weight.total_source_occurrences
                 lw = pair_weight.probability
 
-        conservation_tol = float(rule.get('conservation_tolerance', 0.05))
+        conservation_tol = _number_or(rule.get('conservation_tolerance'), 0.05)
 
         # declared value dynamics. The gaps ride on the edge so the
         # traverser can report a refused block at the point a caller asks for
