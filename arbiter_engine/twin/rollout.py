@@ -35,6 +35,7 @@ from datetime import timedelta
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 from ..fire_frequency import counting_aside
+from ..interfaces import WHOLE_SERIES
 from ..assumptions import (EXOGENOUS_INPUTS_HELD,
                            MOVEMENT_BETWEEN_SAMPLED_STEPS,
                            NO_ACTION_SCHEDULED,
@@ -65,7 +66,11 @@ _SELF_MODEL_ID: str = "arbiter_engine:rollout"
 #: thing being honoured, and truncating the seed would make a windowed axiom
 #: decline `insufficient_samples` inside a rollout for a series that has
 #: plenty -- a decline caused by the simulator rather than by the question.
-_CLONE_WINDOW = timedelta(days=3650)
+#:
+#: And it was ten years, so a declared `window:` longer than that was
+#: checked on less inside a rollout than outside it -- the very case the
+#: sentence above rules out. It is now the whole series, spelled once.
+_CLONE_WINDOW = WHOLE_SERIES
 
 
 @dataclass

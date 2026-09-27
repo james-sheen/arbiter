@@ -34,6 +34,17 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+## [0.2.16] — 2026-09-27
+
+### Fixed
+
+- **A coupling fed once a calendar month can now be fitted.** The learn stage
+  read ten years: 119 monthly paired changes, one short of its unchanged floor.
+  It reads the whole series now, as do the rollout's seed and the diagnostic.
+- **A learn-stage `insufficient_samples` says when its floor is reached**, at the
+  readings' median spacing, in the axioms' sample-floor keys plus
+  `floor_reached_at`, and no longer claims discovery's reason for the floor.
+
 ## [0.2.15] — 2026-09-27
 
 ### Added

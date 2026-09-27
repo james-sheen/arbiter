@@ -936,8 +936,15 @@ def _proposed_transitions(session: EngineSession,
              # proposal that failed.
              "replay": _replay_proposal(session, p, surprises)}
             for p in proposals],
+        # A sample-floor refusal carries its arithmetic beside the
+        # sentence, in the keys the axioms' own floors use (`observations`,
+        # `required`, `window_seconds`, `sampling_interval_seconds`,
+        # `floor_unreachable_at_this_rate`, `remedy`) and one more,
+        # `floor_reached_at`. A reader deciding whether to wait should not
+        # have to parse a date out of prose.
         "not_fitted": [
-            {"edge": r.location, "reason": r.reason, "detail": r.detail}
+            {"edge": r.location, "reason": r.reason, "detail": r.detail,
+             **r.evidence}
             for r in refusals],
         "disagreements": [
             {"edge": p.edge, "from": p.from_property, "to": p.to_property,

@@ -986,7 +986,9 @@ removed from `role:`, from flow direction and from `agrees_with:`.
 **`gain: estimate` declares the coupling and withholds the number.** The
 engine then fits it from observations and reports it under
 `model_describe.proposed_transitions` with its sample count and a confidence
-interval — as a PROPOSAL. A transition carrying it projects nothing and
+interval — as a PROPOSAL. A fit needs 120 paired changes, which is ten years of
+monthly readings; until then the decline gives the date the floor is reached at
+the spacing the readings arrive at. A transition carrying it projects nothing and
 declines `gain_not_adopted` until a number is written into the model. This is
 the only way a learned gain comes to exist: the engine never searches for
 which properties are coupled, because that search finds a gain between a

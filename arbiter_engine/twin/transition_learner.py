@@ -50,6 +50,7 @@ import numpy as np
 
 from ..causal.discovery import MINIMUM_PAIRED_SAMPLES
 from ..causal.leadlag import align_with_times
+from ..interfaces import WHOLE_SERIES, median_gap_seconds
 
 __all__ = ["LearnedTransition", "TransitionRefusal", "learn_transitions",
            "MINIMUM_PAIRED_SAMPLES"]
@@ -58,11 +59,25 @@ __all__ = ["LearnedTransition", "TransitionRefusal", "learn_transitions",
 #: restated. Both answer *are there enough paired samples to defend a fit*,
 #: and two constants meaning one thing is how a floor comes to be 120 in one
 #: module and 100 in the next with nothing saying which is the rule.
+#:
+#: BORROWED, NOT DERIVED, and the decline used to say otherwise. It
+#: told the author the floor was discovery's "for the same reason", and
+#: discovery's reason is its stationarity split and its regression at the
+#: longest lag. The fit below runs neither: it is one least-squares slope on
+#: paired changes at the declared delay. So nothing here was measured to need
+#: 120. Kept at 120 and undeclarable by ruling (2026-09-27), and a declarable
+#: floor waits for a real series to measure what a smaller one would change.
+#: What the ruling did require is that the number can be REACHED, and that the
+#: decline says when.
 
 #: How far back to read. Wide, because the floor above is about SAMPLE COUNT
 #: and a window that silently truncated the series would make the floor mean
 #: something else.
-_LOOKBACK = timedelta(days=3650)
+#:
+#: IT DID, at a calendar-monthly cadence: ten years hold at most 120
+#: readings a month apart, so the floor's 121 never fitted and the decline
+#: counted 119 for ever. Measured at 240 captures. Now the whole series.
+_LOOKBACK = WHOLE_SERIES
 
 
 @dataclass
@@ -141,6 +156,11 @@ class TransitionRefusal:
     reason: str
     location: str
     detail: str = ""
+    #: The figures behind a sample-floor refusal, in the words the
+    #: axioms' own sample-floor declines already use: the count and
+    #: the floor, the window read, the median spacing, and whether collecting
+    #: longer can ever meet the floor. Empty for every other reason.
+    evidence: Dict[str, Any] = field(default_factory=dict)
 
 
 def _series(history: Any, entity_id: str, property_name: str
@@ -149,6 +169,60 @@ def _series(history: Any, entity_id: str, property_name: str
         return list(history.get_values(entity_id, property_name, _LOOKBACK))
     except Exception:  # noqa: BLE001 - a store that cannot answer is a refusal
         return []
+
+
+def _spacing_words(seconds: float) -> str:
+    """A spacing a person reads: `60 s`, `2 h`, `31 days`, `1 year`."""
+    for size, unit in ((365.25 * 86400.0, "year"), (86400.0, "day"),
+                       (3600.0, "h"), (60.0, "min")):
+        threshold = size if unit == "year" else 2.0 * size
+        if seconds >= threshold:
+            amount = f"{seconds / size:.1f}".rstrip("0").rstrip(".")
+            if unit in ("year", "day") and amount != "1":
+                unit += "s"
+            return f"{amount} {unit}"
+    return f"{seconds:.0f} s"
+
+
+def _reach(times: Sequence[Any], n: int, floor: int
+           ) -> Tuple[str, Dict[str, Any]]:
+    """When the floor will be met at the spacing these readings arrive at.
+
+    A sample-floor decline that says only *n of floor* invites the
+    reading "collect more", which is right when the floor is weeks away and
+    empty when it is decades away -- and which was false outright at a
+    calendar-monthly cadence while the window cut the series short. So the
+    decline carries the arithmetic in the words the axioms' floors already
+    use, and one more: the instant the floor is reached if nothing
+    about the sampling changes. Returns the sentence and the figures behind it.
+    """
+    window_s = _LOOKBACK.total_seconds()
+    evidence: Dict[str, Any] = {"observations": n, "required": floor,
+                                "window_seconds": window_s}
+    spacing = median_gap_seconds(times)
+    if spacing is None:
+        return "", evidence
+    evidence["sampling_interval_seconds"] = spacing
+    words = _spacing_words(spacing)
+    # `floor` paired changes take `floor` gaps, one fewer reading's worth
+    # than the axioms' floors count, because those count readings.
+    if floor * spacing > window_s:
+        evidence["floor_unreachable_at_this_rate"] = True
+        evidence["remedy"] = (
+            f"sample more often than every {spacing:.0f}s: {floor} paired "
+            f"changes cannot fit in the {window_s:.0f}s this fit reads, at the "
+            f"observed rate. Collecting for longer will not help.")
+        return (f" At the median spacing of these readings, {words}, {floor} "
+                f"paired changes span longer than the "
+                f"{_spacing_words(window_s)} this fit reads back, so "
+                f"collecting for longer will not help: sample more often.",
+                evidence)
+    reached = times[-1] + timedelta(seconds=(floor - n) * spacing)
+    evidence["floor_reached_at"] = reached.isoformat()
+    shown = (reached.date().isoformat() if spacing >= 86400.0
+             else reached.isoformat(timespec="minutes"))
+    return (f" At the median spacing of these readings, {words}, it is "
+            f"reached around {shown}.", evidence)
 
 
 def _response_model_name(edge: Any) -> str:
@@ -344,14 +418,15 @@ def learn_transitions(session: Any, topology: Any,
             dx, dy = np.diff(a), np.diff(b)
             n = int(len(dx))
             if n < floor:
+                dated, figures = _reach(times, n, floor)
                 refusals.append(TransitionRefusal(
                     "insufficient_samples", label,
                     f"{n} paired changes for "
                     f"{transition.from_property} -> {transition.to_property}, "
-                    f"and this engine will not fit a gain below {floor}. The "
-                    f"floor is the one `causal/discovery.py` uses, for the "
-                    f"same reason: a slope on a handful of points is a number "
-                    f"nobody can defend."))
+                    f"and this engine will not fit a gain below {floor}, the "
+                    f"floor `causal/discovery.py` sets for its own tests, used "
+                    f"here unchanged." + dated,
+                    evidence=figures))
                 continue
             if float(np.sum((dx - float(np.mean(dx))) ** 2)) <= 0.0:
                 refusals.append(TransitionRefusal(

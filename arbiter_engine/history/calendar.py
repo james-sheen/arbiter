@@ -35,7 +35,7 @@ except ImportError:                         # pragma: no cover - 3.8 and older
     ZoneInfo = None                         # type: ignore
 
 from ..clock import as_naive_utc, now_utc
-from ..interfaces import Observation, ObservationHistory
+from ..interfaces import WHOLE_SERIES, Observation, ObservationHistory
 
 __all__ = ["Session", "SessionCalendar", "CalendarHistory"]
 
@@ -202,6 +202,12 @@ class CalendarHistory(ObservationHistory):
         self.calendar = calendar
 
     def _wall_window(self, window: timedelta) -> timedelta:
+        # EVERYTHING IS NOT A SPAN OF OPEN TIME. A reader asking for
+        # the whole series means every reading, and translating that into open
+        # time walked back `_MAX_LOOKBACK_DAYS` and stopped -- so under any
+        # calendar with a session, "all of it" quietly became ten years.
+        if window >= WHOLE_SERIES:
+            return window
         end = now_utc()
         start = self.calendar.shift_back(end, window.total_seconds())
         return end - start

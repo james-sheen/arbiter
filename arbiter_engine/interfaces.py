@@ -35,6 +35,25 @@ _SEVERITY_ORDER = [
 _SEVERITY_RANK = {s: i for i, s in enumerate(_SEVERITY_ORDER)}
 
 
+#: The window a reader passes when it wants EVERY reading a store
+#: holds, not a span of them. `get_values` takes a window and nothing else, so
+#: "all of it" has to be spelled as one.
+#:
+#: THREE READERS SPELLED IT AS TEN YEARS, and each one's own comment said the
+#: width was there so nothing got cut: the learn stage, whose floor counts
+#: samples; the rollout, whose seed must honour a declared window; and the
+#: decline diagnostic below, whose `total_observations` is documented as "over
+#: all recorded history". At a calendar-monthly cadence ten years is too short
+#: by two or three days: 121 readings a month apart span 3,652 or 3,653 days,
+#: so a learn floor of 120 paired changes stayed at 119 however long the series
+#: ran. Measured at 240 captures, twenty years of them.
+#:
+#: A century, so the floor's readings fit at any cadence up to ten months, and
+#: a calendar passes it through unchanged -- a view that answers in open time
+#: has nothing to translate when the question is everything.
+WHOLE_SERIES = timedelta(days=36_525)
+
+
 # =============================================================================
 # Property Metadata (Phase A —)
 # =============================================================================
@@ -110,9 +129,8 @@ def sampling_context(history, entity_id: str, property_name: str,
     if alignment:
         out["alignment"] = alignment
     try:
-        from datetime import timedelta
         everything = history.get_values(
-            entity_id, property_name, timedelta(days=3650))
+            entity_id, property_name, WHOLE_SERIES)
     except Exception:  # noqa: BLE001 — a history that cannot answer is not an
         return out    # error here; the decline is still worth emitting.
     if not everything:
@@ -124,23 +142,37 @@ def sampling_context(history, entity_id: str, property_name: str,
         # `(timestamp, value)` shape, so everything below is unchanged.
         try:
             everything = history.get_states(
-                entity_id, property_name, timedelta(days=3650))
+                entity_id, property_name, WHOLE_SERIES)
         except Exception:  # noqa: BLE001
             everything = None
     if not everything:
         return out
     out["total_observations"] = len(everything)
-    stamps = sorted(t for t, _ in everything)
-    if len(stamps) < 2:
-        return out
+    median = median_gap_seconds(t for t, _ in everything)
+    if median is not None:
+        out["sampling_interval_seconds"] = median
+    return out
+
+
+def median_gap_seconds(stamps) -> Optional[float]:
+    """The median gap between consecutive instants, or None.
+
+    Lifted out of `sampling_context` when the learn stage needed the
+    same figure for its own sample floor: one rule for what a series' spacing
+    is, rather than two that could disagree about the same readings. Median for
+    the reason given there. None for fewer than two instants, and for a median
+    that is not positive, so a caller never divides by a spacing it did not
+    measure.
+    """
+    ordered = sorted(stamps)
+    if len(ordered) < 2:
+        return None
     gaps = sorted((b - a).total_seconds()
-                  for a, b in zip(stamps, stamps[1:]))
+                  for a, b in zip(ordered, ordered[1:]))
     mid = len(gaps) // 2
     median = (gaps[mid] if len(gaps) % 2
               else (gaps[mid - 1] + gaps[mid]) / 2)
-    if median > 0:
-        out["sampling_interval_seconds"] = median
-    return out
+    return median if median > 0 else None
 
 
 def apply_property_confidence(
