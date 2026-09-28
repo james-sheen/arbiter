@@ -46,8 +46,9 @@ and it is the reason they are not being rewritten.
   - `customer_deployment_runbook.md`: `deploy/docker-compose.yml`,
     `dispatch_policy.yaml`, `gateway/app.py` and `proxy/main.py`.
 
-  The list is derived from the documents, and a check fails when the two
-  disagree.
+  The list is derived from the documents by
+  `tests/test_the_evidence_readme_names_what_this_repository_lacks.py`, which
+  fails when the two disagree.
 - **They are not documentation of the engine.** For that, read the top-level
   `README.md` and `examples/water_tank.yaml`.
 

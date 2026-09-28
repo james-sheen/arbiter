@@ -40,6 +40,11 @@ useful-looking document and the less trustworthy one.
   repository does not hold**, each part of the unpublished platform they
   describe. The documents themselves are unchanged.
 
+### Tests
+
+- **The check that derives that list now ships in `tests/`**, and the preface
+  names its file. It fails when a document and the list disagree.
+
 ## [0.2.16] — 2026-09-27
 
 ### Fixed
