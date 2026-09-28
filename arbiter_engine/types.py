@@ -196,6 +196,32 @@ def read_causal_max_hops(block: Any) -> CausalHops:
     return CausalHops(DEFAULT_CAUSAL_MAX_HOPS, False, True, written)
 
 
+class GapsCycles(NamedTuple):
+    """What `gaps.min_cycles:` declares, as `read_gaps_min_cycles` read it."""
+    #: The declared count, or None when nothing usable was declared -- there
+    #: is NO default: how many executions make a pattern is the model's call.
+    cycles: Optional[int]
+    refused: bool
+    value: Any
+
+
+def read_gaps_min_cycles(block: Any) -> GapsCycles:
+    """How many executions must show a pattern before `gaps` locates it.
+
+    No default, deliberately: "repeatedly" is a number about the
+    domain -- a nightly job and a once-a-quarter hire do not share one -- and
+    a count the engine chose would decide which unexplained changes a reader
+    ever hears about. Undeclared, the dynamics arm declines `missing_config`.
+    A whole number of at least 1 is taken; anything else is refused and named.
+    """
+    if not isinstance(block, dict) or "min_cycles" not in block:
+        return GapsCycles(None, False, None)
+    written = block["min_cycles"]
+    if isinstance(written, int) and not isinstance(written, bool) and written >= 1:
+        return GapsCycles(written, False, written)
+    return GapsCycles(None, True, written)
+
+
 class PropertyType(Enum):
     """Inferred property type."""
     UNKNOWN = "unknown"

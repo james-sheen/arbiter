@@ -287,6 +287,10 @@
       "description": "The `discovery` sub-envelope. Present only on the verb that produces it; NOT required, so an envelope from an engine predating it still validates.",
       "$ref": "#/$defs/sub_envelope"
     },
+    "residuals": {
+      "description": "The `residuals` sub-envelope, carried by `gaps`: where what was observed is not explained by what the model declares. Present only on that verb, and only with a model loaded; NOT required, so an envelope from an engine predating it still validates.",
+      "$ref": "#/$defs/residuals_envelope"
+    },
     "simulation": {
       "description": "The `simulation` sub-envelope, carried by `rollout` and by `plan`'s per-candidate rollouts. Present only on the verbs that produce it; NOT required, so an envelope from an engine predating it still validates.",
       "$ref": "#/$defs/simulation_envelope"
@@ -505,6 +509,82 @@
             "null"
           ]
         },
+        "reaches": {
+          "description": "Every entity downstream of the ones this option acts on, along the couplings its own rollout crossed, with the hops taken and each imagined finding there and the first step it appeared at. An entity reached with nothing found is listed.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "entity",
+              "hops",
+              "findings"
+            ],
+            "properties": {
+              "entity": {
+                "type": "string"
+              },
+              "hops": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "findings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "problem_type",
+                    "first_at_s"
+                  ],
+                  "properties": {
+                    "problem_type": {
+                      "type": "string"
+                    },
+                    "first_at_s": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "decisive": {
+          "description": "At the value and step `margin_sigmas` measured, the source with the largest share of that value's declared variance: a coupling (`name` as `relation:from->to`, `edge` as `source->target`) or a forecast (`name` as the seeded `entity.property`). Null exactly when `margin_sigmas` is.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "at": {
+              "type": "string"
+            },
+            "at_s": {
+              "type": "number"
+            },
+            "margin_sigmas": {
+              "type": "number"
+            },
+            "source": {
+              "type": "string",
+              "enum": [
+                "coupling",
+                "seed",
+                "other"
+              ]
+            },
+            "name": {
+              "type": "string"
+            },
+            "edge": {
+              "type": "string"
+            },
+            "share": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
+        },
         "checked": {
           "description": "This candidate's own denominator.",
           "type": "object"
@@ -646,6 +726,112 @@
         }
       }
     },
+    "residuals_envelope": {
+      "title": "Residuals sub-envelope",
+      "description": "THE `residuals` SUB-ENVELOPE, carried by `gaps`. A sub-envelope in the shape above, PLUS the located hypotheses. Its `checked` counts the last check's findings read, the graded action pairs read, and the hypotheses located. The reasons in `not_checked` are the `discovery` vocabulary's: an arm the model declares nothing for is `missing_config`, an arm with no check to read is `precondition_unmet`, and fewer graded executions than `gaps.min_cycles` is `insufficient_samples`.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/sub_envelope"
+        }
+      ],
+      "properties": {
+        "hypotheses": {
+          "description": "One entry per located gap. `kind` is `absent_or_detached` (CONNECTIVITY), `unaccounted_flow` (CONSERVATION), `unexplained_change` or `effect_not_observed` (the pairs an executed action filed). Where it is: `at` an entity, `between` the declared properties of a balance, or `on` an `entity.property`. `evidence_needed` is the reading that would confirm or dissolve it, or null beside a `reason`.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "kind",
+              "basis",
+              "evidence_needed"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "absent_or_detached",
+                  "unaccounted_flow",
+                  "unexplained_change",
+                  "effect_not_observed"
+                ]
+              },
+              "basis": {
+                "type": "string"
+              },
+              "at": {
+                "type": "string"
+              },
+              "between": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "on": {
+                "type": "string"
+              },
+              "declared_by": {
+                "type": "string"
+              },
+              "relation": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "referenced_by": {
+                "type": "string"
+              },
+              "expected_min": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "actual": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "magnitude": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "ratio": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "executions": {
+                "type": "integer"
+              },
+              "candidates": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "action": {
+                "type": "string"
+              },
+              "evidence_needed": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "reason": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
     "case_envelope": {
       "title": "Case sub-envelope",
       "description": "THE `case` SUB-ENVELOPE, carried by `open_case` and `attach_stage`. A sub-envelope in the shape above, PLUS the case. Its decline reasons are the `simulation` vocabulary's: `missing_config` when the model declares no usable `cases:` block, `missing_entity`, `malformed_request` for an undeclared indicator, an unknown case or stage, `precondition_unmet` with no ledger. The case's own keys are absent when the verb refused.",
@@ -724,6 +910,33 @@
         },
         "open": {
           "type": "integer"
+        },
+        "confirmed": {
+          "description": "Where each confirmed cause stood before anyone confirmed it: per `confirm` attachment, the cause's `rank` in the last `hypothesize` attachment before it (null when it was not ranked there), how many it was ranked `of`, and whether that ranking's `most_discriminating` reading named it. Counts beside the rows, never a rate.",
+          "type": "object",
+          "properties": {
+            "confirmations": {
+              "type": "integer"
+            },
+            "ranked_first": {
+              "type": "integer"
+            },
+            "ranked": {
+              "type": "integer"
+            },
+            "not_ranked": {
+              "type": "integer"
+            },
+            "named_reading_settled_it": {
+              "type": "integer"
+            },
+            "rows": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            }
+          }
         },
         "cases": {
           "type": "array",

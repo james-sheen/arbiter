@@ -102,12 +102,43 @@ class RolloutStep:
     #: target property alone, so two rules into one property each claimed
     #: every record and four records produced eight attributions.
     drivers: Dict[str, Dict[str, List[str]]] = field(default_factory=dict)
+    #: entity -> {property -> each source's share of `sigma`'s
+    #: variance, largest first}: a coupling as `relation:from->to` over the
+    #: `source->target` edge it crossed, a forecast as the reading it seeded.
+    #: The squares `sigma` is built from, divided by their sum, so the shares
+    #: of one value add to one and name what its doubt is made of.
+    spread_shares: Dict[str, Dict[str, List[Dict[str, Any]]]] = field(
+        default_factory=dict)
     #: What the reasoner ATTEMPTED over this imagined state, taken
     #: from `DetectionResult.evaluations_attempted`. Not derivable from
     #: `findings` and `declines`: an evaluation that ran and found nothing
     #: appears in neither, so summing those two is a denominator that moves
     #: with its own numerator.
     invariants: int = 0
+
+
+def _spread_shares(contributions: Dict[Any, float],
+                   variance: float) -> List[Dict[str, Any]]:
+    """ -- each source's share of one value's variance, largest first."""
+    shares: Dict[Tuple[str, str, str], float] = {}
+    for key, contribution in contributions.items():
+        if isinstance(key, tuple) and key and key[0] == "gain" and len(key) >= 7:
+            label = ("coupling", f"{key[3]}:{key[5]}->{key[6]}",
+                     f"{key[1]}->{key[2]}")
+        elif isinstance(key, tuple) and key and key[0] == "seed" and len(key) >= 3:
+            label = ("seed", f"{key[1]}.{key[2]}", "")
+        else:
+            label = ("other", str(key), "")
+        shares[label] = shares.get(label, 0.0) + contribution * contribution
+    out = []
+    for (kind, name, edge), square in shares.items():
+        row: Dict[str, Any] = {"source": kind, "name": name,
+                               "share": square / variance}
+        if edge:
+            row["edge"] = edge
+        out.append(row)
+    return sorted(out, key=lambda row: (-row["share"], row["name"],
+                                        row.get("edge", "")))
 
 
 @dataclass
@@ -1165,6 +1196,8 @@ def run(session: Any, topology: Any, *,
                 if variance > 0.0:
                     step.sigma.setdefault(eid, {})[prop] = math.sqrt(variance)
                     result.has_declared_spread = True
+                    step.spread_shares.setdefault(eid, {})[prop] = (
+                        _spread_shares(contributions_by_source, variance))
 
         # A COUPLING INTO A MOVED PROPERTY STILL ARRIVES.
         # This skipped every property in `movements`, on the reasoning that a

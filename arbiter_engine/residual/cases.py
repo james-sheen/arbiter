@@ -36,7 +36,10 @@ from typing import Any, Dict, List, Optional
 
 #: The stages a case carries, in the order the loop runs them. `check` is
 #: recorded by the book itself; the rest are attached by whoever ran them.
-STAGES = ("check", "hypothesize", "plan", "act", "learn")
+#: `gaps` (what the declaration could not explain) and `confirm` (a
+#: person naming the cause that settled the case) come last, so every stage
+#: an older book recorded keeps its place.
+STAGES = ("check", "hypothesize", "plan", "act", "learn", "gaps", "confirm")
 
 OPEN, RESOLVED = "open", "resolved"
 
@@ -126,8 +129,50 @@ class CaseBook:
             "opened": len(cases),
             "resolved": sum(1 for c in cases if c.status == RESOLVED),
             "open": sum(1 for c in cases if c.status == OPEN),
+            "confirmed": confirmed_causes(cases),
             "cases": [c.to_dict() for c in cases],
         }
+
+
+def confirmed_causes(cases: List[Case]) -> Dict[str, Any]:
+    """Where each confirmed cause stood before anyone confirmed it.
+
+    the one number that says whether a ranking is worth reading is
+    how often the cause a person later confirms was near its top, and whether
+    the reading it named was the one that settled it. Per confirmed case: the
+    cause's rank in the LAST `hypothesize` attachment before the confirmation
+    (`None` when it was not ranked there, or no ranking came first), how many
+    it was ranked among, and whether that ranking's discriminating reading
+    named the confirmed cause's entity. Counts beside the rows, never a rate:
+    a rate carries the denominator it was taken over, and here it is small.
+    """
+    rows: List[Dict[str, Any]] = []
+    for case in cases:
+        for confirmation in case.stages.get("confirm") or []:
+            reference = confirmation.get("reference") or {}
+            cause = reference.get("cause")
+            at = str(confirmation.get("at") or "")
+            before = [entry for entry in case.stages.get("hypothesize") or []
+                      if str(entry.get("at") or "") <= at]
+            ranking = (before[-1].get("reference") or {}) if before else {}
+            causes = [row.get("cause") for row in ranking.get("causes") or []]
+            named = (ranking.get("most_discriminating") or {}).get("entity")
+            rows.append({
+                "case_id": case.case_id, "cause": cause,
+                "rank": causes.index(cause) + 1 if cause in causes else None,
+                "of": len(causes),
+                "named_reading_settled_it": bool(named) and named == cause,
+            })
+    ranked = [row for row in rows if row["rank"] is not None]
+    return {
+        "confirmations": len(rows),
+        "ranked_first": sum(1 for row in ranked if row["rank"] == 1),
+        "ranked": len(ranked),
+        "not_ranked": len(rows) - len(ranked),
+        "named_reading_settled_it": sum(1 for row in rows
+                                        if row["named_reading_settled_it"]),
+        "rows": rows,
+    }
 
 
 _SCHEMA = """

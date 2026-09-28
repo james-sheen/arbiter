@@ -1354,6 +1354,53 @@ execution, the adoption -- by reference, with any decline, and the book calls
 none of them itself. `model_describe` reports, per stage, whether the model
 declares what that stage reads.
 
+**`confirm` is the one stage a person supplies**: a reference naming the cause
+they confirmed, `{cause, reading, basis}`, and without a `cause` it is refused
+`malformed_request`. `case_book` reads each confirmation back against the last
+`hypothesize` ranking attached to that case BEFORE it, and returns under
+`confirmed` the cause's `rank` (null when that ranking did not name it, or none
+came first), how many it was ranked `of`, and whether the ranking's
+`most_discriminating` reading named it -- with the counts beside the rows:
+`confirmations`, `ranked_first`, `ranked`, `not_ranked`,
+`named_reading_settled_it`. No rate is printed. How often the first-ranked cause
+was the one is the number that says whether a ranking is worth reading, and
+over a handful of cases a rate would hide how few there were.
+
+## What the observations say the model lacks: `gaps`
+
+Everything else `gaps` reports is read off the declaration: a threshold nobody
+set, a property nobody reads, a coupling with no transition. `residuals` reads
+the other way, from what was observed back to where the declaration fails to
+explain it, and locates each as a hypothesis with the reading that would
+confirm or dissolve it:
+
+| `kind` | from | located | `evidence_needed` |
+|---|---|---|---|
+| `absent_or_detached` | a CONNECTIVITY finding: a required relation missing, or one pointing at an entity never declared | `at` the entity lacking it, or the undeclared one (`referenced_by` the entity pointing at it) | the relation on the entity that holds it |
+| `unaccounted_flow` | a CONSERVATION finding: a declared balance that does not close | `at` the entity, `between` the declared input and outputs, with `magnitude` and `ratio` | the declared output nobody read, or null when every one was read -- then what is missing leaves by a path nobody declared |
+| `effect_not_observed` | the pairs `file_action` filed: the action's arm falsified, the no-action arm confirmed | `on` the `entity.property` | what the action was declared to write, which says whether it took hold at all |
+| `unexplained_change` | the same pairs: both arms falsified | `on` the `entity.property`, with the relation types into it that declare no transition to it as `candidates` | a reading on an entity connected by one of them, or null when every relation into it already drives it |
+
+The first two are read off the last check, so before any check they decline
+`precondition_unmet`. The last two need a number only the domain has -- how many
+executions make a pattern:
+
+```yaml
+gaps:
+  min_cycles: 3     # executions that must show it before it is located
+```
+
+**There is no default.** A nightly job and a quarterly hire do not share one,
+and a count the engine chose would decide which changes a reader ever hears
+about. Undeclared, that arm declines `missing_config` at `gaps.min_cycles`;
+fewer graded executions than declared is `insufficient_samples`; a value that is
+not a whole number of at least 1 is refused and named in `unread_fields`. An arm
+the model declares nothing for -- no CONNECTIVITY indicator, no CONSERVATION
+indicator, no action template -- declines `missing_config` naming the arm. Every
+reason is from the `discovery` vocabulary. **It proposes nothing into the
+graph**: a located gap is a question, and a declaration, `discover` or `adopt`
+answers it. Attach it to a case as the `gaps` stage.
+
 ## Choosing between actions: `planning`
 
 `rollout` answers *what happens if I do this*. Ranking candidates needs an
@@ -1437,6 +1484,18 @@ worst excursion went past a line — so larger is safer whether or not a line wa
 ever crossed. Both are reported. A clear candidate shows the same number twice;
 a breaching one can report a `margin_sigmas` of 0.920 and a `clearance_sigmas`
 of -4.985, and only the second says which of those a reader is looking at.
+
+**Each candidate says what it reaches, and what decides it.** `reaches` lists
+every entity downstream of the ones the candidate acts on, along the couplings
+its own rollout crossed, with the `hops` taken and each imagined finding there
+with the first step it appeared at. An entity reached with nothing found is
+listed, because the effect arriving and breaching nothing is an answer; a
+relation that declares no transition carries nothing, so an entity joined only
+by one is not reached. `decisive` names, at the value and step `margin_sigmas`
+measured, the source with the largest share of that value's declared variance --
+a coupling as `relation:from->to` over the `source->target` edge it crossed, or a
+forecast as the reading it seeded -- with its `share`. It is null exactly when
+`margin_sigmas` is. Neither changes a ranking.
 
 **The cost of a finding is derived from `Severity.priority_score`, not declared
 again.** A second severity table is how two parts of one engine come to

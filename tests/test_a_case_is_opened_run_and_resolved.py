@@ -313,7 +313,8 @@ class TestModelDescribeSaysWhatEachStageReads:
         model = yaml.safe_load((EXAMPLES / "pump_tank_planning.yaml").read_text())
         assert self._stages(model) == {"check": True, "hypothesize": False,
                                        "plan": True, "act": True, "learn": True,
-                                       "case": False}
+                                       "case": False, "gaps": False,
+                                       "confirm": False}
 
     def test_the_causal_example(self):
         model = yaml.safe_load((EXAMPLES / "substation_feeder.yaml").read_text())

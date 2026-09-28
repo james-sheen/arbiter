@@ -321,6 +321,14 @@ VOCABULARIES: Dict[str, frozenset] = {
         "insufficient_samples",
         "no_significance_level",       # results, and no declared line for them
         "internal_error",
+        # `gaps` locates what the declaration cannot explain, under
+        # this discipline, and two of its refusals already have published
+        # names: an arm the model declares nothing for is `missing_config`
+        # (no CONSERVATION indicator, no action, no `gaps.min_cycles`), and an
+        # arm with nothing to read yet -- no check has run -- is
+        # `precondition_unmet`. The unknown unknown stays unknown, by name.
+        "missing_config",
+        "precondition_unmet",
     }),
 }
 

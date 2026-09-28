@@ -44,8 +44,10 @@ from arbiter_engine.history.observation import InMemoryObservationHistory
 from arbiter_engine.interfaces import (
     Entity, RelationshipGraph,
 )
-from arbiter_engine.types import IndicatorType
-from arbiter_engine.twin.actions import as_action_instance
+from arbiter_engine.types import (
+    IndicatorType, read_gaps_min_cycles)
+from arbiter_engine.twin.actions import (
+    as_action_instance, load_templates as _load_templates)
 from arbiter_engine.ontology.axioms.roles import (
     unreachable_axioms as _unreachable_axioms,
 )
@@ -2398,7 +2400,8 @@ def open_case(session: EngineSession, entity_id: str, indicator: str,
 
 #: The payload leg each attachable stage answers in, and what a case keeps of
 #: it: a reference, never the envelope.
-_STAGE_LEGS = {"hypothesize": "hypothesis", "plan": "plan", "act": "execution"}
+_STAGE_LEGS = {"hypothesize": "hypothesis", "plan": "plan", "act": "execution",
+               "gaps": "residuals"}
 
 
 def _stage_reference(stage: str, leg: Dict[str, Any]) -> Dict[str, Any]:
@@ -2415,6 +2418,15 @@ def _stage_reference(stage: str, leg: Dict[str, Any]) -> Dict[str, Any]:
     if stage == "act":
         return {"execution_id": leg.get("id"), "action": leg.get("action"),
                 "pairs_filed": (leg.get("checked") or {}).get("pairs_filed")}
+    if stage == "gaps":
+        # what the declaration could not explain, located, each with
+        # the axiom or pair that produced it and the reading that would settle
+        # it, where one was named.
+        return {"hypotheses": [
+            {key: h.get(key) for key in ("kind", "at", "between", "on", "basis",
+                                         "evidence_needed")
+             if h.get(key) is not None}
+            for h in (leg.get("hypotheses") or [])]}
     return {}
 
 
@@ -2430,6 +2442,12 @@ def attach_stage(session: EngineSession, case_id: str, stage: str,
     `learn` has no engine envelope: the adoption is the vertical's, and it
     reports it as `reference`. `check` is not attached: every check records
     itself into every open case, because resolution is counted in checks.
+
+    `gaps` attaches the located residuals from the `gaps` envelope.
+    `confirm` is the one stage a person supplies: a reference naming the
+    cause they confirmed, which the book reads back against the ranking the
+    case held before it, so `case_book` can say how often the first-ranked
+    cause was the one.
 
     An envelope with no leg for the stage is refused as
     `malformed_request` -- it is some other verb's. The one exception is a
@@ -2465,6 +2483,18 @@ def attach_stage(session: EngineSession, case_id: str, stage: str,
             "malformed_request", {"location": stage},
             detail="nothing to attach: pass the stage's envelope, or a "
                    "reference for what the vertical did"))
+    elif stage == "confirm" and not (
+            isinstance(reference, dict)
+            and isinstance(reference.get("cause"), str)
+            and reference.get("cause").strip()):
+        # A CONFIRMATION NAMES ITS CAUSE, or the book cannot say
+        # where that cause stood in the ranking before it, which is the whole
+        # reason the stage exists.
+        declines.append(Decline(
+            "malformed_request", {"location": stage},
+            detail="a confirmation is a reference naming the cause a person "
+                   "confirmed: reference={'cause': <entity id>, 'reading': "
+                   "<entity.property that settled it>, 'basis': <who says so>}"))
     payload: Dict[str, Any] = {}
     leg: Any = None
     if envelope is not None:
@@ -2544,6 +2574,21 @@ def _stage_readiness(model: Any) -> Dict[str, Dict[str, Any]]:
                   "reads": "a relationship rule carrying a transition:"},
         "case": {"declared": not case_why,
                  "reads": "cases.severity and cases.consecutive_checks"},
+        # gaps locates from a RELATIONSHIP indicator's cardinality,
+        # a CONSERVATION balance, or the pairs an executed action filed --
+        # and those only once the model says how many executions make one.
+        "gaps": {"declared": any(
+                     {"CONNECTIVITY", "CONSERVATION"} & {
+                         str(getattr(a, "value", a)).upper()
+                         for a in (getattr(spec, "relevant_axioms", None) or ())}
+                     for specs in (model.indicators or {}).values()
+                     for spec in specs)
+                 or (bool(templates) and read_gaps_min_cycles(
+                     getattr(model, "gaps", None)).cycles is not None),
+                 "reads": "indicators under CONNECTIVITY or CONSERVATION, or "
+                          "action_templates with gaps.min_cycles"},
+        "confirm": {"declared": not case_why,
+                    "reads": "an open case, and a reference naming the cause"},
     }
 
 
@@ -2810,6 +2855,10 @@ def plan(session: EngineSession,
             "assumptions": list(c.assumptions),
             "margin_sigmas": c.margin_sigmas,
             "clearance_sigmas": c.clearance_sigmas,
+            # what the option reaches downstream, and the source
+            # of doubt that decides it where the call is closest.
+            "reaches": [dict(row) for row in c.reaches],
+            "decisive": dict(c.decisive) if c.decisive else None,
             "checked": dict(c.checked),
         }
         for c in result.candidates
@@ -2827,6 +2876,231 @@ def plan(session: EngineSession,
             plan_payload["calibration"] = session.ledger.calibration()
     payload["plan"] = plan_payload
     return _WithPayload(envelope, payload)
+
+
+def _undeclared_channels(session: EngineSession, entity_id: str,
+                         prop: str) -> Tuple[List[str], Optional[str]]:
+    """Relation types into this entity's type that declare no transition to
+    `prop`, and a reading on an entity actually connected by one of them --
+    where a change nobody declared could be arriving from, and what to read."""
+    entity = session.entities.get(entity_id)
+    if entity is None or session.model is None:
+        return [], None
+
+    def drives(rule: Dict[str, Any]) -> bool:
+        blocks = rule.get("transition")
+        blocks = blocks if isinstance(blocks, list) else [blocks]
+        return any(isinstance(b, dict) and b.get("to") == prop for b in blocks)
+
+    candidates = sorted({str(rule.get("type")) for rule in
+                         (session.model.relationship_rules or ())
+                         if isinstance(rule, dict)
+                         and rule.get("target_type") == entity.type
+                         and not drives(rule)})
+    for relation in candidates:
+        for source_id in sorted(
+                session.graph.get_reverse_relationships(entity_id, relation)):
+            source = session.entities.get(source_id)
+            names = [spec.property_name or spec.name for spec in
+                     (session.model.indicators or {}).get(
+                         getattr(source, "type", ""), ()) or ()]
+            if names:
+                return candidates, f"{source_id}.{names[0]}"
+    return candidates, None
+
+
+def _action_reading(session: EngineSession, action: str,
+                    parameters: Dict[str, Any]) -> Optional[str]:
+    """`entity.property` the executed action was declared to write: reading
+    it says whether the action took hold at all. The template is read the way
+    `file_action` read it, so the property is the one the pair was filed for."""
+    name, _, acting = action.partition("@")
+    template = _load_templates(session.model)[0].get(name)
+    if not acting or template is None or not parameters:
+        return None
+    written, _declared = template.property_for(sorted(parameters)[0])
+    return f"{acting}.{written}" if written else None
+
+
+def _located_residuals(session: EngineSession
+                       ) -> Tuple[SubEnvelope, List[Dict[str, Any]]]:
+    """ -- where the declaration fails to explain what was observed.
+
+    Three arms, one shape per entry: a `kind`, where it is (`at`, `between` or
+    `on`), the `basis` that produced it, and `evidence_needed` -- the reading
+    that would confirm or dissolve it, or `None` beside a `reason`.
+
+    - PRESENCE, from CONNECTIVITY: a relation a declared indicator requires and
+      the entity lacks, or one pointing at an entity never declared.
+    - CONSERVATION: a declared balance that does not close, with the deficit
+      and the declared output nobody read, where one was not.
+    - DYNAMICS, from the pairs `file_action` files: both arms falsified is a
+      change the declared dynamics cannot explain; the action's arm falsified
+      beside a confirmed no-action arm is a declared effect that did not show.
+      Located once `gaps.min_cycles` executions show it -- a number the model
+      declares and this engine never chooses.
+
+    It proposes nothing into the graph. A located gap is a question, and a
+    declaration, `discover` or `adopt` is what answers one.
+    """
+    model = session.model
+    hypotheses: List[Dict[str, Any]] = []
+    declines: List[Decline] = []
+    result = getattr(session, "_last_result", None)
+    problems = ([] if result is None else
+                list(getattr(result, "problems", ()) or ())
+                + list(getattr(result, "warnings", ()) or ()))
+    declared = {str(getattr(axiom, "value", axiom)).upper()
+                for specs in (model.indicators or {}).values() for spec in specs
+                for axiom in (getattr(spec, "relevant_axioms", None) or ())}
+    checked: Dict[str, Any] = {"findings_read": len(problems), "pairs_read": 0}
+
+    def arm_ready(axiom: str, location: str, why: str) -> bool:
+        if axiom not in declared:
+            declines.append(Decline("missing_config", {"location": location},
+                                    detail=why))
+            return False
+        if result is None:
+            declines.append(Decline(
+                "precondition_unmet", {"location": location},
+                detail="no check has run, so there is no finding to locate "
+                       "from; run check first"))
+            return False
+        return True
+
+    if arm_ready("CONNECTIVITY", "presence",
+                 "no indicator declares CONNECTIVITY, so nothing says which "
+                 "relation an entity must have"):
+        for problem in problems:
+            kind = str(getattr(problem, "problem_type", ""))
+            evidence = getattr(problem, "evidence", None) or {}
+            entity = str(getattr(problem, "entity_id", ""))
+            owner = session.entities.get(entity)
+            spec = (_declared_spec(session, owner.type, kind.split(":", 1)[-1])
+                    if owner is not None and ":" in kind else None)
+            # The relation as the model spells it; the checker upper-cases it.
+            relation = (getattr(spec, "relation_type", None)
+                        or evidence.get("relationship"))
+            needed = f"{entity}.{relation}" if relation else None
+            if kind.startswith("missing_relationship:"):
+                hypotheses.append({
+                    "kind": "absent_or_detached", "at": entity,
+                    "basis": "CONNECTIVITY", "declared_by": kind.split(":", 1)[1],
+                    "relation": relation,
+                    "expected_min": evidence.get("expected_min"),
+                    "actual": evidence.get("actual"), "evidence_needed": needed})
+            elif kind.startswith("dangling_relationship:"):
+                for target in evidence.get("unresolved_targets") or ():
+                    hypotheses.append({
+                        "kind": "absent_or_detached", "at": str(target),
+                        "basis": "CONNECTIVITY",
+                        "declared_by": kind.split(":", 1)[1], "relation": relation,
+                        "referenced_by": entity, "evidence_needed": needed})
+
+    if arm_ready("CONSERVATION", "conservation",
+                 "no indicator declares CONSERVATION, so no quantity is "
+                 "declared to balance"):
+        for problem in problems:
+            kind = str(getattr(problem, "problem_type", ""))
+            if not kind.startswith("conservation_violation:"):
+                continue
+            evidence = getattr(problem, "evidence", None) or {}
+            entity_id = str(getattr(problem, "entity_id", ""))
+            indicator = kind.split(":", 1)[1]
+            entity = session.entities.get(entity_id)
+            spec = (_declared_spec(session, entity.type, indicator)
+                    if entity is not None else None)
+            config = getattr(spec, "conservation_config", None) or {}
+            unread = list(evidence.get("unobserved_output_properties") or ())
+            entry: Dict[str, Any] = {
+                "kind": "unaccounted_flow", "at": entity_id,
+                "basis": "CONSERVATION", "declared_by": indicator,
+                "between": [str(config.get("input_property"))] + [
+                    str(output) for output in
+                    (config.get("output_properties") or ())],
+                "magnitude": evidence.get("deficit"),
+                "ratio": evidence.get("deficit_ratio"),
+                "evidence_needed": f"{entity_id}.{unread[0]}" if unread else None}
+            if not unread:
+                entry["reason"] = ("every declared output was read, so what is "
+                                   "missing leaves by a path nobody declared")
+            hypotheses.append(entry)
+
+    if not (model.action_templates or ()):
+        declines.append(Decline(
+            "missing_config", {"location": "dynamics"},
+            detail="no action template is declared, so no executed action has "
+                   "filed a pair to read"))
+    else:
+        cycles = read_gaps_min_cycles(getattr(model, "gaps", None)).cycles
+        ledger = getattr(session, "ledger", None)
+        records = [r for r in (ledger.records() if ledger is not None else [])
+                   if getattr(r, "execution", None)
+                   and getattr(r, "verdict", None) in ("confirmed", "falsified")]
+        executions = {str(r.execution.get("id")) for r in records}
+        checked["pairs_read"] = len(records)
+        if cycles is None:
+            declines.append(Decline(
+                "missing_config", {"location": "gaps.min_cycles"},
+                detail="how many executions make a pattern is the model's to "
+                       "declare -- gaps: {min_cycles: N}; this engine chooses "
+                       "no number for it",
+                evidence={"graded_executions": len(executions)}))
+        elif len(executions) < cycles:
+            declines.append(Decline(
+                "insufficient_samples", {"location": "dynamics"},
+                detail=(f"{len(executions)} graded execution(s), fewer than "
+                        f"the declared {cycles}"),
+                evidence={"graded_executions": len(executions),
+                          "min_cycles": cycles}))
+        else:
+            arms: Dict[Tuple[str, str, str], Dict[str, str]] = {}
+            done: Dict[str, Dict[str, Any]] = {}
+            for record in records:
+                key = (str(record.execution.get("id")), record.entity_id,
+                       str(record.indicator))
+                arms.setdefault(key, {})[str(record.execution.get("arm"))] = \
+                    record.verdict
+                done[key[0]] = record.execution
+            seen: Dict[Tuple[str, str, str], Set[str]] = {}
+            for (execution_id, entity_id, prop), verdicts in arms.items():
+                acted, idle = verdicts.get("action"), verdicts.get("no_action")
+                if acted == "falsified" and idle == "falsified":
+                    kind = "unexplained_change"
+                elif acted == "falsified" and idle == "confirmed":
+                    kind = "effect_not_observed"
+                else:
+                    continue
+                seen.setdefault((kind, entity_id, prop), set()).add(execution_id)
+            for (kind, entity_id, prop), ids in sorted(seen.items()):
+                if len(ids) < cycles:
+                    continue
+                entry = {"kind": kind, "on": f"{entity_id}.{prop}",
+                         "basis": "file_action pairs", "executions": len(ids)}
+                if kind == "unexplained_change":
+                    entry["candidates"], needed = _undeclared_channels(
+                        session, entity_id, prop)
+                    entry["evidence_needed"] = needed
+                    if needed is None:
+                        entry["reason"] = (
+                            "nothing connected by those relations has a "
+                            "reading to take" if entry["candidates"] else
+                            "every declared relation into it already drives "
+                            "this property, so the change arrives by a relation "
+                            "nobody declared")
+                else:
+                    execution = done[sorted(ids)[0]]
+                    entry["action"] = str(execution.get("action") or "")
+                    entry["evidence_needed"] = _action_reading(
+                        session, entry["action"],
+                        dict(execution.get("parameters") or {}))
+                    if entry["evidence_needed"] is None:
+                        entry["reason"] = ("the action declares no property it "
+                                           "writes that could be read")
+                hypotheses.append(entry)
+
+    checked["hypotheses"] = len(hypotheses)
+    return SubEnvelope("discovery", checked, not_checked=declines), hypotheses
 
 
 def gaps(session: EngineSession,
@@ -2949,6 +3223,16 @@ def gaps(session: EngineSession,
     # is set, and what is set and will never be read.
     payload["instance_thresholds"] = session.instance_thresholds()
     payload["unread_declared_thresholds"] = session.unread_declared_thresholds()
+    # AND WHAT THE OBSERVATIONS SAY THE DECLARATION LACKS, located:
+    # a separate population, because everything above is read off the model
+    # and this is read off what the last check and the ledger saw.
+    if session.model is not None:
+        try:
+            sub, located = _located_residuals(session)
+        except Exception as exc:  # noqa: BLE001 - see `_raised`
+            sub, located = _raised("discovery", exc, {"hypotheses": 0}), []
+        payload["residuals"] = sub.to_dict()
+        payload["residuals"]["hypotheses"] = located
     return _WithPayload(envelope, payload)
 
 

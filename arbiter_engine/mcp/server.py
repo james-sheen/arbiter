@@ -432,19 +432,21 @@ TOOL_SPECS: List[Dict[str, Any]] = [
         "name": "attach_stage",
         "description": (
             "Attach what a stage did to an open case, by reference. For "
-            "hypothesize, plan or act, pass the envelope that verb returned "
-            "(file_action's for act) exactly as it arrived; for learn, which "
-            "the engine never runs, pass a reference saying what was adopted "
-            "and on what basis. The case keeps the reference and every reason "
-            "the stage declined, and runs nothing itself. Another verb's "
-            "envelope is refused."
+            "hypothesize, plan, act or gaps, pass the envelope that verb "
+            "returned (file_action's for act) exactly as it arrived; for "
+            "learn, which the engine never runs, pass a reference saying what "
+            "was adopted and on what basis; for confirm, a reference naming "
+            "the cause a person confirmed: {cause, reading, basis}. The case "
+            "keeps the reference and every reason the stage declined, and "
+            "runs nothing itself. Another verb's envelope is refused."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "case_id": {"type": "string"},
                 "stage": {"type": "string",
-                          "enum": ["hypothesize", "plan", "act", "learn"]},
+                          "enum": ["hypothesize", "plan", "act", "learn",
+                                   "gaps", "confirm"]},
                 "envelope": {"type": "object"},
                 "reference": {"type": "object"},
             },

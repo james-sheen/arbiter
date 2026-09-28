@@ -73,6 +73,10 @@ Its decline reasons are the `simulation` vocabulary's. It is declared as
 return the case as it stands in `case`, and `case_book` returns every case with
 its counts in `cases`, declared as `$defs/case_envelope` and
 `$defs/case_book_envelope`, with the same vocabulary and the same promises.
+**`residuals` is one more**, returned by `gaps` beside what it reports about
+the model: the same four-part shape with the located `hypotheses` beside it,
+its decline reasons the `discovery` vocabulary's, declared as
+`$defs/residuals_envelope`, and the same promises.
 
 Three things about it are promises and not accidents:
 

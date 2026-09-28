@@ -34,6 +34,39 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+## [0.2.18] — 2026-09-28
+
+### Added
+
+- **`gaps` locates what the observations say the model lacks**, as `residuals`:
+  a required relation missing or pointing at an undeclared entity
+  (`absent_or_detached`), a declared balance that does not close
+  (`unaccounted_flow`), and, from the pairs `file_action` filed, a declared
+  effect that did not show (`effect_not_observed`) or a change neither arm
+  explains (`unexplained_change`). Each names the reading that would settle
+  it. Nothing is proposed into the graph.
+- **`gaps.min_cycles`** is how many graded executions must show a pattern
+  before it is located. No default: undeclared, that arm declines
+  `missing_config`. Read by `types.read_gaps_min_cycles`, which returns a
+  `GapsCycles`.
+- **Each `plan` candidate carries `reaches` and `decisive`**: the entities
+  downstream of the ones it acts on, with hops and the imagined findings there,
+  and the source with the largest share of the declared variance at the call
+  `margin_sigmas` measured. Neither changes a ranking.
+- **Two case stages, `gaps` and `confirm`.** `confirm` is a reference naming
+  the cause a person confirmed; `case_book` returns under `confirmed` where
+  each stood in the last ranking before it, with the counts and no rate, from
+  `residual.cases.confirmed_causes`. `attach_stage` takes both, and so does
+  its entry in `arbiter_mcp.server.TOOL_SPECS`.
+- The schema declares `residuals_envelope`, the two candidate fields and
+  `confirmed`. The `discovery` vocabulary gains `missing_config` and
+  `precondition_unmet`, both already published elsewhere.
+
+### Changed
+
+- **`residual.cases.STAGES` ends with `gaps` and `confirm`**, after the five it
+  had, so every stage an older book recorded keeps its place.
+
 ## [0.2.17] — 2026-09-28
 
 ### Added

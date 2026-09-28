@@ -63,7 +63,7 @@ from ..axiom_thresholds import THRESHOLD_FIELDS
 from ..interfaces import IndicatorSpec
 from ..types import (Axiom, AxiomParameters, IndicatorType, Severity,
                      read_severity_floor, DEFAULT_CAUSAL_MAX_HOPS,
-                     read_causal_max_hops)
+                     read_causal_max_hops, read_gaps_min_cycles)
 from .axioms.roles import (
     ROLES, explain_absence, normalise_role, unreachable_axioms,
 )
@@ -384,6 +384,9 @@ class DomainModel:
     #: is clean enough is a domain fact. Absent, `open_case` declines
     #: `missing_config` rather than choosing a number.
     cases: Dict[str, Any] = field(default_factory=dict)
+    #: the `gaps:` block: how many executions must show a pattern
+    #: before the dynamics arm of `gaps` locates it.
+    gaps: Dict[str, Any] = field(default_factory=dict)
     #: `{subtype: parent}`, from `entity_types:` entries written as
     #: `{name: Subtype, extends: Parent}`. A subtype's indicators are the
     #: parent's plus its own, resolved when the model loads, and an action
@@ -909,6 +912,8 @@ class DomainModel:
         report("planning", getattr(self, "planning", None),
                _KNOWN_PLANNING_KEYS, "")
         report("cases", getattr(self, "cases", None), _KNOWN_CASES_KEYS, "")
+        report("gaps", getattr(self, "gaps", None), _KNOWN_GAPS_KEYS, "")
+        out.extend(self._unread_gaps_min_cycles())
         report("causal", getattr(self, "causal", None),
                _KNOWN_CAUSAL_KEYS, "")
         out.extend(self._unread_evidence_severity())
@@ -947,6 +952,26 @@ class DomainModel:
                            f"{getattr(defaults, key)} was used"),
             })
         return rows
+
+    def _unread_gaps_min_cycles(self) -> List[Dict[str, Any]]:
+        """The VALUE side of `gaps.min_cycles:`. There is no default
+        to fall back to, so a refused value leaves the dynamics arm declining
+        `missing_config`, exactly as if nothing had been written -- which is
+        why it is named here."""
+        read = read_gaps_min_cycles(getattr(self, "gaps", None))
+        if not read.refused:
+            return []
+        written = read.value
+        return [{
+            "field": "gaps.min_cycles", "reason": "malformed_value",
+            "value": (written if isinstance(written, (str, int, float, bool))
+                      or written is None else repr(written)),
+            "read_by": [], "did_you_mean": None,
+            "remedy": ("`gaps.min_cycles` takes a whole number of at least 1, "
+                       "so the declaration was refused and the dynamics arm of "
+                       "`gaps` declines `missing_config` as though none were "
+                       "written"),
+        }]
 
     def _unread_causal_max_hops(self) -> List[Dict[str, Any]]:
         """The VALUE side of `causal.max_hops:`.
@@ -1273,7 +1298,7 @@ _MODEL_KEYS = frozenset({
     "id", "domain_id", "name", "description", "entity_types",
     "relationship_types", "aliases", "rules", "closure", "relationship_rules",
     "calendar", "action_templates", "planning", "causal", "indicators",
-    "property_mapping", "axiom_parameters", "cases",
+    "property_mapping", "axiom_parameters", "cases", "gaps",
 })
 
 #: the members of `_MODEL_KEYS` that name or describe a document
@@ -1320,6 +1345,9 @@ _KNOWN_PLANNING_KEYS = frozenset({
 #: The `cases:` block, and the severities it may name -- the
 #: finding scale, most severe first.
 _KNOWN_CASES_KEYS = frozenset({"severity", "consecutive_checks"})
+
+#: the domain-level `gaps:` block. One member.
+_KNOWN_GAPS_KEYS = frozenset({"min_cycles"})
 _CASE_SEVERITIES = ("critical", "high", "medium", "low", "warning", "info")
 
 #: The domain-level `causal:` block, here from the first day rather than after
@@ -2249,6 +2277,7 @@ def load_domain(source: Union[str, Path, Dict[str, Any]]) -> DomainModel:
         axiom_parameters=_require_mapping(
             domain.get("axiom_parameters"), "axiom_parameters"),
         cases=_require_mapping(domain.get("cases"), "cases"),
+        gaps=_require_mapping(domain.get("gaps"), "gaps"),
     )
 
     # say it at LOAD, not at cycle 1. Every fact needed to answer

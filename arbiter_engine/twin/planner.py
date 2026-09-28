@@ -132,6 +132,18 @@ class PlanCandidate:
     #: and cannot say WHICH SIDE of a line a value sat on, which is the one
     #: thing a tie-break has to know.
     clearance_sigmas: Optional[float] = None
+    #: WHAT THIS OPTION REACHES. Every entity downstream of the
+    #: entities its actions act on, along the couplings this candidate's own
+    #: rollout crossed, with the hops it took and what the imagined state
+    #: held there: each imagined finding and the first instant it appeared.
+    #: An entity reached with nothing found is listed, because `the effect
+    #: arrives and breaches nothing` is an answer.
+    reaches: List[Dict[str, Any]] = field(default_factory=list)
+    #: WHAT ITS UNCERTAINTY IS MADE OF, where it matters: at the
+    #: value and instant `margin_sigmas` measured, the one source carrying the
+    #: largest share of that value's declared variance. `None` exactly when
+    #: `margin_sigmas` is: no declared spread reached the trajectory.
+    decisive: Optional[Dict[str, Any]] = None
     checked: Dict[str, Any] = field(default_factory=dict)
     rollouts: int = 0
 
@@ -373,9 +385,16 @@ def _closest_call(envelope: Any) -> Optional[float]:
     that produced this objective actually come. `None` when nothing declared
     a spread that reached the trajectory.
     """
+    closest = _closest(envelope)
+    return None if closest is None else closest[0]
+
+
+def _closest(envelope: Any) -> Optional[Tuple[float, Any, str, str]]:
+    """`_closest_call`'s figure, and the step, entity and property it was
+    measured at -- the first of equal distances, in step order."""
     if envelope is None or not getattr(envelope, "has_declared_spread", False):
         return None
-    closest: Optional[float] = None
+    closest: Optional[Tuple[float, Any, str, str]] = None
     for step in getattr(envelope, "steps", []) or []:
         for entity_id, spreads in (getattr(step, "sigma", {}) or {}).items():
             for prop, spread in spreads.items():
@@ -386,9 +405,57 @@ def _closest_call(envelope: Any) -> Optional[float]:
                     continue
                 for limit, _upper in _bounds_for(envelope, entity_id, prop):
                     sigmas = abs(float(limit) - float(value)) / float(spread)
-                    if closest is None or sigmas < closest:
-                        closest = sigmas
+                    if closest is None or sigmas < closest[0]:
+                        closest = (sigmas, step, entity_id, prop)
     return closest
+
+
+def _decisive(envelope: Any) -> Optional[Dict[str, Any]]:
+    """ -- the source carrying the largest share of the variance at
+    the closest call: the declaration whose doubt most decides this row."""
+    closest = _closest(envelope)
+    if closest is None:
+        return None
+    sigmas, step, entity_id, prop = closest
+    shares = ((getattr(step, "spread_shares", {}) or {}).get(entity_id, {})
+              or {}).get(prop) or []
+    if not shares:
+        return None
+    return {"at": f"{entity_id}.{prop}", "at_s": step.at_s,
+            "margin_sigmas": sigmas, **shares[0]}
+
+
+def _reaches(envelope: Any, actions: Sequence[ActionInstance]
+             ) -> List[Dict[str, Any]]:
+    """ -- the entities downstream of the acted-on ones, along the
+    edges this rollout crossed, and the imagined findings on each."""
+    out_edges: Dict[str, Set[str]] = {}
+    for edge in getattr(envelope, "edges_traversed", ()) or ():
+        source, _, target = str(edge).partition("->")
+        if source and target:
+            out_edges.setdefault(source, set()).add(target)
+    hops: Dict[str, int] = {a.entity_id: 0 for a in actions}
+    frontier = sorted(hops)
+    while frontier:
+        following = []
+        for entity_id in frontier:
+            for target in sorted(out_edges.get(entity_id, ())):
+                if target not in hops:
+                    hops[target] = hops[entity_id] + 1
+                    following.append(target)
+        frontier = following
+    first: Dict[str, Dict[str, float]] = {}
+    for step in getattr(envelope, "steps", []) or []:
+        for finding in getattr(step, "findings", []) or []:
+            entity_id = str(getattr(finding, "entity_id", ""))
+            kind = str(getattr(finding, "problem_type", ""))
+            if hops.get(entity_id, 0) > 0:
+                first.setdefault(entity_id, {}).setdefault(kind, step.at_s)
+    return [{"entity": entity_id, "hops": n,
+             "findings": [{"problem_type": kind, "first_at_s": at}
+                          for kind, at in sorted(first.get(entity_id, {}).items())]}
+            for entity_id, n in sorted(hops.items(), key=lambda kv: (kv[1], kv[0]))
+            if n > 0]
 
 
 def _signed_clearance(envelope: Any, findings: Sequence[Any],
@@ -662,6 +729,7 @@ def search(session: Any, topology: Any, *,
                 "transitions_applied": envelope.transitions_applied,
             },
             rollouts=1,
+            reaches=_reaches(envelope, actions),
         )
         result.refused_actions.extend(envelope.refused_actions)
         result.edges_traversed |= envelope.edges_traversed
@@ -697,6 +765,8 @@ def search(session: Any, topology: Any, *,
             candidate.assumptions = list(stamps)
             # and HOW CLOSE the call was.
             candidate.margin_sigmas = _closest_call(envelope)
+            # and what the doubt at that call is made of.
+            candidate.decisive = _decisive(envelope)
             # and WHICH SIDE, which is a different question.
             # `min_severity` is empty for `expected_findings`, and then
             # `_severity_at_least` is None and `_worst_margin` reports the

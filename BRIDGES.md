@@ -290,7 +290,7 @@ fourteen. That is precisely the mistake `COMPATIBILITY.md` warns against, made
 by a reader who got everything else exactly right, because what they needed in
 order to avoid it was not published.
 
-Ninety-six names across seven sets. Each row below is complete: what it folds
+Ninety-eight names across seven sets. Each row below is complete: what it folds
 in, plus what is its own, is the whole set.
 
 | sub-envelope | members | folds in | its own |
@@ -298,7 +298,7 @@ in, plus what is its own, is the whole set.
 | `simulation` | 39 | the fourteen, `projection` | `budget_exhausted`, `contradictory_actions`, `counterfactual_not_a_prediction`, `coupling_uninstantiated`, `cycle_unsupported`, `gain_not_adopted`, `malformed_action`, `malformed_request`, `missing_declaration`, `missing_dynamics`, `missing_entity`, `no_candidates`, `no_declared_tolerance`, `no_objective`, `settle_exceeds_step`, `unknown_action`, `unknown_parameter`, `wrong_entity_type` |
 | `shadow` | 18 | the fourteen | `internal_error`, `no_report_probability`, `not_a_producers_submission`, `tail_not_declared` |
 | `projection` | 9 | -- | `covariance_unbounded`, `insufficient_samples`, `internal_error`, `model_inconsistent`, `model_missing`, `no_lookback`, `no_report_probability`, `no_threshold`, `unidentifiable_parameter` |
-| `discovery` | 8 | -- | `faithfulness_unverifiable`, `insufficient_samples`, `internal_error`, `latent_confounding_possible`, `no_significance_level`, `nonstationary_series`, `orientation_undetermined`, `untested_pair` |
+| `discovery` | 10 | -- | `faithfulness_unverifiable`, `insufficient_samples`, `internal_error`, `latent_confounding_possible`, `missing_config`, `no_significance_level`, `nonstationary_series`, `orientation_undetermined`, `precondition_unmet`, `untested_pair` |
 | `entailment` | 8 | -- | `binding_budget_exhausted`, `depth_exceeded`, `inheritance_conflict`, `internal_error`, `malformed_rule`, `open_world_undecidable`, `recursion_unsupported`, `rule_unreachable` |
 | `inference` | 9 | -- | `cpt_missing`, `cycle_unsupported`, `depth_exceeded`, `evidence_conflict`, `insufficient_samples`, `internal_error`, `no_report_probability`, `not_identifiable`, `treewidth_exceeded` |
 | `forecasts` | 5 | -- | `forecast_missing`, `internal_error`, `model_unknown`, `stale_forecast`, `ungradeable` |
