@@ -235,6 +235,34 @@ TIES_BREAK_TOWARD_THE_WIDER_MARGIN = "ties_break_toward_the_wider_margin"
 SEARCH_DEPTH_NOT_DECLARED = "search_depth_not_declared"
 
 # ---------------------------------------------------------------------------
+# When and how a cause was read: `hypothesize`.
+# ---------------------------------------------------------------------------
+
+#: at least one entity upstream of the finding was read at the
+#: instant its declared delays imply, not at the finding's: the finding's
+#: instant minus the dead times declared along its path. The ranking rests on
+#: that aligned evidence. Absent whenever no causal edge in reach declares a
+#: delay, and then nothing was moved.
+EVIDENCE_READ_AT_DECLARED_DELAY = "evidence_read_at_declared_delay"
+
+#: A path read back along also declares a time constant, so its response goes
+#: on developing after the dead time, and the entity was read at the dead time
+#: alone. Widening the read by a settling fraction would be a number this
+#: engine chose, so the instant is the declared one and the stamp says so.
+READ_AT_DEAD_TIME = "read_at_dead_time"
+
+#: An entity reached by paths of unequal declared delay was read at each of
+#: their instants, and counted FAULTY if any of those readings was: a fault at
+#: any of them could have reached the finding by its own path.
+READ_AT_EACH_PATH_DELAY = "read_at_each_path_delay"
+
+#: The reading named to separate the candidates was chosen by the shape of
+#: the declared graph, because no causal strength was declared to weigh them:
+#: the entity that lies on every declared path from the most candidates. It
+#: assumes a fault travelling a declared channel shows at each entity on it.
+FAULTS_VISIBLE_ALONG_CHANNELS = "faults_visible_along_channels"
+
+# ---------------------------------------------------------------------------
 # The one stamp that carries a value.
 # ---------------------------------------------------------------------------
 
@@ -276,6 +304,10 @@ ASSUMPTION_STAMPS: Tuple[str, ...] = (
     TIES_BREAK_TOWARD_FEWER_ACTIONS,
     TIES_BREAK_TOWARD_THE_WIDER_MARGIN,
     SEARCH_DEPTH_NOT_DECLARED,
+    EVIDENCE_READ_AT_DECLARED_DELAY,
+    READ_AT_DEAD_TIME,
+    READ_AT_EACH_PATH_DELAY,
+    FAULTS_VISIBLE_ALONG_CHANNELS,
 )
 
 #: The prefixes a stamp may carry a value behind. Kept separate from the tuple

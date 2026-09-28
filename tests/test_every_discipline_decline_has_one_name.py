@@ -36,7 +36,7 @@ from arbiter_engine.types import NotEvaluatedReason
 #: point: a number written in two places drifts, so the prose copy is checked
 #: against the code and not against the last time somebody looked.
 NUMBER_WORDS = {5: "five", 7: "seven", 8: "eight", 93: "ninety-three",
-                94: "ninety-four"}
+                94: "ninety-four", 96: "ninety-six"}
 
 FOLDABLE = {"the fourteen": lambda: {r.value for r in NotEvaluatedReason},
             "`projection`": lambda: set(subenvelope._PROJECTION_VOCABULARY)}

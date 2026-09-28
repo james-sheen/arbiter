@@ -34,6 +34,35 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+## [0.2.17] — 2026-09-28
+
+### Added
+
+- **`hypothesize` reads each cause at its declared delay.** When a causal edge
+  declares `propagation_delay_s`, every entity upstream of the finding is read
+  at the finding's instant minus the dead times along its path, and the ranking
+  rests on that. On a three-entity chain, a fault one delay back that cleared by
+  the finding reverses the ranking. `read_at` names the instants. A model
+  declaring no delay gets the same evidence, ranking and stamps as before.
+- **`hypothesize` names the reading its ranking rests on most**, as
+  `most_discriminating`: weighed by the strengths where they are declared, and
+  by the declared graph's shape where they are not.
+- **Each candidate carries its `path` and `do_would_answer`**, the finding's
+  posterior with the cause forced faulty, given the rest of the evidence.
+- **`causal.max_hops` bounds the walk upstream**, `DEFAULT_CAUSAL_MAX_HOPS` (4)
+  when undeclared; `inference.hypothesis.MAX_HOPS` now reads that default.
+  Causes past it are counted and declined `depth_exceeded`.
+- Four assumption stamps, each a constant in `assumptions`:
+  `EVIDENCE_READ_AT_DECLARED_DELAY` (`evidence_read_at_declared_delay`),
+  `READ_AT_DEAD_TIME`, `READ_AT_EACH_PATH_DELAY` and
+  `FAULTS_VISIBLE_ALONG_CHANNELS`. The `inference` vocabulary gains
+  `insufficient_samples` and `depth_exceeded`, both already published elsewhere.
+
+### Changed
+
+- **A case's `hypothesize` stage keeps every ranked cause**, not the first five,
+  and the reading named beside them.
+
 ### Documentation
 
 - **The evidence preface names the eight paths its documents cite and this

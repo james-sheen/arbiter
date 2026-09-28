@@ -1200,6 +1200,60 @@ question no answer, and the last two are mended the same way, by a causal edge
 into the subject. The `detail` says which condition held -- for a person, since
 matching on it is unsupported.
 
+**A cause is read at its declared delay.** A finding is found at one instant,
+and a cause some declared hops upstream acted earlier. When a causal edge's rule
+declares `temporal: {propagation_delay_s: ...}`, `hypothesize` reads every entity
+upstream of the finding at the finding's instant minus the dead times declared
+along its path, on a copy of the session the live one never sees, and ranks on
+that evidence. `read_at` names the instants, and each candidate's own `read_at`
+says when it was read. Measured on a pump feeding a tank feeding a basin, 60 s
+per edge: a tank fault one delay back, cleared by the finding's instant, puts the
+pump first at 0.808 against the tank's 0.415, where read at the finding the tank
+led. **Only a declared delay moves a read** -- the 60 s a transition falls back to
+never does -- so a model declaring none gets exactly the evidence it always did.
+An edge that declares none adds nothing to its path and stamps
+`time_course_not_declared`; a declared time constant stamps `read_at_dead_time`;
+an entity reached by paths of unequal delay is read at each, counted faulty if
+any reading was, and stamped `read_at_each_path_delay`. An instant with no
+reading in the thirty days before it leaves the entity out, and
+`insufficient_samples` names it. A cause read in the past is filed in the ledger
+as a claim about that instant.
+
+**The reading that would change the answer: `most_discriminating`.**
+`evidence_needed` is each candidate's first declared reading, the model's
+ordering. What the ranking itself rests on is named beside it. Where every
+candidate has a posterior, each outcome of a reading is weighed by the model's
+own probability of it given everything else, and the reading named moves the
+posteriors furthest (`basis: strengths`, with `expected_change` and the outcome
+that would change the top candidate); a reading already taken counts only
+through the outcome it did not give. On the chain above, read at the finding, it
+names the tank. Where no strength is declared nothing can be weighed, and the
+reading named is the candidate on every declared path from the most candidates
+-- the most even split (`basis: structure`, `splits`), stamped
+`faults_visible_along_channels` for the assumption that makes it a test. One
+candidate names itself (`basis: only_candidate`).
+
+**Forcing a cause: `do_would_answer`.** Each candidate carries the finding's
+posterior under `do(candidate faulty)`, given the rest of the evidence, as
+`infer` answers `do` -- `null` wherever `infer` would decline. Neither it nor
+any reading `most_discriminating` weighs is filed in the ledger: a value nobody
+observed is not a prediction.
+
+### How far upstream: `causal.max_hops`
+
+```yaml
+domain:
+  causal:
+    max_hops: 6
+```
+
+`hypothesize` walks declared causal edges at most this many hops upstream, four
+when undeclared, and reports the bound as `checked.max_hops`. A whole number of
+at least 1 is taken; anything else is refused by value in `unread_fields` and
+the four is used. Declared causes past the bound are not ranked -- they are
+counted in `checked.beyond_bound` and declined `depth_exceeded`, so a ranking cut
+short is never read as whole. The walk is layered and bounded, never recursive.
+
 ### What counts as faulty evidence: `causal.evidence_severity`
 
 `infer` reads the last `check()`. An entity in its `not_checked` leg is left
@@ -1428,6 +1482,10 @@ the key being absent. The `inference` sub-envelope -- what `infer` and
 | `ties_break_toward_fewer_actions` | candidates equal on the objective were ordered by acting less |
 | `ties_break_toward_the_wider_margin` | candidates still equal were ordered by the wider signed headroom, and only where a declared spread reached a trajectory |
 | `search_depth_not_declared` | the model declared no `planning.max_depth:`, so every candidate was scored alone and no combination was tried -- absent the moment the key is declared, including at 1, because the claim is that the engine chose rather than that the depth is low |
+| `evidence_read_at_declared_delay` | `hypothesize` read at least one entity upstream of the finding at the finding's instant minus the dead times declared along its path, and ranked on that evidence -- absent whenever no causal edge in reach declares a delay |
+| `read_at_dead_time` | a path read back along also declares a time constant, so its response goes on developing after the dead time, and the entity was read at the dead time alone |
+| `read_at_each_path_delay` | an entity reached by paths of unequal declared delay was read at each of their instants, and counted faulty if any of those readings was |
+| `faults_visible_along_channels` | the reading named to separate the candidates was chosen by the declared graph's shape, because no causal strength was declared to weigh them; it assumes a fault travelling a declared channel shows at each entity on it |
 
 One stamp carries a value rather than standing alone:
 `action_property_from_parameter_name:<property>` says that an action template

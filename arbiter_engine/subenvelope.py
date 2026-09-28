@@ -296,6 +296,15 @@ VOCABULARIES: Dict[str, frozenset] = {
         "treewidth_exceeded",          # exact elimination would build a factor too wide
         "no_report_probability",       # a posterior, and no declared line for it
         "internal_error",
+        # two names this set did not carry, each already published
+        # in another discipline and meaning the same thing here, so a reader
+        # learns no new word. `hypothesize` reads a cause's upstream entities at
+        # their declared delays: when that instant holds no reading the entity
+        # is left out and `insufficient_samples` names the window, and when
+        # declared causes reach past the hop bound `depth_exceeded` says how
+        # many were not ranked -- a ranking cut short is never read as whole.
+        "insufficient_samples",
+        "depth_exceeded",
         # WITHDRAWN until the method that produces them lands, like the two in
         # `entailment`. `approximation_not_converged` and `sample_floor` belong
         # to the Monte Carlo fallback for graphs exact elimination cannot take;

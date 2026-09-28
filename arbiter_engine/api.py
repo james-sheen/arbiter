@@ -94,6 +94,10 @@ class EngineSession:
         self.entities: Dict[str, Entity] = {}
         self.graph = RelationshipGraph()
         self._last_result = None
+        #: the engine's clock when `_last_result` was computed: the
+        #: instant a finding was found at, which `hypothesize` reads each cause
+        #: back from by its declared delay.
+        self._last_checked_at: Optional[datetime] = None
         #: the instant the current feeding pass stamps bare
         #: readings against. See `_bare_reading_instant`.
         self._bare_pass_instant: Optional[datetime] = None
@@ -1408,6 +1412,7 @@ def check(session: EngineSession) -> Envelope:
         list(session.entities.values()), session.graph,
         _history_for(session))
     session._last_result = result
+    session._last_checked_at = now_utc()
     # RULE: every prediction gets graded. `check` is the cycle boundary, so it
     # is where maturity is noticed -- a prediction whose horizon passed between
     # two calls is graded on the next one rather than whenever someone
@@ -2398,9 +2403,13 @@ _STAGE_LEGS = {"hypothesize": "hypothesis", "plan": "plan", "act": "execution"}
 
 def _stage_reference(stage: str, leg: Dict[str, Any]) -> Dict[str, Any]:
     if stage == "hypothesize":
+        # EVERY cause, in its rank, not the first five: a person who
+        # later confirms a cause asks where it stood, and a cut list cannot
+        # say. Bounded by the declared graph within `causal.max_hops`.
         return {"causes": [
             {"cause": c.get("cause"), "posterior": c.get("posterior")}
-            for c in (leg.get("candidates") or [])[:5]]}
+            for c in (leg.get("candidates") or [])],
+            "most_discriminating": leg.get("most_discriminating")}
     if stage == "plan":
         return {"best": leg.get("best"), "objective": leg.get("objective")}
     if stage == "act":
@@ -3175,9 +3184,11 @@ def hypothesize(session: EngineSession, entity_id: str,
     if session.model is None:
         return unavailable_envelope("no domain model loaded")
     try:
-        sub, ranked = _hypothesize(session, entity_id, report_above=report_above)
+        sub, ranked, extras = _hypothesize(session, entity_id,
+                                           report_above=report_above,
+                                           check=check)
     except Exception as exc:  # noqa: BLE001 - see `_raised`
-        sub, ranked = _raised("inference", exc, {"candidates": 0}), []
+        sub, ranked, extras = _raised("inference", exc, {"candidates": 0}), [], {}
 
     envelope = Envelope(
         checked=CheckedSummary(invariants=0, entities=len(session.entities)),
@@ -3185,6 +3196,11 @@ def hypothesize(session: EngineSession, entity_id: str,
     payload = envelope.to_dict()
     payload["hypothesis"] = sub.to_dict()
     payload["hypothesis"]["candidates"] = ranked
+    # the reading that would change this ranking most, and, when a
+    # declared delay moved any read, the instants each cause was read at.
+    payload["hypothesis"]["most_discriminating"] = extras.get("most_discriminating")
+    if extras.get("read_at"):
+        payload["hypothesis"]["read_at"] = extras["read_at"]
     return _WithPayload(envelope, payload)
 
 

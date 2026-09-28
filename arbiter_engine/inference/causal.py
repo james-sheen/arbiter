@@ -21,8 +21,11 @@ were given.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple
+
+from ..temporal.temporal_edge import resolve_number
 
 __all__ = ["EdgeWeight", "CausalGraph", "causal_subgraph",
            "SOURCE_DECLARED", "SOURCE_LEARNED", "SOURCE_DEFAULT",
@@ -64,6 +67,14 @@ class CausalGraph:
     #: Declared unobserved common causes, keyed by the edge that named one.
     latents: Dict[Tuple[str, str], str] = field(default_factory=dict)
     entity_type: Dict[str, str] = field(default_factory=dict)
+    #: the dead time each edge's rule DECLARES, in seconds, and its
+    #: time constant: `None` wherever nothing was declared. Never the engine's
+    #: own 60 s, which a transition falls back to and stamps: a read shifted by
+    #: a number nobody declared would place the evidence at an instant the
+    #: model never named, and on a monthly series it is last month's reading.
+    delays: Dict[Tuple[str, str], Optional[float]] = field(default_factory=dict)
+    time_constants: Dict[Tuple[str, str], Optional[float]] = field(
+        default_factory=dict)
 
     def leak_for(self, node: str) -> float:
         incoming = [self.weights[(p, node)] for p in self.parents.get(node, ())]
@@ -188,4 +199,25 @@ def causal_subgraph(model, graph, entities,
                 latent = rule.get("latent_confounder")
                 if latent:
                     out.latents[(source_id, target_id)] = str(latent)
+                delay, tau = _declared_time_course(rule)
+                out.delays[(source_id, target_id)] = delay
+                out.time_constants[(source_id, target_id)] = tau
     return out
+
+
+def _declared_time_course(rule: Dict[str, Any]
+                          ) -> Tuple[Optional[float], Optional[float]]:
+    """`(dead time, time constant)` as the rule's `temporal:` block declares
+    them, each `None` when absent, unreadable, negative or not finite -- the
+    loader reports an unreadable one; this reader only declines to use it."""
+    block = rule.get("temporal")
+    if not isinstance(block, dict):
+        return None, None
+
+    def declared(key: str) -> Optional[float]:
+        value, _unresolved = resolve_number(block.get(key))
+        if value is None or not math.isfinite(value) or value < 0:
+            return None
+        return value
+
+    return declared("propagation_delay_s"), declared("time_constant_s")

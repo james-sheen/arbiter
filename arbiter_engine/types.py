@@ -162,6 +162,40 @@ def read_severity_floor(block: Any,
         (), True, None)
 
 
+#: how many declared causal hops `hypothesize` walks upstream when
+#: a model declares no `causal.max_hops:`. It was the walk's own constant; it is
+#: now the default a model may replace.
+DEFAULT_CAUSAL_MAX_HOPS = 4
+
+
+class CausalHops(NamedTuple):
+    """What `causal.max_hops:` declares, as `read_causal_max_hops` read it."""
+    hops: int
+    #: True when a usable value was written; False for the default.
+    declared: bool
+    #: True when the key was written with something that is not a whole
+    #: number of at least 1; `value` then carries what was written.
+    refused: bool
+    value: Any
+
+
+def read_causal_max_hops(block: Any) -> CausalHops:
+    """How far upstream `hypothesize` walks, from a `causal:`-shaped block.
+
+    A whole number of at least 1 is taken. Anything else written under the key
+    is REFUSED rather than coerced -- `3.5`, `"3"`, `true`, `0`, or nothing --
+    the default is used, and the refusal carries what was written so the
+    loader can name it. The one reader the loader and the verb both ask, so
+    they cannot disagree about what was declared.
+    """
+    if not isinstance(block, dict) or "max_hops" not in block:
+        return CausalHops(DEFAULT_CAUSAL_MAX_HOPS, False, False, None)
+    written = block["max_hops"]
+    if isinstance(written, int) and not isinstance(written, bool) and written >= 1:
+        return CausalHops(written, True, False, written)
+    return CausalHops(DEFAULT_CAUSAL_MAX_HOPS, False, True, written)
+
+
 class PropertyType(Enum):
     """Inferred property type."""
     UNKNOWN = "unknown"

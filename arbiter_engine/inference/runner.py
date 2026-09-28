@@ -32,7 +32,7 @@ from ..types import Axiom, Severity, read_severity_floor
 from .causal import SOURCE_DEFAULT, CausalGraph, causal_subgraph
 from .ve import Factor, FactorTooWide, eliminate, noisy_or_factor
 
-__all__ = ["Query", "run_inference", "ROOT_PRIOR"]
+__all__ = ["Query", "Evidence", "run_inference", "ROOT_PRIOR"]
 
 #: The prior on a root cause with no parents and no evidence. A DEFAULT, and
 #: it is reported as one in every answer's evidence -- but unlike an edge
@@ -56,6 +56,18 @@ class Query:
             return f"P({self.target} faulty | evidence)"
         acts = ", ".join(f"do({k}={v})" for k, v in sorted(self.do.items()))
         return f"P({self.target} faulty | evidence, {acts})"
+
+
+@dataclass(frozen=True)
+class Evidence:
+    """What each node of the causal subgraph read, for a caller that did not
+    take it from the last `check()`: `observed` maps a node to 1 (faulty) or 0
+    (clean), `unobserved` lists the nodes left out, and `severity` is each
+    node's own worst finding at the instant it was read, for `target_reading`.
+    """
+    observed: Dict[str, int] = field(default_factory=dict)
+    unobserved: Tuple[str, ...] = ()
+    severity: Dict[str, Optional[str]] = field(default_factory=dict)
 
 
 def _question(gap_type, location, description, text):
@@ -182,7 +194,10 @@ def _surgery(graph: CausalGraph, do: Dict[str, int]) -> CausalGraph:
                  for n, p in graph.parents.items()},
         weights={e: w for e, w in graph.weights.items() if e[1] not in do},
         latents={e: v for e, v in graph.latents.items() if e[1] not in do},
-        entity_type=dict(graph.entity_type))
+        entity_type=dict(graph.entity_type),
+        delays={e: v for e, v in graph.delays.items() if e[1] not in do},
+        time_constants={e: v for e, v in graph.time_constants.items()
+                        if e[1] not in do})
     return cut
 
 
@@ -225,8 +240,16 @@ def _factors(graph: CausalGraph) -> List[Factor]:
 
 
 def run_inference(session, query: Query,
-                  report_above: Optional[float] = None) -> SubEnvelope:
-    """Answer one query over the declared causal subgraph."""
+                  report_above: Optional[float] = None, *,
+                  evidence: Optional["Evidence"] = None,
+                  predicted_at: Optional[Any] = None) -> SubEnvelope:
+    """Answer one query over the declared causal subgraph.
+
+    `evidence` replaces what the last `check()` said, for a caller
+    that read the graph at other instants: `hypothesize` reads each cause at
+    its declared delay. `predicted_at` is the instant the answered posterior
+    is a claim about, when that is not now. Both absent, nothing changes.
+    """
     checked: Dict[str, Any] = {"queries": 1, "answered": 0, "method": "exact_ve"}
     declines: List[Decline] = []
     questions: List[Any] = []
@@ -283,7 +306,10 @@ def run_inference(session, query: Query,
 
     severities, floor_declared, floor_unusable = \
         evidence_severities(session.model)
-    observed, unobserved = evidence_from(session, working, severities)
+    if evidence is None:
+        observed, unobserved = evidence_from(session, working, severities)
+    else:
+        observed, unobserved = dict(evidence.observed), list(evidence.unobserved)
     for node in query.do:
         observed[node] = query.do[node]
     # The target's own state is left out, because conditioning on it answers 1
@@ -311,7 +337,9 @@ def run_inference(session, query: Query,
     target_reading: Optional[Dict[str, Any]] = None
     if set_aside is not None:
         target_reading = {"state": "faulty" if set_aside else "clean",
-                          "severity": _own_severity(session, query.target)}
+                          "severity": (_own_severity(session, query.target)
+                                       if evidence is None else
+                                       evidence.severity.get(query.target))}
         checked["target_reading"] = target_reading
         stamps = stamps + (TARGET_READING_SET_ASIDE,)
 
@@ -361,7 +389,8 @@ def run_inference(session, query: Query,
     checked["posterior"] = round(posterior, 6)
     session.ledger.record_prediction(
         entity_id=query.target, probability=posterior,
-        horizon_s=0.0, severity="medium", kind="stated")
+        horizon_s=0.0, severity="medium", kind="stated",
+        predicted_at=predicted_at)
 
     if report_above is None:
         # The number in this sentence was the literal `0.31` at every

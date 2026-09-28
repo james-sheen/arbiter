@@ -62,7 +62,8 @@ import yaml
 from ..axiom_thresholds import THRESHOLD_FIELDS
 from ..interfaces import IndicatorSpec
 from ..types import (Axiom, AxiomParameters, IndicatorType, Severity,
-                     read_severity_floor)
+                     read_severity_floor, DEFAULT_CAUSAL_MAX_HOPS,
+                     read_causal_max_hops)
 from .axioms.roles import (
     ROLES, explain_absence, normalise_role, unreachable_axioms,
 )
@@ -911,6 +912,7 @@ class DomainModel:
         report("causal", getattr(self, "causal", None),
                _KNOWN_CAUSAL_KEYS, "")
         out.extend(self._unread_evidence_severity())
+        out.extend(self._unread_causal_max_hops())
         report("axiom_parameters", getattr(self, "axiom_parameters", None),
                _KNOWN_AXIOM_PARAMETER_KEYS, "")
         out.extend(self._unread_axiom_parameter_values())
@@ -945,6 +947,29 @@ class DomainModel:
                            f"{getattr(defaults, key)} was used"),
             })
         return rows
+
+    def _unread_causal_max_hops(self) -> List[Dict[str, Any]]:
+        """The VALUE side of `causal.max_hops:`.
+
+        `hypothesize` reads the key through `read_causal_max_hops`, which
+        refuses anything but a whole number of at least 1 and walks the
+        default instead. Said here, by value, because the envelope's
+        `checked.max_hops` alone reads the same for a refused declaration and
+        for none.
+        """
+        read = read_causal_max_hops(getattr(self, "causal", None))
+        if not read.refused:
+            return []
+        written = read.value
+        return [{
+            "field": "causal.max_hops", "reason": "malformed_value",
+            "value": (written if isinstance(written, (str, int, float, bool))
+                      or written is None else repr(written)),
+            "read_by": [], "did_you_mean": None,
+            "remedy": (f"`causal.max_hops` takes a whole number of at least 1, "
+                       f"so the declaration was refused and the engine's own "
+                       f"{DEFAULT_CAUSAL_MAX_HOPS} was used"),
+        }]
 
     def _unread_evidence_severity(self) -> List[Dict[str, Any]]:
         """The VALUE side of `causal.evidence_severity:`.
@@ -1297,11 +1322,11 @@ _KNOWN_PLANNING_KEYS = frozenset({
 _KNOWN_CASES_KEYS = frozenset({"severity", "consecutive_checks"})
 _CASE_SEVERITIES = ("critical", "high", "medium", "low", "warning", "info")
 
-#: The domain-level `causal:` block. One member, and it is here from the first
-#: day rather than after a typo reached somebody: a misspelled key in a block
-#: whose absence is legal would silently take the default it was written to
-#: replace.
-_KNOWN_CAUSAL_KEYS = frozenset({"evidence_severity"})
+#: The domain-level `causal:` block, here from the first day rather than after
+#: a typo reached somebody: a misspelled key in a block whose absence is legal
+#: would silently take the default it was written to replace. An internal ruling added
+#: `max_hops`, how far upstream `hypothesize` walks.
+_KNOWN_CAUSAL_KEYS = frozenset({"evidence_severity", "max_hops"})
 
 #: The domain-level `axiom_parameters:` block -- the evaluation parameters a
 #: model may set for itself., closing the second half of issue #14:
