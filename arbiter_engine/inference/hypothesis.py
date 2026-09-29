@@ -152,13 +152,26 @@ def _walks(graph: CausalGraph, subject: str, max_hops: int
 
 
 def _readable_properties(model, entity_type: str) -> List[str]:
-    """What the model says can be read on this type, in declared order."""
+    """What the model says can be READ on this type, in declared order.
+
+    A RELATIONSHIP INDICATOR IS NOT A READING. It declares an edge an
+    entity must have, which CONNECTIVITY checks against the graph, and nobody
+    takes a value of it. Returned here, it was named as the reading a ranking
+    rests on and as each candidate's `evidence_needed` wherever a type lists a
+    relation first: on one organisation model, a division's finding named
+    `dept-sales.reports_to` while the department declares values anyone can
+    read. Skipped by its declared type, so no domain decides it.
+    """
     indicators = (getattr(model, "indicators", None) or {}).get(entity_type) or []
     names: List[str] = []
     for indicator in indicators:
         name = getattr(indicator, "name", None)
-        if name is None and isinstance(indicator, dict):
-            name = indicator.get("name")
+        kind = getattr(indicator, "indicator_type", None)
+        if isinstance(indicator, dict):
+            name = indicator.get("name") if name is None else name
+            kind = indicator.get("type") if kind is None else kind
+        if str(getattr(kind, "value", kind) or "").lower() == "relationship":
+            continue
         if name:
             names.append(str(name))
     return names

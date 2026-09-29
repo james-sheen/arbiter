@@ -78,6 +78,19 @@ the model: the same four-part shape with the located `hypotheses` beside it,
 its decline reasons the `discovery` vocabulary's, declared as
 `$defs/residuals_envelope`, and the same promises.
 
+**The traversal fields, by name**, each an added key under the first promise of
+the next section, listed so a reader finds them rather than meets them. From
+0.2.17: on `hypothesize`, `read_at` and `most_discriminating`, and on each
+candidate `path`, `do_would_answer` and `read_at`. From 0.2.18: `residuals` on
+`gaps`; `reaches` and `decisive` on each `plan` candidate; `confirmed` on the case
+book; and two stages `attach_stage` takes, `gaps` and `confirm`. They came with
+four stamps -- `evidence_read_at_declared_delay`, `read_at_dead_time`,
+`read_at_each_path_delay` and `faults_visible_along_channels` -- and four
+discipline members already published elsewhere: `insufficient_samples` and
+`depth_exceeded` in `inference`, `missing_config` and `precondition_unmet` in
+`discovery`. From 0.2.19 the reading `most_discriminating` and `evidence_needed`
+name is always a value the model declares, never a relation.
+
 Three things about it are promises and not accidents:
 
 - **Its `checked` is never summed with the top-level one.** That counts axiom
@@ -125,7 +138,7 @@ member.
   into one that names what it set aside and whose it was.
 
   **and the sets this rule permits growing are now published.**
-  `BRIDGES.md` Sec. 2a carries all seven, ninety-three names, derived from
+  `BRIDGES.md` Sec. 2a carries all seven and their total, derived from
   `subenvelope.py` rather than transcribed beside it. Until then this entry had
   the defect that an internal ruling closed one bullet down, and closed first: a consumer told a
   set may grow in a patch release had no baseline to diff the growth against,

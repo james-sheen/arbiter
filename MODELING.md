@@ -1221,7 +1221,10 @@ as a claim about that instant.
 
 **The reading that would change the answer: `most_discriminating`.**
 `evidence_needed` is each candidate's first declared reading, the model's
-ordering. What the ranking itself rests on is named beside it. Where every
+ordering -- a value, never a relation: a RELATIONSHIP indicator declares an edge
+CONNECTIVITY checks, nobody takes a value of it, and it is skipped, so a type that
+declares only relations names none (`null`). What the ranking itself rests on is
+named beside it, by the same rule. Where every
 candidate has a posterior, each outcome of a reading is weighed by the model's
 own probability of it given everything else, and the reading named moves the
 posteriors furthest (`basis: strengths`, with `expected_change` and the outcome

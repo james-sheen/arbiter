@@ -34,6 +34,27 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+## [0.2.19] — 2026-09-28
+
+### Fixed
+
+- **The reading a ranking names is a value, never a relation.**
+  `most_discriminating.reading` and each candidate's `evidence_needed` took the
+  type's first declared indicator, relationship ones included, so a type that
+  lists the edge it must have before its values named that edge -- a division's
+  finding named `dept-sales.reports_to` on one organisation model. A
+  RELATIONSHIP indicator is now skipped by its declared type, and a type that
+  declares only relations names no reading. `gaps` names the reading on an
+  undeclared channel by the same rule.
+
+### Documentation
+
+- **The README says what the three traversals return**, and what they do not:
+  none names a cause, chooses an objective or invents a node.
+- **`COMPATIBILITY.md` names every field the traversal phase added**, with its
+  stamps, vocabulary members and the two case stages, and no longer states a
+  count of the published decline names it points to.
+
 ## [0.2.18] — 2026-09-28
 
 ### Added

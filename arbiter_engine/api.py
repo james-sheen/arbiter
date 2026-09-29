@@ -2901,9 +2901,12 @@ def _undeclared_channels(session: EngineSession, entity_id: str,
         for source_id in sorted(
                 session.graph.get_reverse_relationships(entity_id, relation)):
             source = session.entities.get(source_id)
+            # a value to read, never a relation the model declares.
             names = [spec.property_name or spec.name for spec in
                      (session.model.indicators or {}).get(
-                         getattr(source, "type", ""), ()) or ()]
+                         getattr(source, "type", ""), ()) or ()
+                     if getattr(spec, "indicator_type", None)
+                     != IndicatorType.RELATIONSHIP]
             if names:
                 return candidates, f"{source_id}.{names[0]}"
     return candidates, None
