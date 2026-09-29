@@ -89,7 +89,13 @@ four stamps -- `evidence_read_at_declared_delay`, `read_at_dead_time`,
 discipline members already published elsewhere: `insufficient_samples` and
 `depth_exceeded` in `inference`, `missing_config` and `precondition_unmet` in
 `discovery`. From 0.2.19 the reading `most_discriminating` and `evidence_needed`
-name is always a value the model declares, never a relation.
+name is always a value the model declares, never a relation. From 0.2.20: on each
+`confirmed` row `named_reading`, `settling_reading` and
+`settling_reading_was_named`, with the totals `settling_reading_given` and
+`settling_reading_was_named` -- `named_reading_settled_it` keeps its name and
+meaning, as the next section requires; and in `residuals`, an
+`unexplained_change` with basis `coupling forecasts` carrying `couplings` and
+`rollouts`, with `checked.forecasts_read`.
 
 Three things about it are promises and not accidents:
 

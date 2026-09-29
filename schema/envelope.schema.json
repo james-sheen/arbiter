@@ -728,7 +728,7 @@
     },
     "residuals_envelope": {
       "title": "Residuals sub-envelope",
-      "description": "THE `residuals` SUB-ENVELOPE, carried by `gaps`. A sub-envelope in the shape above, PLUS the located hypotheses. Its `checked` counts the last check's findings read, the graded action pairs read, and the hypotheses located. The reasons in `not_checked` are the `discovery` vocabulary's: an arm the model declares nothing for is `missing_config`, an arm with no check to read is `precondition_unmet`, and fewer graded executions than `gaps.min_cycles` is `insufficient_samples`.",
+      "description": "THE `residuals` SUB-ENVELOPE, carried by `gaps`. A sub-envelope in the shape above, PLUS the located hypotheses. Its `checked` counts the last check's findings read, the graded action pairs read, the graded coupling forecasts read, and the hypotheses located. The reasons in `not_checked` are the `discovery` vocabulary's: an arm the model declares nothing for is `missing_config`, an arm with no check to read is `precondition_unmet`, and fewer graded executions, or rollouts on any one property, than `gaps.min_cycles` is `insufficient_samples`.",
       "allOf": [
         {
           "$ref": "#/$defs/sub_envelope"
@@ -736,7 +736,7 @@
       ],
       "properties": {
         "hypotheses": {
-          "description": "One entry per located gap. `kind` is `absent_or_detached` (CONNECTIVITY), `unaccounted_flow` (CONSERVATION), `unexplained_change` or `effect_not_observed` (the pairs an executed action filed). Where it is: `at` an entity, `between` the declared properties of a balance, or `on` an `entity.property`. `evidence_needed` is the reading that would confirm or dissolve it, or null beside a `reason`.",
+          "description": "One entry per located gap. `kind` is `absent_or_detached` (CONNECTIVITY), `unaccounted_flow` (CONSERVATION), `unexplained_change` or `effect_not_observed` (the pairs an executed action filed), and `unexplained_change` again from a coupling whose last `gaps.min_cycles` rollouts all missed (basis `coupling forecasts`, naming the `couplings` and the `rollouts` counted). Where it is: `at` an entity, `between` the declared properties of a balance, or `on` an `entity.property`. `evidence_needed` is the reading that would confirm or dissolve it, or null beside a `reason`.",
           "type": "array",
           "items": {
             "type": "object",
@@ -807,6 +807,15 @@
                 ]
               },
               "executions": {
+                "type": "integer"
+              },
+              "couplings": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "rollouts": {
                 "type": "integer"
               },
               "candidates": {
@@ -912,7 +921,7 @@
           "type": "integer"
         },
         "confirmed": {
-          "description": "Where each confirmed cause stood before anyone confirmed it: per `confirm` attachment, the cause's `rank` in the last `hypothesize` attachment before it (null when it was not ranked there), how many it was ranked `of`, and whether that ranking's `most_discriminating` reading named it. Counts beside the rows, never a rate.",
+          "description": "Where each confirmed cause stood before anyone confirmed it: per `confirm` attachment, the cause's `rank` in the last `hypothesize` attachment before it (null when it was not ranked there), how many it was ranked `of`, and whether that ranking's `most_discriminating` reading named it (`named_reading_settled_it`, kept under its published name: whether the named reading sat on the cause itself, which is not whether it settled anything). Each row also carries the `named_reading`, the `settling_reading` the person gave, and `settling_reading_was_named`: whether those two are the same reading, null when either is missing. Counts beside the rows, never a rate.",
           "type": "object",
           "properties": {
             "confirmations": {
@@ -928,6 +937,12 @@
               "type": "integer"
             },
             "named_reading_settled_it": {
+              "type": "integer"
+            },
+            "settling_reading_given": {
+              "type": "integer"
+            },
+            "settling_reading_was_named": {
               "type": "integer"
             },
             "rows": {

@@ -96,8 +96,12 @@ class TestWhereTheConfirmedCauseStood:
         assert _confirmed(session) == {
             "confirmations": 1, "ranked_first": 1, "ranked": 1, "not_ranked": 0,
             "named_reading_settled_it": 1,
+            "settling_reading_given": 1, "settling_reading_was_named": 1,
             "rows": [{"case_id": case_id, "cause": "tank-1", "rank": 1, "of": 2,
-                      "named_reading_settled_it": True}]}
+                      "named_reading_settled_it": True,
+                      "named_reading": "tank-1.level_pct",
+                      "settling_reading": "tank-1.level_pct",
+                      "settling_reading_was_named": True}]}
 
     def test_a_lower_ranked_cause_counts_at_its_rank(self):
         session = _session()
@@ -145,8 +149,11 @@ class TestWhereTheConfirmedCauseStood:
         session = _session()
         _confirm(session, _open(session), 1, {"cause": "tank-1"})
         confirmed = _confirmed(session)
+        # An internal ruling added the two counts of the reading that settled it.
         assert set(confirmed) == {"confirmations", "ranked_first", "ranked",
-                                  "not_ranked", "named_reading_settled_it", "rows"}
+                                  "not_ranked", "named_reading_settled_it",
+                                  "settling_reading_given",
+                                  "settling_reading_was_named", "rows"}
         assert not any(isinstance(v, float) for v in confirmed.values())
 
 

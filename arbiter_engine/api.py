@@ -3102,8 +3102,114 @@ def _located_residuals(session: EngineSession
                                            "writes that could be read")
                 hypotheses.append(entry)
 
+    _locate_missed_forecasts(session, checked, hypotheses, declines)
     checked["hypotheses"] = len(hypotheses)
     return SubEnvelope("discovery", checked, not_checked=declines), hypotheses
+
+
+def _locate_missed_forecasts(session: EngineSession, checked: Dict[str, Any],
+                             hypotheses: List[Dict[str, Any]],
+                             declines: List[Decline]) -> None:
+    """The dynamics arm's second input: a coupling that keeps missing.
+
+    The pairs above need an executed action, so a model that only
+    watches -- a coupling filing what it predicts for the property it drives,
+    nobody acting -- could never be told its dynamics had stopped explaining
+    what happened. A graded forecast outside its declared spread is falsified.
+
+    COUNTED IN ROLLOUTS, as the pairs are counted in executions: every step of
+    one rollout comes from one declared gain and misses or holds with
+    the rest, so its steps are one occasion, not several. A rollout missed
+    the property when its furthest graded forecast there was falsified -- the
+    step the coupling had longest to act on. The last `gaps.min_cycles`
+    rollouts all missing, none with an action executed inside its window, is
+    a change the declared couplings cannot explain, located as the pairs
+    locate one. The count is the model's: undeclared, nothing is called a
+    pattern. A run that has ended is not located -- the last rollout held.
+    """
+    ledger = getattr(session, "ledger", None)
+    records = list(ledger.records()) if ledger is not None else []
+    forecasts = [r for r in records
+                 if getattr(r, "couplings", None)
+                 and not getattr(r, "execution", None)
+                 and getattr(r, "verdict", None) in ("confirmed", "falsified")]
+    checked["forecasts_read"] = len(forecasts)
+    if not forecasts:
+        return
+    cycles = read_gaps_min_cycles(getattr(session.model, "gaps", None)).cycles
+    if cycles is None:
+        if not any(d.reason == "missing_config"
+                   and d.scope.get("location") == "gaps.min_cycles"
+                   for d in declines):
+            declines.append(Decline(
+                "missing_config", {"location": "gaps.min_cycles"},
+                detail="how many missed rollouts make a pattern is the "
+                       "model's to declare -- gaps: {min_cycles: N}; this "
+                       "engine chooses no number for it",
+                evidence={"graded_forecasts": len(forecasts)}))
+        return
+    # An action inside a rollout's window moved what it forecast; that miss
+    # belongs to the pair the action filed, not to the coupling.
+    acted = []
+    for record in records:
+        when = (getattr(record, "execution", None) or {}).get("executed_at")
+        try:
+            acted.append(as_naive_utc(datetime.fromisoformat(str(when))))
+        except ValueError:
+            continue
+
+    def start(record: Any) -> datetime:
+        return as_naive_utc(record.predicted_at)
+
+    def target(record: Any) -> datetime:
+        return start(record) + timedelta(seconds=float(record.horizon_s))
+
+    episodes: Dict[Tuple[str, str], Dict[str, List[Any]]] = {}
+    for record in forecasts:
+        episodes.setdefault((str(record.entity_id), str(record.indicator)),
+                            {}).setdefault(str(record.traversal_id),
+                                           []).append(record)
+    longest = 0
+    for (entity_id, prop), by_episode in sorted(episodes.items()):
+        rollouts = []
+        for rows in by_episode.values():
+            opened, closed = min(map(start, rows)), max(map(target, rows))
+            if any(opened <= at <= closed for at in acted):
+                continue
+            furthest = max(rows, key=lambda r: (target(r), str(r.prediction_id)))
+            rollouts.append((start(furthest), furthest))
+        rollouts.sort(key=lambda pair: (pair[0], str(pair[1].prediction_id)))
+        longest = max(longest, len(rollouts))
+        missed = 0
+        for _, record in reversed(rollouts):
+            if record.verdict != "falsified":
+                break
+            missed += 1
+        if missed < cycles:
+            continue
+        entry: Dict[str, Any] = {
+            "kind": "unexplained_change", "on": f"{entity_id}.{prop}",
+            "basis": "coupling forecasts",
+            "couplings": sorted({str(c) for _, r in rollouts[-missed:]
+                                 for c in r.couplings}),
+            "rollouts": missed}
+        entry["candidates"], needed = _undeclared_channels(
+            session, entity_id, prop)
+        entry["evidence_needed"] = needed
+        if needed is None:
+            entry["reason"] = (
+                "nothing connected by those relations has a reading to take"
+                if entry["candidates"] else
+                "every declared relation into it already drives this "
+                "property, so the change arrives by a relation nobody "
+                "declared")
+        hypotheses.append(entry)
+    if longest < cycles:
+        declines.append(Decline(
+            "insufficient_samples", {"location": "forecasts"},
+            detail=(f"at most {longest} graded rollout(s) on any one "
+                    f"property, fewer than the declared {cycles}"),
+            evidence={"graded_rollouts": longest, "min_cycles": cycles}))
 
 
 def gaps(session: EngineSession,

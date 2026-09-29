@@ -208,6 +208,9 @@ class GapsCycles(NamedTuple):
 def read_gaps_min_cycles(block: Any) -> GapsCycles:
     """How many executions must show a pattern before `gaps` locates it.
 
+    and how many of a coupling's graded forecasts in a row must
+    miss: the same word, "repeatedly", read from the same declaration.
+
     No default, deliberately: "repeatedly" is a number about the
     domain -- a nightly job and a once-a-quarter hire do not share one -- and
     a count the engine chose would decide which unexplained changes a reader

@@ -1363,9 +1363,17 @@ they confirmed, `{cause, reading, basis}`, and without a `cause` it is refused
 `hypothesize` ranking attached to that case BEFORE it, and returns under
 `confirmed` the cause's `rank` (null when that ranking did not name it, or none
 came first), how many it was ranked `of`, and whether the ranking's
-`most_discriminating` reading named it -- with the counts beside the rows:
+`most_discriminating` reading named it -- that is, sat on the cause itself.
+Each row also carries the `named_reading`, the `settling_reading` the
+confirmation gave, and `settling_reading_was_named`: whether the reading that
+settled the case was the one the ranking named, null when either is missing.
+The two differ on purpose. A reading chosen to separate the candidates usually
+sits on another entity, so a person who reads the tank, watches the ranking
+turn and confirms the pump settled it with the named reading, although that
+reading did not sit on the pump. The counts sit beside the rows:
 `confirmations`, `ranked_first`, `ranked`, `not_ranked`,
-`named_reading_settled_it`. No rate is printed. How often the first-ranked cause
+`named_reading_settled_it`, `settling_reading_given`,
+`settling_reading_was_named`. No rate is printed. How often the first-ranked cause
 was the one is the number that says whether a ranking is worth reading, and
 over a handful of cases a rate would hide how few there were.
 
@@ -1383,21 +1391,31 @@ confirm or dissolve it:
 | `unaccounted_flow` | a CONSERVATION finding: a declared balance that does not close | `at` the entity, `between` the declared input and outputs, with `magnitude` and `ratio` | the declared output nobody read, or null when every one was read -- then what is missing leaves by a path nobody declared |
 | `effect_not_observed` | the pairs `file_action` filed: the action's arm falsified, the no-action arm confirmed | `on` the `entity.property` | what the action was declared to write, which says whether it took hold at all |
 | `unexplained_change` | the same pairs: both arms falsified | `on` the `entity.property`, with the relation types into it that declare no transition to it as `candidates` | a reading on an entity connected by one of them, or null when every relation into it already drives it |
+| `unexplained_change` | a coupling's own forecasts, with nobody acting: the last `gaps.min_cycles` rollouts on the property all missed | `on` the `entity.property`, naming the `couplings` that missed and the `rollouts` counted, with `candidates` as above | as above |
 
 The first two are read off the last check, so before any check they decline
-`precondition_unmet`. The last two need a number only the domain has -- how many
-executions make a pattern:
+`precondition_unmet`. The dynamics rows need a number only the domain has -- how
+many executions, or rollouts, make a pattern:
 
 ```yaml
 gaps:
-  min_cycles: 3     # executions that must show it before it is located
+  min_cycles: 3     # executions, or rollouts, that must show it before it is located
 ```
+
+A rollout is one occasion however many steps it files: every step comes from
+one declared gain, so they miss or hold together. It missed the property when
+its furthest graded forecast there fell outside the declared spread, and a
+rollout with an action executed inside its window is left to the pairs that
+action filed. A run of misses that has ended is not located.
 
 **There is no default.** A nightly job and a quarterly hire do not share one,
 and a count the engine chose would decide which changes a reader ever hears
-about. Undeclared, that arm declines `missing_config` at `gaps.min_cycles`;
-fewer graded executions than declared is `insufficient_samples`; a value that is
-not a whole number of at least 1 is refused and named in `unread_fields`. An arm
+about. Undeclared, the dynamics rows decline `missing_config` at
+`gaps.min_cycles`, once; fewer graded executions than declared, or fewer graded
+rollouts on any one property, is `insufficient_samples`; a value that is not a
+whole number of at least 1 is refused and named in `unread_fields`.
+`checked.forecasts_read` counts the graded coupling forecasts read, zero where
+nothing filed one. An arm
 the model declares nothing for -- no CONNECTIVITY indicator, no CONSERVATION
 indicator, no action template -- declines `missing_config` naming the arm. Every
 reason is from the `discovery` vocabulary. **It proposes nothing into the

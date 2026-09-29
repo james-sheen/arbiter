@@ -34,6 +34,25 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+## [0.2.20] — 2026-09-29
+
+### Added
+
+- **`case_book.confirmed` says whether the reading that settled a case was the
+  one the ranking named.** Each row carries the `named_reading`, the
+  `settling_reading` the confirmation gave, and `settling_reading_was_named`
+  -- null when either is missing -- with the totals `settling_reading_given`
+  and `settling_reading_was_named`. `named_reading_settled_it` keeps its name
+  and meaning: whether the named reading sat on the confirmed cause itself,
+  which a reading chosen to separate the candidates usually does not.
+- **`gaps` locates a coupling that keeps missing, with nobody acting.** When the
+  last `gaps.min_cycles` rollouts on one property all missed -- each judged by
+  its furthest graded forecast, none with an action executed inside its window
+  -- `residuals` locates an `unexplained_change` with basis `coupling
+  forecasts`, naming the `couplings` and the `rollouts` counted.
+  `checked.forecasts_read` counts the graded forecasts read, and fewer rollouts
+  than declared is `insufficient_samples` at `forecasts`.
+
 ## [0.2.19] — 2026-09-28
 
 ### Fixed

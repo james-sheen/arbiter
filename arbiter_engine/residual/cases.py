@@ -145,6 +145,18 @@ def confirmed_causes(cases: List[Case]) -> Dict[str, Any]:
     it was ranked among, and whether that ranking's discriminating reading
     named the confirmed cause's entity. Counts beside the rows, never a rate:
     a rate carries the denominator it was taken over, and here it is small.
+
+    THAT LAST FIELD IS NOT WHETHER THE READING SETTLED ANYTHING,
+    and it keeps its published name and meaning because a patch release may
+    not change what a field means. It asks whether the named reading sat on
+    the cause itself, and the reading a ranking names is chosen to SEPARATE
+    the candidates, so it usually sits somewhere else: a person who confirms
+    the pump after the tank's reading turned the ranking round was told the
+    tank settled nothing. The confirmation has always carried the answer --
+    `reading`, the one that settled it -- and nothing read it.
+    `settling_reading_was_named` compares that reading with the one the
+    ranking named, and is `None` when the person gave none or the ranking
+    named none: an unasked question is not a no.
     """
     rows: List[Dict[str, Any]] = []
     for case in cases:
@@ -157,11 +169,19 @@ def confirmed_causes(cases: List[Case]) -> Dict[str, Any]:
             ranking = (before[-1].get("reference") or {}) if before else {}
             causes = [row.get("cause") for row in ranking.get("causes") or []]
             named = (ranking.get("most_discriminating") or {}).get("entity")
+            named_reading = _text((ranking.get("most_discriminating") or {})
+                                  .get("reading"))
+            settling = _text(reference.get("reading"))
             rows.append({
                 "case_id": case.case_id, "cause": cause,
                 "rank": causes.index(cause) + 1 if cause in causes else None,
                 "of": len(causes),
                 "named_reading_settled_it": bool(named) and named == cause,
+                "named_reading": named_reading,
+                "settling_reading": settling,
+                "settling_reading_was_named": (
+                    settling == named_reading if settling and named_reading
+                    else None),
             })
     ranked = [row for row in rows if row["rank"] is not None]
     return {
@@ -171,8 +191,17 @@ def confirmed_causes(cases: List[Case]) -> Dict[str, Any]:
         "not_ranked": len(rows) - len(ranked),
         "named_reading_settled_it": sum(1 for row in rows
                                         if row["named_reading_settled_it"]),
+        "settling_reading_given": sum(1 for row in rows
+                                      if row["settling_reading"]),
+        "settling_reading_was_named": sum(
+            1 for row in rows if row["settling_reading_was_named"]),
         "rows": rows,
     }
+
+
+def _text(value: Any) -> Optional[str]:
+    """A reading as given, or `None` for anything that is not one."""
+    return value.strip() if isinstance(value, str) and value.strip() else None
 
 
 _SCHEMA = """
