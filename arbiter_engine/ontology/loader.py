@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 from datetime import timedelta
 
 from ..interfaces import IndicatorSpec
@@ -241,6 +241,21 @@ class OntologyLoader:
         # dedup tracker so the rejection WARN fires once per
         # distinct malformed key rather than on every write attempt.
         self._malformed_indicator_keys_warned: Set[str] = set()
+        # what the mapping route parsed and could not read, one row
+        # per field, in the shape `DomainModel.unread_fields` reports.
+        self._unread_indicator_fields: List[Dict[str, Any]] = []
+
+    def unread_indicator_fields(self) -> List[Dict[str, Any]]:
+        """Fields in indicator mappings given to ``set_domain_indicators`` that
+        nothing will read: an unknown key, an unrecognised value, or a field
+        whose consuming axiom is not declared.
+
+        The same rows a :class:`DomainModel` gives from ``unread_fields`` for
+        the same indicators, because they come from the same function; a
+        caller that loads models as mappings -- the platform does -- can ask
+        here instead of reading its log.
+        """
+        return [dict(row) for row in self._unread_indicator_fields]
 
     @staticmethod
     def _is_valid_indicator_cache_key(key: str) -> bool:
@@ -765,108 +780,34 @@ class OntologyLoader:
 
     def _parse_yaml_indicator(self, data: Dict, entity_type: str,
                               type_mapping: Optional[Dict[str, str]] = None) -> Optional[IndicatorSpec]:
-        """Parse a single indicator from YAML dict format."""
-        # deferred, not module-scope: `domain_loader` imports
-        # `.axioms.roles`, which pulls `axioms/__init__`, which imports back
-        # here. A module-scope import makes that cycle depend on which module
-        # is loaded first, and the reasoner loads this one first.
-        from .domain_loader import _resolve_role
-        try:
-            name = data['name']
-            property_name = (type_mapping or {}).get(name, name)
-            ind_type_str = data.get('type', 'NUMERIC').upper()
-            ind_type = IndicatorType[ind_type_str] if ind_type_str in IndicatorType.__members__ else IndicatorType.NUMERIC
+        """Parse a single indicator from YAML dict format, with the engine's parser.
 
-            # Parse axioms
-            axiom_list = []
-            for a in data.get('axioms', []):
-                try:
-                    axiom_list.append(Axiom(a.upper()))
-                except (ValueError, KeyError):
-                    pass
+        THIS WAS A SECOND PARSER, and every key it lacked was a
+        declaration dropped in silence. It began as a copy of the domain
+        loader's and was patched a key at a time: `role`, the floor
+        pair, the nested blocks, each
+        after someone found a model that meant more than this read. It never
+        learned `homeostasis:`, `flow:`, `expect_variation:`, or a bound
+        written as `{from_property:...}`, which it could not turn into a float
+        and so dropped the whole indicator. Every model the platform loads
+        comes through here as mappings, so the published verticals' own
+        models, fed to the platform, lost six findings the engine reports on
+        the same input.
 
-            # Parse time window
-            window = self._parse_duration(data.get('window', '1h')) or timedelta(hours=1)
-            timeout = self._parse_duration(data.get('timeout', '5m')) or timedelta(minutes=5)
-
-            # HOMEOSTASIS direction field.
-            # Defaults to BIDIRECTIONAL (previously behavior). Unrecognized
-            # values WARN + fall back to BIDIRECTIONAL (family-loader
-            # pattern: typos surface but never crash the parse).
-            direction = self._resolve_direction(data.get('direction'), name)
-
-            return IndicatorSpec(
-                uri=f"domain:{entity_type}.{name}",
-                name=name,
-                property_name=property_name,
-                indicator_type=ind_type,
-                relevant_axioms=axiom_list,
-                # this loader dropped `role:` on the floor. The
-                # settlement pack declares `role: percentage` on
-                # `exposure_percent`; the spec came out with role=None, the
-                # declared path declined `missing_role`, and the raw-property
-                # walk supplied the percentage rule from the `percent` token in
-                # the name. The guess was MASKING a loader gap, which is the
-                # strongest argument for removing it: the test that covered this
-                # value passed for a reason nobody had declared.
-                #
-                # Same resolver as `domain_loader`, imported rather than
-                # re-implemented -- two loaders each parsing a closed vocabulary
-                # their own way is how the field came to be read by one of them.
-                role=_resolve_role(data.get('role'), name),
-                # absent means None, not 0.0. With 0.0 the
-                # BOUNDEDNESS `is not None` test treated every non-negative
-                # reading as at-or-above critical, so a healthy Deployment
-                # fired CRITICAL. See `domain_loader._resolve_threshold` for
-                # the audit that overturned the previous default.
-                warning_threshold=(
-                    float(data['warning']) if data.get('warning') is not None
-                    else None),
-                critical_threshold=(
-                    float(data['critical']) if data.get('critical') is not None
-                    else None),
-                # the floor pair, here for the reason that
-                # gives for the nested blocks: fixing one loader and not the
-                # other leaves the extracted package shipping the gap this
-                # closes.
-                lower_warning_threshold=(
-                    float(data['lower_warning'])
-                    if data.get('lower_warning') is not None else None),
-                lower_critical_threshold=(
-                    float(data['lower_critical'])
-                    if data.get('lower_critical') is not None else None),
-                time_window=window,
-                normal_states=data.get('normal', []),
-                transient_states=data.get('transient', []),
-                problematic_states=data.get('bad', []),
-                transient_timeout=timeout,
-                target_type=data.get('target_type', ''),
-                relation_type=data.get('relation_type', ''),
-                min_cardinality=data.get('min_cardinality', 0),
-                max_cardinality=data.get('max_cardinality', 0),
-                violation_severity=Severity[data['violation_severity'].upper()] if data.get('violation_severity') else Severity.HIGH,
-                required_property=data.get('required_property') or None,
-                direction=direction,
-                # nested per-axiom blocks. Without these the two
-                # axioms were declarable but not configurable — CONSERVATION
-                # fell through to a degenerate name-matching path and
-                # MONOTONICITY silently assumed increasing/allow_reset.
-                conservation_config=data.get('conservation') or None,
-                monotonicity_config=data.get('monotonicity') or None,
-                # the third loader gets it too; a field carried by
-                # one of the two YAML paths reads as supported and is not.
-                consistency_config=data.get('consistency') or None,
-                stability_config=data.get('stability') or None,   #
-            )
-        except Exception as e:
-            # `data.get` assumes a dict, so a non-dict argument made
-            # the HANDLER raise, replacing a logged skip with an exception out
-            # of a function whose contract is to return None on bad input. A
-            # failure path that can fail is worse than no failure path: it
-            # turns one malformed indicator into a lost detection pass.
-            name = data.get('name', '?') if isinstance(data, dict) else repr(data)[:60]
-            logger.warning("Failed to parse indicator %s: %s", name, e)
+        Now there is one parser. Whatever it cannot read is recorded on the
+        spec, as it is on the engine's own path, and named: once in the log
+        and in ``unread_indicator_fields``.
+        """
+        from .domain_loader import _indicator_unread_fields, parse_indicator
+        spec = parse_indicator(data, entity_type, type_mapping)
+        if spec is None:
             return None
+        for row in _indicator_unread_fields(entity_type, spec):
+            if row in self._unread_indicator_fields:
+                continue
+            self._unread_indicator_fields.append(row)
+            logger.warning("indicator %s.%s: %s", entity_type, spec.name, row["remedy"])
+        return spec
 
     @staticmethod
     def _resolve_direction(raw: Optional[str], indicator_name: str = "") -> str:

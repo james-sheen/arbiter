@@ -535,105 +535,7 @@ class DomainModel:
         out: List[Dict[str, Any]] = []
         for entity_type, specs in self.indicators.items():
             for spec in specs:
-                axioms = set(spec.relevant_axioms or ())
-                typed = spec.declared_keys or frozenset()
-                for field_name, consumers in sorted(_FIELD_CONSUMERS.items()):
-                    key = _YAML_NAME.get(field_name, field_name)
-                    if key not in typed:
-                        continue          # the author did not write it
-                    if axioms & set(consumers):
-                        continue          # a consumer is declared; it is read
-                    names = " or ".join(sorted(a.value for a in consumers))
-                    out.append({
-                        "entity_type": entity_type,
-                        "indicator": spec.name,
-                        "field": _YAML_NAME.get(field_name, field_name),
-                        "reason": "axiom_not_declared",
-                        "read_by": sorted(a.value for a in consumers),
-                        "remedy": (
-                            f"`{_YAML_NAME.get(field_name, field_name)}` is read "
-                            f"only by {names}; add it to this indicator's "
-                            f"`axioms:` list, or remove the field"),
-                    })
-                # ONE LEVEL DOWN, same rule. This said `forecast:` was the
-                # ONLY nested block with a closed key set the engine reads by
-                # name, and three more had been true of that -- `temporal:`,
-                # `transition:` and `planning:`, all added after this sentence
-                # was written and none of them compared against anything.
-                # They are checked in `_unread_coupling_keys` below.
-                # `dynamics:` is still not checked: it carries a model's own
-                # parameters, which are the model's to define, not the
-                # loader's to enumerate.
-                forecast_block = spec.forecast_config or {}
-                if isinstance(forecast_block, dict):
-                    for key in sorted(set(forecast_block) - _KNOWN_FORECAST_KEYS):
-                        near = _did_you_mean(
-                            key, sorted(_KNOWN_FORECAST_KEYS), cutoff=0.8)
-                        remedy = (f"`forecast.{key}` is not a key this engine "
-                                  f"reads, so nothing will ever consume it")
-                        if near:
-                            remedy += f" — did you mean `{near}`?"
-                        out.append({
-                            "entity_type": entity_type,
-                            "indicator": spec.name,
-                            "field": f"forecast.{key}",
-                            "reason": "unknown_key",
-                            "read_by": [],
-                            "did_you_mean": near,
-                            "remedy": remedy,
-                        })
-                for key in sorted(typed - _KNOWN_INDICATOR_KEYS):
-                    near = _did_you_mean(
-                        key, sorted(_KNOWN_INDICATOR_KEYS), cutoff=0.8)
-                    remedy = (f"`{key}` is not a key this engine reads, so "
-                              f"nothing will ever consume it")
-                    if near:
-                        remedy += f" — did you mean `{near}`?"
-                    out.append({
-                        "entity_type": entity_type,
-                        "indicator": spec.name,
-                        "field": key,
-                        "reason": "unknown_key",
-                        "read_by": [],
-                        "did_you_mean": near,
-                        "remedy": remedy,
-                    })
-                # the third reason, and the value-side twin of the
-                # one above. inverted the KEY check and caught
-                # `directon`; `direction: hihger` is the same author error
-                # against a key that exists, and reached nothing an author can
-                # query. Seven closed-vocabulary resolvers fall back or skip,
-                # and `type` did it in total silence -- substituting NUMERIC,
-                # so the indicator evaluated the wrong axioms and the model
-                # loaded clean. Reported from outside, found while a method
-                # document was being reviewed rather than by anyone using it.
-                #
-                # The valid set travels in the record from the resolver that
-                # owns it. Holding four vocabularies here would be the
-                # number-written-twice defect, and it would go stale the first
-                # time a member was added -- which happened to the decline
-                # vocabulary the same week.
-                for key in sorted(spec.unresolved_values or {}):
-                    entry = spec.unresolved_values[key]
-                    valid = entry.get("valid") or []
-                    for value in entry.get("values") or []:
-                        near = _did_you_mean(value, valid, cutoff=0.7)
-                        remedy = (
-                            f"`{key}: {value}` is not a value this engine "
-                            f"recognises, so the declaration was not applied; "
-                            f"valid values are {', '.join(str(v) for v in valid)}")
-                        if near:
-                            remedy += f" — did you mean `{near}`?"
-                        out.append({
-                            "entity_type": entity_type,
-                            "indicator": spec.name,
-                            "field": key,
-                            "reason": "unknown_value",
-                            "value": value,
-                            "read_by": [],
-                            "did_you_mean": near,
-                            "remedy": remedy,
-                        })
+                out.extend(_indicator_unread_fields(entity_type, spec))
         out.extend(self._unread_coupling_keys())
         out.extend(self._unresolved_coupling_values())
         return out
@@ -2002,6 +1904,118 @@ def parse_indicator(
     except Exception as exc:  # one bad indicator must not cost the file
         logger.warning("failed to parse indicator %r: %s", name, exc)
         return None
+
+
+def _indicator_unread_fields(entity_type: str, spec: IndicatorSpec) -> List[Dict[str, Any]]:
+    """What one parsed indicator declares that nothing will read.
+
+    The per-indicator half of :meth:`DomainModel.unread_fields`, lifted out
+    unchanged so the reasoner loader's mapping route can give the same three
+    reasons for an indicator it parses without a model around it. Two parsers
+    had been reading one vocabulary for months, each patched a key at a time;
+    two reporters would have been the same defect one level up.
+    """
+    out: List[Dict[str, Any]] = []
+    axioms = set(spec.relevant_axioms or ())
+    typed = spec.declared_keys or frozenset()
+    for field_name, consumers in sorted(_FIELD_CONSUMERS.items()):
+        key = _YAML_NAME.get(field_name, field_name)
+        if key not in typed:
+            continue          # the author did not write it
+        if axioms & set(consumers):
+            continue          # a consumer is declared; it is read
+        names = " or ".join(sorted(a.value for a in consumers))
+        out.append({
+            "entity_type": entity_type,
+            "indicator": spec.name,
+            "field": _YAML_NAME.get(field_name, field_name),
+            "reason": "axiom_not_declared",
+            "read_by": sorted(a.value for a in consumers),
+            "remedy": (
+                f"`{_YAML_NAME.get(field_name, field_name)}` is read "
+                f"only by {names}; add it to this indicator's "
+                f"`axioms:` list, or remove the field"),
+        })
+    # ONE LEVEL DOWN, same rule. This said `forecast:` was the
+    # ONLY nested block with a closed key set the engine reads by
+    # name, and three more had been true of that -- `temporal:`,
+    # `transition:` and `planning:`, all added after this sentence
+    # was written and none of them compared against anything.
+    # They are checked in `_unread_coupling_keys` below.
+    # `dynamics:` is still not checked: it carries a model's own
+    # parameters, which are the model's to define, not the
+    # loader's to enumerate.
+    forecast_block = spec.forecast_config or {}
+    if isinstance(forecast_block, dict):
+        for key in sorted(set(forecast_block) - _KNOWN_FORECAST_KEYS):
+            near = _did_you_mean(
+                key, sorted(_KNOWN_FORECAST_KEYS), cutoff=0.8)
+            remedy = (f"`forecast.{key}` is not a key this engine "
+                      f"reads, so nothing will ever consume it")
+            if near:
+                remedy += f" — did you mean `{near}`?"
+            out.append({
+                "entity_type": entity_type,
+                "indicator": spec.name,
+                "field": f"forecast.{key}",
+                "reason": "unknown_key",
+                "read_by": [],
+                "did_you_mean": near,
+                "remedy": remedy,
+            })
+    for key in sorted(typed - _KNOWN_INDICATOR_KEYS):
+        near = _did_you_mean(
+            key, sorted(_KNOWN_INDICATOR_KEYS), cutoff=0.8)
+        remedy = (f"`{key}` is not a key this engine reads, so "
+                  f"nothing will ever consume it")
+        if near:
+            remedy += f" — did you mean `{near}`?"
+        out.append({
+            "entity_type": entity_type,
+            "indicator": spec.name,
+            "field": key,
+            "reason": "unknown_key",
+            "read_by": [],
+            "did_you_mean": near,
+            "remedy": remedy,
+        })
+    # the third reason, and the value-side twin of the
+    # one above. inverted the KEY check and caught
+    # `directon`; `direction: hihger` is the same author error
+    # against a key that exists, and reached nothing an author can
+    # query. Seven closed-vocabulary resolvers fall back or skip,
+    # and `type` did it in total silence -- substituting NUMERIC,
+    # so the indicator evaluated the wrong axioms and the model
+    # loaded clean. Reported from outside, found while a method
+    # document was being reviewed rather than by anyone using it.
+    #
+    # The valid set travels in the record from the resolver that
+    # owns it. Holding four vocabularies here would be the
+    # number-written-twice defect, and it would go stale the first
+    # time a member was added -- which happened to the decline
+    # vocabulary the same week.
+    for key in sorted(spec.unresolved_values or {}):
+        entry = spec.unresolved_values[key]
+        valid = entry.get("valid") or []
+        for value in entry.get("values") or []:
+            near = _did_you_mean(value, valid, cutoff=0.7)
+            remedy = (
+                f"`{key}: {value}` is not a value this engine "
+                f"recognises, so the declaration was not applied; "
+                f"valid values are {', '.join(str(v) for v in valid)}")
+            if near:
+                remedy += f" — did you mean `{near}`?"
+            out.append({
+                "entity_type": entity_type,
+                "indicator": spec.name,
+                "field": key,
+                "reason": "unknown_value",
+                "value": value,
+                "read_by": [],
+                "did_you_mean": near,
+                "remedy": remedy,
+            })
+    return out
 
 
 def _entity_types(raw: Any) -> Tuple[List[Any], Dict[str, str]]:

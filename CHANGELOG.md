@@ -34,6 +34,21 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+## [0.2.21] — 2026-09-29
+
+### Fixed
+
+- **An indicator given to the reasoner's loader as a mapping reads as a model
+  reads it.** `set_domain_indicators` parsed mappings with a parser of its own,
+  which dropped `homeostasis:`, `flow:` and `expect_variation:`, and the whole
+  indicator for a bound written as `{from_property: ...}`. It now uses the model
+  loader's parser. A model loaded by a session was never affected.
+
+### Added
+
+- **`loader.unread_indicator_fields()`** names what those mappings declared and
+  nothing reads, in the rows `unread_fields` gives for a model; each is logged once.
+
 ## [0.2.20] — 2026-09-29
 
 ### Added
