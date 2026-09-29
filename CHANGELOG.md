@@ -34,6 +34,23 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+## [0.2.22] — 2026-09-29
+
+### Changed
+
+- **STABILITY no longer times a transient state against a number nobody declared.** A
+  state in `transient:` was timed against five minutes when the model gave no `timeout:`;
+  fed a case study whose model declares none, a Core listed `transient_state_timeout` on
+  two units six minutes later -- 13 findings where the engine, judging the capture, found
+  11. Such a unit is now `not_checked` on STABILITY as `missing_config`, naming the
+  indicator. A declared `timeout:` is timed exactly as before; the loaded field keeps its
+  default.
+
+### Documentation
+
+- The modelling guide documents `transient:` and `timeout:`, which it had left out as
+  unreachable since before a declared state could be fed as a series.
+
 ## [0.2.21] — 2026-09-29
 
 ### Fixed

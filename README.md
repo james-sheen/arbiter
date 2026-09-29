@@ -95,7 +95,7 @@ ran and found nothing appears in neither. Without `checked.invariants`, the stat
 invariants* has no honest value of N — and an envelope reporting a fabricated denominator is the
 exact failure the envelope exists to prevent.
 
-All eight axiom checkers emit declines (43 call sites). This is not a property of one checker that
+All eight axiom checkers emit declines (44 call sites). This is not a property of one checker that
 the others aspire to.
 
 **And one decline comes before any checker runs.** A numeric property reading `NaN` or an infinity

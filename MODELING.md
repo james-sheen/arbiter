@@ -168,7 +168,8 @@ has already declined on a starved input and two records for one evaluation would
 denominator the envelope rests on.
 
 **A STATE indicator declares its vocabulary, and one half of it is checked.**
-`type: STATE` reads a categorical value rather than a number, and takes two lists:
+`type: STATE` reads a categorical value rather than a number, and takes two lists (a
+third, for states an entity passes through, is below):
 
 ```yaml
 - name: phase
@@ -195,6 +196,28 @@ reading of a `type: STATE` property as a state, so the series STABILITY's state 
 arrives through the same call as any number. Every other property is read as a number, and a
 word sent for one is refused with this remedy -- declare the type, and add the entity before
 its observations, since the declaration is found through the entity's type.
+
+**A state to pass through: `transient:` and `timeout:`.** A third list names the states an
+entity is expected to leave -- on its way somewhere, not settled there. STABILITY times one
+against `timeout:`, from the reading where the entity entered it to the instant the check is
+judged at, and reports `transient_state_timeout` at HIGH once it has lasted longer:
+
+```yaml
+- name: phase
+  type: STATE
+  axioms: [STABILITY]
+  normal: [Running]
+  transient: [Pending]
+  timeout: 10m
+  bad: [Failed, Unknown]
+```
+
+**How long is the model's to say.** Without `timeout:`, a unit in a transient state is not
+timed: STABILITY declines `missing_config` on the indicator, because any span the engine
+supplied would be a claim about the domain that nobody made. Until 0.2.22 it supplied five
+minutes, and a state stamped when it arrived was reported stuck five minutes later. The span
+is read from the state's history, so feed the state as a series (above), or the timing has
+nothing to measure.
 
 ### A type that extends another: `extends:`
 

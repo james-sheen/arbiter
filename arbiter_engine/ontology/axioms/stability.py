@@ -119,9 +119,9 @@ class StabilityChecker:
 
         # Check transient state timeout
         if indicator.indicator_type.value == 'state' and indicator.transient_states:
-            problems.extend(self._check_transient_timeout(
-                entity, indicator, history
-            ))
+            timed = self._check_transient_timeout(entity, indicator, history)
+            problems.extend(timed)
+            declines.extend(getattr(timed, "not_evaluated", ()))
 
         # A state the model DECLARED as bad, which nothing read.
         # `bad:` landed on the spec as `problematic_states` and had no consumer
@@ -559,6 +559,21 @@ class StabilityChecker:
         ))
         return problems
 
+    @staticmethod
+    def _declared_timeout(indicator: IndicatorSpec) -> Optional[timedelta]:
+        """The transient timeout the MODEL declared, or None.
+
+        The loader fills `transient_timeout` with five minutes whether or
+        not the author typed `timeout:` -- a field default, which only a major
+        release may change -- so the value cannot say whether anyone chose it. The
+        keys the author typed can. A spec built in code types no keys,
+        and its timeout is whatever the code set.
+        """
+        typed = getattr(indicator, "declared_keys", None)
+        if typed:
+            return indicator.transient_timeout if "timeout" in typed else None
+        return indicator.transient_timeout
+
     def _check_transient_timeout(
         self,
         entity: Entity,
@@ -570,19 +585,34 @@ class StabilityChecker:
 
         current_value = entity.get_property(indicator.property_name)
         if current_value is None:
-            return problems
+            return CheckOutcome(problems)
 
         # Check if current state is transient
         if str(current_value) not in indicator.transient_states:
-            return problems
+            return CheckOutcome(problems)
 
-        # Get time in state
-        timeout = indicator.transient_timeout or timedelta(minutes=5)
+        # how long a state may last is the model's to say. This timed
+        # every transient state against five minutes when no `timeout:` was
+        # declared, at the clock: fed to the Core, operating-health-audit's case
+        # study gained `transient_state_timeout` on two units the first cycle after
+        # five minutes had passed -- 13 findings where the engine found 11, from a
+        # number nobody chose. Declined, by name, where that number would be used.
+        timeout = self._declared_timeout(indicator)
+        if timeout is None:
+            return CheckOutcome(problems).declined(
+                Axiom.STABILITY, entity, indicator.name,
+                NotEvaluatedReason.MISSING_CONFIG,
+                detail=(
+                    f"{indicator.name} is {current_value!r}, which `transient:` "
+                    f"names as a state to pass through, and no `timeout:` says "
+                    f"how long it may last; declare `timeout:` on the indicator "
+                    f"-- this engine chooses no number for it"),
+            )
 
         # Get states to find when we entered this state
         states = history.get_states(entity.id, indicator.property_name, timeout * 2)
         if not states:
-            return problems
+            return CheckOutcome(problems)
 
         # Find when current state started
         state_start = None
@@ -612,4 +642,4 @@ class StabilityChecker:
                     confidence=1.0,
                 ))
 
-        return problems
+        return CheckOutcome(problems)

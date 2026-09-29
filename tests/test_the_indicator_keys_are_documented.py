@@ -42,15 +42,11 @@ UNDOCUMENTED_ON_PURPOSE = {
         "taught it once and a reader wrote it expecting the engine to act on "
         "it; withdrawing it from the guide is what closed that. Teaching it "
         "again reopens it.",
-    "transient":
-        "read, and not reachable. `_check_transient_timeout` needs a STATE "
-        "history and the public `add_observations` casts to float, so no caller "
-        "on the supported surface can supply one. It declines "
-        "`insufficient_samples` rather than passing silently, which is the "
-        "honest behaviour -- but a guide entry would describe a check a reader "
-        "cannot run.",
-    "timeout":
-        "the span for the check above, unreachable for the same reason.",
+    # `transient` and `timeout` were listed here as unreachable -- the public
+    # `add_observations` cast every reading to a number, so no caller could feed
+    # a state's history. That stopped being true when a declared STATE became a
+    # state series, and the exemption outlived it until a later change timed a
+    # state through `check`; the guide documents both now.
 }
 
 
