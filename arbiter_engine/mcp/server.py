@@ -895,8 +895,12 @@ def main(argv: List[str] | None = None) -> int:
     import argparse
     import asyncio
 
+    # the command as a user runs it. `arbiter-mcp` was this
+    # parser's name and never a command: the package declares no script, so a
+    # usage line and a changelog printing it described something pip does not
+    # install. Derived from the module, it is right in either tree.
     parser = argparse.ArgumentParser(
-        prog="arbiter-mcp",
+        prog=f"python -m {__package__}.server",
         description="Serve the arbiter engine over MCP (stdio).")
     parser.add_argument(
         "--model", metavar="PATH",
@@ -910,14 +914,14 @@ def main(argv: List[str] | None = None) -> int:
     try:
         session = start_session(args.ledger)
     except Exception as exc:          # noqa: BLE001 — reported, then refused
-        print(f"arbiter-mcp: could not open the ledger {args.ledger}: "
+        print(f"{parser.prog}: could not open the ledger {args.ledger}: "
               f"{type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
     if args.model:
         try:
             session.load_model(args.model)
         except Exception as exc:      # noqa: BLE001 — reported, then refused
-            print(f"arbiter-mcp: could not load {args.model}: "
+            print(f"{parser.prog}: could not load {args.model}: "
                   f"{type(exc).__name__}: {exc}", file=sys.stderr)
             return 2
 

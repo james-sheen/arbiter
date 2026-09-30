@@ -1064,6 +1064,14 @@ class IndicatorSpec:
     # exists.
     unresolved_values: dict = field(default_factory=dict)
 
+    # the third sibling: a key the author typed whose value could not
+    # be READ at all, as opposed to one read and not recognised. So far that is
+    # a duration. Keyed by the YAML key (`homeostasis.must_return_within` for
+    # the nested one), holding what was written and why it was refused. A
+    # refused `timeout:` is not a declared one (`StabilityChecker`), and a
+    # refused `window:` fell back to an hour in silence until this was kept.
+    malformed_values: dict = field(default_factory=dict)
+
     # B-2.7 -- which of the four thresholds are read off the ENTITY rather than
     # off this spec, keyed by the YAML field name (`critical`, `lower_warning`,
     # ...) and holding the property to read. A margin requirement, a contracted

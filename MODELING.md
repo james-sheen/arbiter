@@ -219,6 +219,30 @@ minutes, and a state stamped when it arrived was reported stuck five minutes lat
 is read from the state's history, so feed the state as a series (above), or the timing has
 nothing to measure.
 
+### Durations
+
+Every key that takes a span of time -- `timeout:`, `window:`, `horizon:`, `lookback:`,
+`align_tolerance:` and `homeostasis.must_return_within:` -- reads one duration, and reads the
+whole value:
+
+| Written | Read as |
+|---|---|
+| `90s`, `15m`, `2h`, `90d`, `13w` | seconds, minutes, hours, days or weeks; abbreviated (`sec`, `min`, `hr`, `wk`) or spelled out (`hours`, `days`) |
+| `1h30m`, `2 days 6 hours`, `1.5h` | several joined, and summed; a decimal is allowed |
+| `PT15M`, `P90D`, `P2W`, `P1DT12H` | ISO 8601 |
+
+**Months and years are refused**, spelled out or as ISO `P3M` and `P1Y`. Neither has a fixed
+length, and choosing one would be choosing the model's number for it: write a quarter as `13w`
+or `91d`. A bare number (`600`) is refused for want of a unit, and a zero duration because
+it declares no time at all -- except under `align_tolerance:`, where zero asks for readings
+taken at the same instant.
+
+Each refusal is a `malformed_value` row in `unread_fields`, naming the key, what was written
+and what came of it. A refused `timeout:` declares none, so STABILITY declines the state as
+above; a refused `window:` falls back to an hour; the others are treated as not written. Until
+0.2.23 the value was read as a prefix -- `3 months` as three minutes -- and whatever could not
+be read became the key's default without a word.
+
 ### A type that extends another: `extends:`
 
 Types that share indicators declare them once, on a parent:
@@ -1412,8 +1436,8 @@ confirm or dissolve it:
 |---|---|---|---|
 | `absent_or_detached` | a CONNECTIVITY finding: a required relation missing, or one pointing at an entity never declared | `at` the entity lacking it, or the undeclared one (`referenced_by` the entity pointing at it) | the relation on the entity that holds it |
 | `unaccounted_flow` | a CONSERVATION finding: a declared balance that does not close | `at` the entity, `between` the declared input and outputs, with `magnitude` and `ratio` | the declared output nobody read, or null when every one was read -- then what is missing leaves by a path nobody declared |
-| `effect_not_observed` | the pairs `file_action` filed: the action's arm falsified, the no-action arm confirmed | `on` the `entity.property` | what the action was declared to write, which says whether it took hold at all |
-| `unexplained_change` | the same pairs: both arms falsified | `on` the `entity.property`, with the relation types into it that declare no transition to it as `candidates` | a reading on an entity connected by one of them, or null when every relation into it already drives it |
+| `effect_not_observed` | the pairs `file_action` filed: the action's arm falsified and the no-action arm confirmed, in each of the last `gaps.min_cycles` graded executions on the property | `on` the `entity.property` | what the action was declared to write, which says whether it took hold at all |
+| `unexplained_change` | the same pairs: both arms falsified, in each of the last `gaps.min_cycles` graded executions | `on` the `entity.property`, with the relation types into it that declare no transition to it as `candidates` | a reading on an entity connected by one of them, or null when every relation into it already drives it |
 | `unexplained_change` | a coupling's own forecasts, with nobody acting: the last `gaps.min_cycles` rollouts on the property all missed | `on` the `entity.property`, naming the `couplings` that missed and the `rollouts` counted, with `candidates` as above | as above |
 
 The first two are read off the last check, so before any check they decline
@@ -1429,7 +1453,11 @@ A rollout is one occasion however many steps it files: every step comes from
 one declared gain, so they miss or hold together. It missed the property when
 its furthest graded forecast there fell outside the declared spread, and a
 rollout with an action executed inside its window is left to the pairs that
-action filed. A run of misses that has ended is not located.
+action filed. A run of misses that has ended is not located. Executions are
+counted the same way, newest first: one the world followed, or one showing the
+other kind, ends the run, so a pattern stops being located once later
+executions hold. An execution with an arm not yet graded says nothing either
+way.
 
 **There is no default.** A nightly job and a quarterly hire do not share one,
 and a count the engine chose would decide which changes a reader ever hears

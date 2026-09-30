@@ -80,22 +80,30 @@ its decline reasons the `discovery` vocabulary's, declared as
 
 **The traversal fields, by name**, each an added key under the first promise of
 the next section, listed so a reader finds them rather than meets them. From
-0.2.17: on `hypothesize`, `read_at` and `most_discriminating`, and on each
-candidate `path`, `do_would_answer` and `read_at`. From 0.2.18: `residuals` on
+0.2.17: on `hypothesize`, `read_at`, `most_discriminating` and
+`checked.beyond_bound`, and on each candidate `path`, `do_would_answer` and
+`read_at`. From 0.2.18: `residuals` on
 `gaps`; `reaches` and `decisive` on each `plan` candidate; `confirmed` on the case
 book; and two stages `attach_stage` takes, `gaps` and `confirm`. They came with
 four stamps -- `evidence_read_at_declared_delay`, `read_at_dead_time`,
 `read_at_each_path_delay` and `faults_visible_along_channels` -- and four
 discipline members already published elsewhere: `insufficient_samples` and
 `depth_exceeded` in `inference`, `missing_config` and `precondition_unmet` in
-`discovery`. From 0.2.19 the reading `most_discriminating` and `evidence_needed`
-name is always a value the model declares, never a relation. From 0.2.20: on each
+`discovery`. From 0.2.19 the reading a RANKING names -- `most_discriminating`'s,
+and each candidate's `evidence_needed` on `hypothesize` -- is always a value the
+model declares, never a relation. In `residuals` the presence arm's
+`evidence_needed` does name one, `<entity>.<relation>`: the edge to check, as the
+modelling guide says. From 0.2.20: on each
 `confirmed` row `named_reading`, `settling_reading` and
 `settling_reading_was_named`, with the totals `settling_reading_given` and
 `settling_reading_was_named` -- `named_reading_settled_it` keeps its name and
 meaning, as the next section requires; and in `residuals`, an
 `unexplained_change` with basis `coupling forecasts` carrying `couplings` and
-`rollouts`, with `checked.forecasts_read`.
+`rollouts`, with `checked.forecasts_read`. From 0.2.23: on each `confirmed` row
+`ranked_by`, `named_by` and `settling_entity_was_named`, with the totals
+`ranked_by_posterior`, `ranked_first_by_posterior` and
+`settling_entity_was_named` -- `ranked_first` and `settling_reading_was_named`
+keep their meaning; and `decisive` and `reaches` on a case's `plan` attachment.
 
 Three things about it are promises and not accidents:
 

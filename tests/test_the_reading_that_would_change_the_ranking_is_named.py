@@ -101,6 +101,19 @@ class TestByTheStrengths:
         assert named["changes_top_if"] == ["faulty"]
         assert named["expected_change"] > 0
 
+    def test_a_reading_that_moves_nothing_is_not_named_by_the_strengths(
+            self, monkeypatch):
+        """ -- the move was measured against the ranking's posteriors,
+        rounded to six places, from answers that were not rounded, so the
+        difference read as a move and a reading could be named with
+        `expected_change: 0.0`. Here elimination is stubbed so that no reading
+        changes any posterior; the answer then comes from the graph's shape."""
+        from arbiter_engine.inference import hypothesis
+        monkeypatch.setattr(hypothesis, "eliminate",
+                            lambda factors, target, evidence: 0.123456789)
+        named = _hypothesis(_chain())["most_discriminating"]
+        assert named["basis"] != "strengths"
+
     def test_the_named_reading_does_reorder_it(self):
         """What the name claims, measured by taking the reading."""
         before = [row["cause"] for row in _hypothesis(_chain())["candidates"]]

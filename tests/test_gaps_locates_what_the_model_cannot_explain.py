@@ -263,6 +263,51 @@ class TestDynamics:
         assert ("missing_config", "gaps.min_cycles") in _declined(residuals)
 
 
+def _executed_in_order(worlds, cycles=2):
+    """One execution per world, three hours apart, in the order given."""
+    session = api.EngineSession()
+    session.load_model(_pump_model(cycles))
+    session.add_entity("pump1", "Pump", {"speed_rpm": 3000.0})
+    session.add_entity("tank1", "Tank", {"level_pct": 50.0})
+    session.add_entity("valve1", "Valve", {"open_pct": 0.0})
+    session.add_relationship("pump1", "feeds", "tank1")
+    session.add_relationship("valve1", "drains", "tank1")
+    for k, world in enumerate(worlds):
+        at = AT + timedelta(hours=3 * k)
+        with api.as_of(at):
+            api.file_action(session, THROTTLE, at, "operator log",
+                            horizon_s=HORIZON, step_s=STEP)
+        arm = "action" if world == "action" else "no_action"
+        followed = {r.horizon_s: r.value for r in session.ledger.records()
+                    if r.execution and r.execution["executed_at"] == at.isoformat()
+                    and r.execution["arm"] == arm and r.indicator == "level_pct"}
+        with api.as_of(at + timedelta(seconds=HORIZON + session.ledger.grace_s + 1)):
+            session.add_observations("tank1", "level_pct", [
+                (at + timedelta(seconds=h), v) for h, v in sorted(followed.items())])
+            api.check(session)
+    return session
+
+
+class TestAPatternRetiresWhenItsRunEnds:
+    """ -- the pairs arm counted every execution that EVER showed a kind,
+    so two early executions whose effect did not show stayed located after any
+    number that did. It counts back from the newest now, as the forecast arm
+    counts rollouts."""
+
+    def test_executions_the_world_followed_retire_an_earlier_pattern(self):
+        _, rows = _dynamics(_executed_in_order(["no_action"] * 2 + ["action"] * 3))
+        assert rows == []
+
+    def test_the_newest_run_is_what_is_counted(self):
+        _, rows = _dynamics(_executed_in_order(["action"] * 3 + ["no_action"] * 2))
+        assert [(r["kind"], r["executions"]) for r in rows] == [
+            ("effect_not_observed", 2)]
+
+    def test_one_that_held_between_two_that_did_not_breaks_the_run(self):
+        _, rows = _dynamics(_executed_in_order(["no_action", "action", "no_action"]))
+        assert rows == []
+
+
 class TestTheArmsRefuseByName:
 
     def test_before_any_check_the_finding_arms_are_precondition_unmet(self):

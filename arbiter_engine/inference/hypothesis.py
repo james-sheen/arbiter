@@ -158,9 +158,9 @@ def _readable_properties(model, entity_type: str) -> List[str]:
     entity must have, which CONNECTIVITY checks against the graph, and nobody
     takes a value of it. Returned here, it was named as the reading a ranking
     rests on and as each candidate's `evidence_needed` wherever a type lists a
-    relation first: on one organisation model, a division's finding named
-    `dept-sales.reports_to` while the department declares values anyone can
-    read. Skipped by its declared type, so no domain decides it.
+    relation first: a finding one hop up named `<entity>.<relation>` while the
+    entity declares values anyone can read. Skipped by its declared type, so no
+    domain decides it.
     """
     indicators = (getattr(model, "indicators", None) or {}).get(entity_type) or []
     names: List[str] = []
@@ -375,7 +375,6 @@ def _by_information(graph: CausalGraph, subject: str,
     moves anything, and the caller then answers from the graph's shape.
     """
     causes = [row["cause"] for row in ranked]
-    base = {row["cause"]: row["posterior"] for row in ranked}
     hops = {row["cause"]: row["hops"] for row in ranked}
     top = ranked[0]["cause"]
     pool: List[str] = []
@@ -388,6 +387,15 @@ def _by_information(graph: CausalGraph, subject: str,
     factors = _factors(graph)
     best: Optional[Tuple[float, str, List[str]]] = None
     try:
+        # THE MOVE IS MEASURED AGAINST AN UNROUNDED BASE. The rows
+        # carry each posterior rounded to six places; set against unrounded
+        # answers, the rounding itself read as a move above the guard, so a
+        # reading that moves nothing could be named with `expected_change: 0.0`.
+        base: Dict[str, float] = {}
+        for row in ranked:
+            answer = eliminate(factors, row["cause"], {
+                key: value for key, value in observed.items() if key != row["cause"]})
+            base[row["cause"]] = row["posterior"] if answer is None else answer
         for node in pool:
             rest = {key: value for key, value in observed.items() if key != node}
             chance = eliminate(factors, node, rest)
@@ -417,7 +425,9 @@ def _by_information(graph: CausalGraph, subject: str,
                 best = (moved, node, flips)
     except FactorTooWide:
         return None
-    if best is None or best[0] <= 1e-12:
+    # A move the reported six places would print as 0.0 is not a reason to
+    # name a reading; the caller then answers from the graph's shape.
+    if best is None or round(best[0], 6) <= 0.0:
         return None
     moved, node, flips = best
     return dict(_reading(model, graph, node), basis="strengths",

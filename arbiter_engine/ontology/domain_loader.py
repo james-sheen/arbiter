@@ -75,13 +75,29 @@ VALID_DIRECTIONS = frozenset({"UPPER", "LOWER", "BIDIRECTIONAL"})
 DEFAULT_WINDOW = timedelta(hours=1)
 DEFAULT_TIMEOUT = timedelta(minutes=5)
 
-_ISO_DURATION = re.compile(
-    r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", re.IGNORECASE)
-_SHORT_DURATION = re.compile(r"(\d+)\s*([smhd])")
-
-_UNIT_TO_KWARG = {
-    "s": "seconds", "m": "minutes", "h": "hours", "d": "days",
+# A DURATION IS READ WHOLE, over a unit set decided by name. The
+# parser matched a PREFIX, so `3 months` read as three minutes, `1h30m` as one
+# hour and `1 ms` as one minute, and anything else -- `12w`, `1y`, `P90D`, `600`
+# -- read as nothing, which `or DEFAULT_TIMEOUT` turned into five minutes.
+# Every unit here has a fixed length. A month and a year do not, so they are
+# refused by name: choosing a length for one is choosing a number for the
+# author, which this engine does not do.
+_DURATION_UNITS: Dict[str, int] = {
+    **dict.fromkeys(("s", "sec", "secs", "second", "seconds"), 1),
+    **dict.fromkeys(("m", "min", "mins", "minute", "minutes"), 60),
+    **dict.fromkeys(("h", "hr", "hrs", "hour", "hours"), 3600),
+    **dict.fromkeys(("d", "day", "days"), 86400),
+    **dict.fromkeys(("w", "wk", "wks", "week", "weeks"), 604800),
 }
+_CALENDAR_UNITS = frozenset(("mo", "mon", "mons", "month", "months",
+                             "y", "yr", "yrs", "year", "years"))
+_NUMBER = r"\d+(?:\.\d+)?"
+_ISO_DURATION = re.compile(
+    rf"P(?:({_NUMBER})Y)?(?:({_NUMBER})M)?(?:({_NUMBER})W)?(?:({_NUMBER})D)?"
+    rf"(?:T(?:({_NUMBER})H)?(?:({_NUMBER})M)?(?:({_NUMBER})S)?)?", re.IGNORECASE)
+_SHORT_PART = re.compile(rf"({_NUMBER})\s*([a-z]+)")
+_SHORT_DURATION = re.compile(
+    rf"{_NUMBER}\s*[a-z]+(?:[\s,]*{_NUMBER}\s*[a-z]+)*")
 
 
 class NotADomainModelError(ValueError):
@@ -1495,24 +1511,93 @@ _YAML_NAME = {
 
 
 def parse_duration(raw: Optional[str]) -> Optional[timedelta]:
-    """ISO-8601 (`PT1H30M`) or short-form (`90m`) duration. None if neither."""
-    if not raw:
-        return None
-    text = str(raw)
+    """A duration, read whole, or None when it is not one. See `read_duration`."""
+    return read_duration(raw)[0]
 
-    match = _ISO_DURATION.match(text)
-    if match and any(match.groups()):
-        return timedelta(
-            hours=int(match.group(1) or 0),
-            minutes=int(match.group(2) or 0),
-            seconds=int(match.group(3) or 0),
-        )
 
-    match = _SHORT_DURATION.match(text.lower())
-    if match:
-        return timedelta(**{_UNIT_TO_KWARG[match.group(2)]: int(match.group(1))})
+def read_duration(raw: Any) -> Tuple[Optional[timedelta], Optional[str]]:
+    """`(duration, None)`, or `(None, why it was refused)`.
 
-    return None
+    Read WHOLE, never as a prefix: one or more `<number><unit>` joined and
+    summed (`90m`, `1h30m`, `2 hours 30 minutes`, `1.5h`), or ISO 8601
+    (`PT15M`, `P90D`, `P2W`, `P1DT12H`). The units are seconds, minutes, hours,
+    days and weeks, abbreviated or spelled out. Months and years are refused by
+    name: they have no fixed length, and choosing one would be choosing the
+    author's number for them. A bare number is refused for want of a unit.
+    """
+    if raw is None or isinstance(raw, bool):
+        return None, "was written with no value"
+    if isinstance(raw, (int, float)):
+        return None, "is a number with no unit"
+    text = str(raw).strip()
+    if not text:
+        return None, "was written with no value"
+
+    iso = _ISO_DURATION.fullmatch(text)
+    if iso and any(iso.groups()) and not text.upper().endswith("T"):
+        years, months, weeks, days, hours, minutes, seconds = iso.groups()
+        if years or months:
+            return None, ("names months or years, which have no fixed length; "
+                          "this engine chooses none for them")
+        return timedelta(weeks=float(weeks or 0), days=float(days or 0),
+                         hours=float(hours or 0), minutes=float(minutes or 0),
+                         seconds=float(seconds or 0)), None
+
+    lowered = text.lower()
+    if re.fullmatch(_NUMBER, lowered):
+        return None, "is a number with no unit"
+    if _SHORT_DURATION.fullmatch(lowered):
+        total = 0.0
+        for number, unit in _SHORT_PART.findall(lowered):
+            if unit in _CALENDAR_UNITS:
+                return None, ("names months or years, which have no fixed "
+                              "length; this engine chooses none for them")
+            if unit not in _DURATION_UNITS:
+                return None, f"uses {unit!r}, which is not a unit this engine reads"
+            total += float(number) * _DURATION_UNITS[unit]
+        return timedelta(seconds=total), None
+    return None, "is not a duration this engine reads"
+
+
+#: What an unreadable value under each duration key comes to, for the remedy.
+#: `timeout:` is the one with no default to fall back to since 0.2.22: a
+#: transient state is timed only by a timeout the model declared.
+_DURATION_CONSEQUENCE = {
+    "timeout": ("so no timeout is declared, and STABILITY declines a transient "
+                "state rather than timing it"),
+    "window": "so the engine's own 1h was used",
+    "horizon": "so it was treated as not written",
+    "lookback": "so it was treated as not written",
+    "align_tolerance": "so it was treated as not written",
+    "homeostasis.must_return_within": "so it was treated as not written",
+}
+
+
+#: What `.get` returns for a key the author did not write, so a key written
+#: with no value (`timeout:` on its own line) is told apart from one not written.
+_UNWRITTEN = object()
+
+
+def _duration_field(written: Any, key: str, malformed: Dict[str, Any],
+                    default: Optional[timedelta] = None, *,
+                    positive: bool = False) -> Optional[timedelta]:
+    """The duration `written` under `key`, or `default` when it was not
+    written or was refused; a refusal is recorded in `malformed` with what was
+    written and why. `positive` refuses zero, for a key where zero declares
+    nothing. The caller reads the key with `.get(key, _UNWRITTEN)`, so the
+    derivations of what the loader reads still see it."""
+    if written is _UNWRITTEN:
+        return default
+    value, problem = read_duration(written)
+    if problem is None and positive and value.total_seconds() <= 0:
+        problem = "is zero, which declares no time at all"
+    if problem is None:
+        return value
+    malformed[key] = {
+        "value": (written if isinstance(written, (str, int, float, bool))
+                  or written is None else repr(written)),
+        "problem": problem}
+    return default
 
 
 def _did_you_mean(value: Any, valid: List[Any],
@@ -1810,6 +1895,10 @@ def parse_indicator(
     # could not recognise here, so an unrecognised VALUE reaches the same
     # report an unrecognised KEY already reaches.
     unresolved: Dict[str, Any] = {}
+    # and a duration written but unreadable, which was replaced in
+    # silence: by five minutes under `timeout:`, by an hour under `window:`.
+    malformed: Dict[str, Any] = {}
+    _nested_durations(data, malformed)
 
     # B-2.7 — resolved before the spec is built, because a source and a literal
     # are read out of the SAME key and only one of them can be there.
@@ -1833,13 +1922,18 @@ def parse_indicator(
             lower_warning_threshold=_resolve_threshold(data.get("lower_warning")),
             lower_critical_threshold=_resolve_threshold(data.get("lower_critical")),
             threshold_sources=sources,
-            time_window=parse_duration(data.get("window", "1h")) or DEFAULT_WINDOW,
+            time_window=_duration_field(data.get("window", _UNWRITTEN), "window",
+                                        malformed, DEFAULT_WINDOW, positive=True),
             direction=resolve_direction(data.get("direction"), name, unresolved),
             normal_states=data.get("normal", []),
             transient_states=data.get("transient", []),
             problematic_states=data.get("bad", []),
-            transient_timeout=(
-                parse_duration(data.get("timeout", "5m")) or DEFAULT_TIMEOUT),
+            # The field keeps its five-minute default, which a patch may not
+            # change; what STABILITY times against is the DECLARED timeout
+            # (`_declared_timeout`), and a refused one is not declared.
+            transient_timeout=_duration_field(data.get("timeout", _UNWRITTEN),
+                                              "timeout", malformed,
+                                              DEFAULT_TIMEOUT, positive=True),
             target_type=data.get("target_type", ""),
             relation_type=data.get("relation_type", ""),
             min_cardinality=data.get("min_cardinality", 0),
@@ -1869,14 +1963,17 @@ def parse_indicator(
             # parameters, which are meaningless flattened beside `warning:`.
             dynamics_config=data.get("dynamics") or None,
             forecast_config=data.get("forecast") or None,
-            horizon=parse_duration(data.get("horizon")),
-            lookback=parse_duration(data.get("lookback")),
+            horizon=_duration_field(data.get("horizon", _UNWRITTEN), "horizon",
+                                    malformed, positive=True),
+            lookback=_duration_field(data.get("lookback", _UNWRITTEN), "lookback",
+                                     malformed, positive=True),
             # CARRIED, NOT PARSED. Whether the expression is well formed, and
             # whether its operands exist, are questions with better answers
             # than a file that will not load: `unreachable_declarations` says
             # so at load, and a decline says so per cell.
             derived=(str(data["derived"]) if data.get("derived") else None),
-            align_tolerance=parse_duration(data.get("align_tolerance")),
+            align_tolerance=_duration_field(data.get("align_tolerance", _UNWRITTEN),
+                                            "align_tolerance", malformed),
             # the declared role. Normalised here rather than at every
             # read site, and an unrecognised word is reported and dropped —
             # the same convention `_resolve_axioms` and `_resolve_severity`
@@ -1898,12 +1995,24 @@ def parse_indicator(
                                                    unresolved),
             # what the AUTHOR typed, which the values cannot say.
             unresolved_values=unresolved,
+            malformed_values=malformed,
             declared_keys=frozenset(data.keys()) if isinstance(data, dict)
             else frozenset(),
         )
     except Exception as exc:  # one bad indicator must not cost the file
         logger.warning("failed to parse indicator %r: %s", name, exc)
         return None
+
+
+def _nested_durations(data: Dict[str, Any], malformed: Dict[str, Any]) -> None:
+    """The durations inside an indicator's nested blocks, checked where the
+    flat ones are. The block keeps its value for the axiom that reads it; this
+    records a refusal, under the dotted key an author searches for."""
+    homeostasis = data.get("homeostasis") if isinstance(data, dict) else None
+    if isinstance(homeostasis, dict):
+        _duration_field(homeostasis.get("must_return_within", _UNWRITTEN),
+                        "homeostasis.must_return_within", malformed,
+                        positive=True)
 
 
 def _indicator_unread_fields(entity_type: str, spec: IndicatorSpec) -> List[Dict[str, Any]]:
@@ -2015,6 +2124,28 @@ def _indicator_unread_fields(entity_type: str, spec: IndicatorSpec) -> List[Dict
                 "did_you_mean": near,
                 "remedy": remedy,
             })
+    # a value that could not be READ, which is not an unrecognised
+    # member of a closed set: `timeout: 3 months` names no wrong word, it names
+    # a unit with no fixed length. `malformed_value`, as a model-level key's
+    # refused value already is, with what the refusal came to.
+    for key in sorted(getattr(spec, "malformed_values", None) or {}):
+        entry = spec.malformed_values[key]
+        consequence = _DURATION_CONSEQUENCE.get(key, "so it was not applied")
+        out.append({
+            "entity_type": entity_type,
+            "indicator": spec.name,
+            "field": key,
+            "reason": "malformed_value",
+            "value": entry.get("value"),
+            "read_by": [],
+            "did_you_mean": None,
+            "remedy": (
+                f"`{key}: {entry.get('value')}` {entry.get('problem')}, "
+                f"{consequence}. A duration is seconds, minutes, hours, days "
+                f"or weeks, one or more joined (`90m`, `1h30m`, `13w`), or "
+                f"ISO 8601 (`PT15M`, `P90D`); write a month or a year in days "
+                f"or weeks"),
+        })
     return out
 
 

@@ -34,6 +34,52 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+## [0.2.23] — 2026-09-30
+
+### Changed
+
+- **A duration is read whole, or refused.** `timeout:`, `window:`, `horizon:`, `lookback:`,
+  `align_tolerance:` and `homeostasis.must_return_within:` were read as a prefix -- `3 months`
+  as three minutes, `1h30m` as one hour -- and `12w`, `P90D` or `600` as nothing, so a
+  `timeout:` fell back to five minutes. The units are seconds, minutes, hours, days and weeks,
+  several joined (`1h30m`) or ISO 8601 (`P90D`); months and years have no fixed length and are
+  refused.
+- **An unreadable `timeout:` is not a declared one.** STABILITY declines the state as
+  `missing_config`, as with no timeout, and says what was written. Every unreadable duration is
+  a `malformed_value` row in `unread_fields`, and a zero duration is refused wherever zero
+  declares nothing -- every key above but `align_tolerance:`.
+- **`gaps` retires a pattern its pairs no longer show.** The dynamics arm counts back from the
+  newest graded execution, as the forecast arm counts rollouts, so executions whose effect did
+  not show stop being located once later ones hold.
+
+### Added
+
+- **Each `confirmed` row says what its ranking rested on:** `ranked_by` (`posterior`, `hops` or
+  `mixed`), `named_by` and `settling_entity_was_named`, with the totals `ranked_by_posterior`,
+  `ranked_first_by_posterior` and `settling_entity_was_named`. With no strength declared, a rank
+  is hop order and then entity id, and `ranked_first` counted it all the same.
+- **A case's `plan` attachment keeps the chosen plan's `decisive` and `reaches`**, beside `best`
+  and `objective`.
+
+### Fixed
+
+- `most_discriminating` weighed rounded posteriors against unrounded ones, so a reading that
+  moved nothing could be named with `expected_change: 0.0`. It now answers from the graph's
+  shape, as it does whenever no reading moves the ranking.
+
+### Documentation
+
+- The modelling guide gains a *Durations* section. COMPATIBILITY lists `checked.beyond_bound`
+  among the traversal fields, and scopes "never a relation" to the reading a ranking names.
+
+### Corrected
+
+- The 0.2.15 entry printed `arbiter-mcp --ledger PATH` as a command, and the package declares no
+  script. The server runs as `python -m arbiter_engine.mcp.server`, and its usage line now says
+  so. The 0.2.18 entry named `arbiter_mcp.server.TOOL_SPECS`; here it is
+  `arbiter_engine.mcp.server.TOOL_SPECS`.
+- 0.2.19 is dated 2026-09-28 below; its commit and tag are 2026-09-29, 01:25 UTC.
+
 ## [0.2.22] — 2026-09-29
 
 ### Changed

@@ -570,6 +570,11 @@ class StabilityChecker:
         and its timeout is whatever the code set.
         """
         typed = getattr(indicator, "declared_keys", None)
+        # typed is not declared when the value could not be read:
+        # `timeout: 3 months` left the field at its five-minute default and
+        # passed this test, so a monthly review was timed in minutes.
+        if "timeout" in (getattr(indicator, "malformed_values", None) or {}):
+            return None
         if typed:
             return indicator.transient_timeout if "timeout" in typed else None
         return indicator.transient_timeout
@@ -593,20 +598,24 @@ class StabilityChecker:
 
         # how long a state may last is the model's to say. This timed
         # every transient state against five minutes when no `timeout:` was
-        # declared, at the clock: fed to the Core, operating-health-audit's case
-        # study gained `transient_state_timeout` on two units the first cycle after
+        # declared, at the clock: a shipped case study fed to a long-running
+        # host gained `transient_state_timeout` on two units the first cycle after
         # five minutes had passed -- 13 findings where the engine found 11, from a
         # number nobody chose. Declined, by name, where that number would be used.
         timeout = self._declared_timeout(indicator)
         if timeout is None:
+            refused = (getattr(indicator, "malformed_values", None) or {}).get("timeout")
+            said = (f"`timeout: {refused.get('value')}` {refused.get('problem')}, "
+                    f"so nothing says" if refused else "no `timeout:` says")
             return CheckOutcome(problems).declined(
                 Axiom.STABILITY, entity, indicator.name,
                 NotEvaluatedReason.MISSING_CONFIG,
                 detail=(
                     f"{indicator.name} is {current_value!r}, which `transient:` "
-                    f"names as a state to pass through, and no `timeout:` says "
-                    f"how long it may last; declare `timeout:` on the indicator "
-                    f"-- this engine chooses no number for it"),
+                    f"names as a state to pass through, and {said} how long it "
+                    f"may last; declare `timeout:` on the indicator in seconds, "
+                    f"minutes, hours, days or weeks -- this engine chooses no "
+                    f"number for it"),
             )
 
         # Get states to find when we entered this state

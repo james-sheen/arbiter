@@ -2414,7 +2414,18 @@ def _stage_reference(stage: str, leg: Dict[str, Any]) -> Dict[str, Any]:
             for c in (leg.get("candidates") or [])],
             "most_discriminating": leg.get("most_discriminating")}
     if stage == "plan":
-        return {"best": leg.get("best"), "objective": leg.get("objective")}
+        # the downward answer as the case needs it later: which plan,
+        # against what, what it reaches, and the one source its margin rests on
+        # most. Kept only `best` and `objective`, a case could say a plan was
+        # chosen and not why it was close.
+        best = leg.get("best")
+        chosen = next((c for c in leg.get("candidates") or []
+                       if isinstance(c, dict) and c.get("plan") == best), {})
+        return {"best": best, "objective": leg.get("objective"),
+                "decisive": chosen.get("decisive"),
+                "reaches": [{"entity": r.get("entity"), "hops": r.get("hops")}
+                            for r in chosen.get("reaches") or []
+                            if isinstance(r, dict)]}
     if stage == "act":
         return {"execution_id": leg.get("id"), "action": leg.get("action"),
                 "pairs_filed": (leg.get("checked") or {}).get("pairs_filed")}
@@ -3065,19 +3076,42 @@ def _located_residuals(session: EngineSession
                 arms.setdefault(key, {})[str(record.execution.get("arm"))] = \
                     record.verdict
                 done[key[0]] = record.execution
-            seen: Dict[Tuple[str, str, str], Set[str]] = {}
+            # COUNTED BACK FROM THE NEWEST EXECUTION, as the forecast
+            # arm below counts rollouts. This counted every execution that had
+            # EVER shown a kind on a property, so two early ones whose effect did
+            # not show stayed located after any number that did, for as long as
+            # the ledger held them. Newest first, a run of one kind ends at an
+            # execution the world followed or one showing the other kind; an
+            # execution with an arm ungraded says nothing either way.
+            outcomes: Dict[Tuple[str, str], List[Tuple[datetime, str, str]]] = {}
             for (execution_id, entity_id, prop), verdicts in arms.items():
                 acted, idle = verdicts.get("action"), verdicts.get("no_action")
                 if acted == "falsified" and idle == "falsified":
-                    kind = "unexplained_change"
+                    outcome = "unexplained_change"
                 elif acted == "falsified" and idle == "confirmed":
-                    kind = "effect_not_observed"
+                    outcome = "effect_not_observed"
+                elif acted == "confirmed":
+                    outcome = "held"
                 else:
                     continue
-                seen.setdefault((kind, entity_id, prop), set()).add(execution_id)
-            for (kind, entity_id, prop), ids in sorted(seen.items()):
-                if len(ids) < cycles:
+                try:
+                    executed_at = as_naive_utc(datetime.fromisoformat(
+                        str(done[execution_id].get("executed_at"))))
+                except ValueError:
+                    executed_at = datetime.min
+                outcomes.setdefault((entity_id, prop), []).append(
+                    (executed_at, execution_id, outcome))
+            for (entity_id, prop), graded in sorted(outcomes.items()):
+                graded.sort()
+                kind = graded[-1][2]
+                run: List[str] = []
+                for _at, execution_id, outcome in reversed(graded):
+                    if outcome != kind:
+                        break
+                    run.append(execution_id)
+                if kind == "held" or len(run) < cycles:
                     continue
+                ids = run
                 entry = {"kind": kind, "on": f"{entity_id}.{prop}",
                          "basis": "file_action pairs", "executions": len(ids)}
                 if kind == "unexplained_change":
@@ -3092,7 +3126,7 @@ def _located_residuals(session: EngineSession
                             "this property, so the change arrives by a relation "
                             "nobody declared")
                 else:
-                    execution = done[sorted(ids)[0]]
+                    execution = done[ids[0]]      # the run's newest
                     entry["action"] = str(execution.get("action") or "")
                     entry["evidence_needed"] = _action_reading(
                         session, entry["action"],

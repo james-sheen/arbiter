@@ -157,6 +157,19 @@ def confirmed_causes(cases: List[Case]) -> Dict[str, Any]:
     `settling_reading_was_named` compares that reading with the one the
     ranking named, and is `None` when the person gave none or the ranking
     named none: an unasked question is not a no.
+
+    A RANK IS ONLY AS GOOD AS WHAT IT RESTED ON, and the row did not
+    say. With no strength declared every posterior is null and the order is
+    nearest hop first, then entity id: on a consulting model a confirmed
+    executive stood "rank 1 of 2" by spelling. `ranked_by` says which --
+    `posterior` when every cause in that ranking had one, `hops` when none did,
+    `mixed` otherwise -- and `ranked_first_by_posterior` counts only the first
+    places a posterior decided. `named_by` is the `basis` of the reading the
+    ranking named. And that reading is the type's first declared value, so a
+    person who settles the same entity on another of its readings was counted
+    as not named; `settling_entity_was_named` asks whether the settling reading
+    is on the entity the ranking pointed at, which is the question the count is
+    for. All three are additive: every field above keeps its meaning.
     """
     rows: List[Dict[str, Any]] = []
     for case in cases:
@@ -167,36 +180,62 @@ def confirmed_causes(cases: List[Case]) -> Dict[str, Any]:
             before = [entry for entry in case.stages.get("hypothesize") or []
                       if str(entry.get("at") or "") <= at]
             ranking = (before[-1].get("reference") or {}) if before else {}
-            causes = [row.get("cause") for row in ranking.get("causes") or []]
-            named = (ranking.get("most_discriminating") or {}).get("entity")
-            named_reading = _text((ranking.get("most_discriminating") or {})
-                                  .get("reading"))
+            ranked_rows = [row for row in ranking.get("causes") or []
+                           if isinstance(row, dict)]
+            causes = [row.get("cause") for row in ranked_rows]
+            discriminating = ranking.get("most_discriminating") or {}
+            named = discriminating.get("entity")
+            named_reading = _text(discriminating.get("reading"))
             settling = _text(reference.get("reading"))
+            rank = causes.index(cause) + 1 if cause in causes else None
             rows.append({
                 "case_id": case.case_id, "cause": cause,
-                "rank": causes.index(cause) + 1 if cause in causes else None,
+                "rank": rank,
                 "of": len(causes),
+                "ranked_by": _ranked_by(ranked_rows) if rank is not None else None,
+                "named_by": _text(discriminating.get("basis")),
                 "named_reading_settled_it": bool(named) and named == cause,
                 "named_reading": named_reading,
                 "settling_reading": settling,
                 "settling_reading_was_named": (
                     settling == named_reading if settling and named_reading
                     else None),
+                "settling_entity_was_named": (
+                    settling == named or settling.startswith(f"{named}.")
+                    if settling and isinstance(named, str) and named
+                    else None),
             })
     ranked = [row for row in rows if row["rank"] is not None]
+    by_posterior = [row for row in ranked if row["ranked_by"] == "posterior"]
     return {
         "confirmations": len(rows),
         "ranked_first": sum(1 for row in ranked if row["rank"] == 1),
         "ranked": len(ranked),
         "not_ranked": len(rows) - len(ranked),
+        "ranked_by_posterior": len(by_posterior),
+        "ranked_first_by_posterior": sum(1 for row in by_posterior
+                                         if row["rank"] == 1),
         "named_reading_settled_it": sum(1 for row in rows
                                         if row["named_reading_settled_it"]),
         "settling_reading_given": sum(1 for row in rows
                                       if row["settling_reading"]),
         "settling_reading_was_named": sum(
             1 for row in rows if row["settling_reading_was_named"]),
+        "settling_entity_was_named": sum(
+            1 for row in rows if row["settling_entity_was_named"]),
         "rows": rows,
     }
+
+
+def _ranked_by(causes: List[Dict[str, Any]]) -> Optional[str]:
+    """What a ranking's order rested on: every cause's posterior, none (so
+    nearest hop first, then entity id), or some of each."""
+    if not causes:
+        return None
+    with_posterior = sum(1 for row in causes if row.get("posterior") is not None)
+    if with_posterior == len(causes):
+        return "posterior"
+    return "hops" if with_posterior == 0 else "mixed"
 
 
 def _text(value: Any) -> Optional[str]:
