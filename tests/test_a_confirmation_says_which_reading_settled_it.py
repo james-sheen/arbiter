@@ -14,6 +14,9 @@ patch release may not change what a field means. Beside it, each row now
 carries the `named_reading`, the `settling_reading` the person gave, and
 `settling_reading_was_named`, which is `None` when either is missing: an
 unasked question is not a no.
+
+a ranking names only a reading still owed, so nothing below the
+basin is read before it: the tank's level is a reading to take, not one taken.
 """
 
 from __future__ import annotations
@@ -54,8 +57,8 @@ def _model():
 def _session():
     session = api.EngineSession()
     session.load_model(_model())
-    session.add_entity("pump-1", "Pump", {"speed_rpm": 1000.0})
-    session.add_entity("tank-1", "Tank", {"level_pct": 90.0})
+    session.add_entity("pump-1", "Pump", {})
+    session.add_entity("tank-1", "Tank", {})
     session.add_entity("basin-1", "Basin", {"basin_level": 65.0})
     session.add_relationship("pump-1", "feeds", "tank-1")
     session.add_relationship("tank-1", "spills", "basin-1")
@@ -173,8 +176,8 @@ class TestOverTheTool:
 
         call("load_model", model=_model())
         for entity_id, entity_type, properties in (
-                ("pump-1", "Pump", {"speed_rpm": 1000.0}),
-                ("tank-1", "Tank", {"level_pct": 90.0}),
+                ("pump-1", "Pump", {}),
+                ("tank-1", "Tank", {}),
                 ("basin-1", "Basin", {"basin_level": 65.0})):
             call("add_entity", entity_id=entity_id, entity_type=entity_type,
                  properties=properties)

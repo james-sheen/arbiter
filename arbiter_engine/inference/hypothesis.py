@@ -53,12 +53,19 @@ led (0.415 against 0.010). Only a declared delay moves a read; the engine's own
 month before.
 
 `evidence_needed` stays each candidate's first declared reading. What the
-ranking itself answers is `most_discriminating`: the one entity whose reading
-would move it most, weighed by the model's own chance of each outcome where
-strengths are declared, and by the shape of the declared graph where none are
--- the entity on every declared path from the most candidates, stamped as the
-assumption it is. On the same chain it names the tank, whose faulty reading
-reverses the order.
+ranking itself answers is `most_discriminating`: the one reading that would
+move it most, weighed by the model's own chance of each outcome where
+strengths are declared.
+
+WHERE EACH CANDIDATE STANDS. A candidate read clean screens every
+cause whose only way down to the finding runs through it, on the stamped
+assumption that a fault shows along its channel, and each candidate is
+`frontier`, `trail`, `open` or `screened` by its own checks and that rule. The
+walk as a whole is `traced`, `partly_traced`, `open`, `unexplained` or `cut`.
+Without posteriors the order is the standing, and the reading named is one an
+OPEN candidate's check could not take -- never one already taken, and none at
+all when nothing is open. On the same chain, with the tank read clean, the pump
+is screened and the finding is unexplained.
 """
 
 from __future__ import annotations
@@ -385,14 +392,16 @@ def _reading(model, graph: CausalGraph, node: str) -> Dict[str, Any]:
 
 def _by_information(graph: CausalGraph, subject: str,
                     ranked: List[Dict[str, Any]], observed: Dict[str, int],
-                    model) -> Optional[Dict[str, Any]]:
+                    model, among: Optional[Set[str]] = None
+                    ) -> Optional[Dict[str, Any]]:
     """The entity whose reading would move the ranking most, by the strengths.
 
     Each outcome of the reading is weighed by the model's own probability of
     it given everything else, and the move is the summed change in the
     candidates' posteriors. A reading already taken counts only through the
     outcome it did NOT give. None when elimination is too wide or no reading
-    moves anything, and the caller then answers from the graph's shape.
+    moves anything, and the caller then answers by screening. `among` limits
+    the entities weighed: weighs only the open candidates.
     """
     causes = [row["cause"] for row in ranked]
     hops = {row["cause"]: row["hops"] for row in ranked}
@@ -404,6 +413,8 @@ def _by_information(graph: CausalGraph, subject: str,
             if any(cause in graph.parents.get(child, ()) for cause in causes)]:
         if node != subject and node not in pool:
             pool.append(node)
+    if among is not None:
+        pool = [node for node in pool if node in among]
     factors = _factors(graph)
     best: Optional[Tuple[float, str, List[str]]] = None
     try:
@@ -446,52 +457,12 @@ def _by_information(graph: CausalGraph, subject: str,
     except FactorTooWide:
         return None
     # A move the reported six places would print as 0.0 is not a reason to
-    # name a reading; the caller then answers from the graph's shape.
+    # name a reading; the caller then answers by screening.
     if best is None or round(best[0], 6) <= 0.0:
         return None
     moved, node, flips = best
     return dict(_reading(model, graph, node), basis="strengths",
                 expected_change=round(moved, 6), changes_top_if=flips)
-
-
-def _by_structure(graph: CausalGraph, subject: str,
-                  ranked: List[Dict[str, Any]], max_hops: int,
-                  model) -> Dict[str, Any]:
-    """The candidate lying on every declared path from the most candidates.
-
-    With no strength declared nothing can be weighed, and the question left is
-    which reading splits the candidates most evenly: a candidate that reads
-    clean rules out every cause whose only way down to the finding runs through
-    it, on the stamped assumption that a fault shows along its channel.
-    """
-    causes = [row["cause"] for row in ranked]
-    hops = {row["cause"]: row["hops"] for row in ranked}
-
-    def reached_avoiding(blocked: str) -> Set[str]:
-        seen, frontier = {subject}, [subject]
-        for _hop in range(max_hops):
-            nxt = []
-            for current in frontier:
-                for parent in graph.parents.get(current, ()) or ():
-                    if parent != blocked and parent not in seen:
-                        seen.add(parent)
-                        nxt.append(parent)
-            if not nxt:
-                break
-            frontier = nxt
-        return seen
-
-    best: Optional[Tuple[Tuple[int, int, int], str, int]] = None
-    for node in causes:
-        reached = reached_avoiding(node)
-        covered = 1 + sum(1 for cause in causes
-                          if cause != node and cause not in reached)
-        key = (min(covered, len(causes) - covered), covered, -hops[node])
-        if best is None or key > best[0]:
-            best = (key, node, covered)
-    _key, node, covered = best
-    return dict(_reading(model, graph, node), basis="structure",
-                splits=[covered, len(causes) - covered])
 
 
 def hypothesize(session: Any, entity_id: str, *,
@@ -535,6 +506,7 @@ def hypothesize(session: Any, entity_id: str, *,
                     f"there is nothing upstream of it to rank. An edge enters "
                     f"that graph by declaring `edge_direction: causal`; this "
                     f"verb does not search for one.")))
+        extras["walk"] = _cut_walk()
         return SubEnvelope("inference", checked, not_checked=declines), [], extras
 
     candidates = _ancestors(graph, entity_id, hop_bound)
@@ -557,6 +529,7 @@ def hypothesize(session: Any, entity_id: str, *,
                     f"{hop_bound} hops, so the model offers nothing that could "
                     f"explain a finding on it. That is a statement about the "
                     f"model and not about the system.")))
+        extras["walk"] = _cut_walk()
         return SubEnvelope("inference", checked, not_checked=declines), [], extras
 
     # WHEN EACH CAUSE IS READ. Only a declared dead time moves a
@@ -680,11 +653,33 @@ def hypothesize(session: Any, entity_id: str, *,
             "do_would_answer": None,
         })
 
+    # WHERE EACH CANDIDATE STANDS on the walk up from the finding,
+    # from step 1's states at the instant each was read. A candidate read clean
+    # screens everything whose only way down runs through it, on the stamped
+    # assumption that a fault shows along its channel; nothing is screened
+    # through a candidate that is not clean.
+    standings, screened_by = _standings(graph, entity_id, ranked)
+    for row in ranked:
+        row["standing"] = standings[row["cause"]]
+        row["screened_by"] = screened_by.get(row["cause"])
+    if any(standing == "screened" for standing in standings.values()):
+        stamps.add(FAULTS_VISIBLE_ALONG_CHANNELS)
+
     # Nearest first on a tie, because a cause two hops away explains a finding
     # only through one that is nearer, and asking about the nearer one first is
     # how an operator narrows rather than guesses.
-    ranked.sort(key=lambda row: (-(row["posterior"] or 0.0), row["hops"],
-                                 row["cause"]))
+    #
+    # BY POSTERIOR ONLY WHERE EVERY CANDIDATE HAS ONE. Without them
+    # the order was hops and then id, and nothing said so (round 18's N16); it
+    # is the standing now -- frontier, trail, open, screened -- and the walk's
+    # `ranked_by` says which order a reader is looking at.
+    by_posterior = all(row["posterior"] is not None for row in ranked)
+    if by_posterior:
+        ranked.sort(key=lambda row: (-(row["posterior"] or 0.0), row["hops"],
+                                     row["cause"]))
+    else:
+        ranked.sort(key=lambda row: (_STANDING_ORDER[row["standing"]], row["hops"],
+                                     row["cause"]))
     checked["ranked"] = len(ranked)
 
     observed = (dict(evidence.observed) if evidence is not None
@@ -693,8 +688,13 @@ def hypothesize(session: Any, entity_id: str, *,
         if row["posterior"] is not None:
             row["do_would_answer"] = _do_answer(graph, entity_id, row["cause"],
                                                 observed)
-    extras["most_discriminating"] = _most_discriminating(
-        session, graph, entity_id, ranked, observed, hop_bound, stamps)
+    found, why = _most_discriminating(
+        session, graph, entity_id, ranked, observed, stamps, standings)
+    extras["most_discriminating"] = found
+    if why:
+        extras["most_discriminating_reason"] = why
+    extras["walk"] = _walk_record(ranked, standings,
+                                  "posterior" if by_posterior else "standing")
 
     if report_above is not None:
         ranked = [r for r in ranked
@@ -712,19 +712,178 @@ def hypothesize(session: Any, entity_id: str, *,
 
 def _most_discriminating(session: Any, graph: CausalGraph, subject: str,
                          ranked: List[Dict[str, Any]], observed: Dict[str, int],
-                         max_hops: int, stamps: set) -> Optional[Dict[str, Any]]:
-    """The one reading that would change this ranking most, and how it was
-    chosen: by the strengths where every candidate has a posterior, by the
-    declared graph's shape where none can, and the candidate itself where
-    there is only one."""
+                         stamps: set, standings: Dict[str, str]
+                         ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """The one reading that would move the walk most, how it was chosen, and,
+    when none is named, why.
+
+    AMONG OPEN CANDIDATES ONLY, naming a reading the last check
+    could not take. A candidate already read has nothing left to tell, and
+    this named one anyway: the clean tank's own level on a chain it already
+    screened, a faulty executive's tenure beside the finding that explains the
+    department. Chosen by the strengths where every candidate has a posterior;
+    otherwise the candidate whose clean reading would screen the most of what
+    remains; and the candidate itself where only one is open. `None`, with the
+    reason, when nothing is open.
+    """
     if not ranked:
-        return None
-    if len(ranked) == 1:
-        return dict(_reading(session.model, graph, ranked[0]["cause"]),
-                    basis="only_candidate")
+        return None, None
+    open_rows = [row for row in ranked if standings.get(row["cause"]) == "open"]
+    if not open_rows:
+        return None, ("no candidate is open: every one the walk reached was "
+                      "read, and any other is screened behind one read clean")
+    if len(open_rows) == 1:
+        basis = "only_candidate" if len(ranked) == 1 else "only_open"
+        return dict(_need(session.model, graph, open_rows[0]), basis=basis), None
     if all(row["posterior"] is not None for row in ranked):
-        found = _by_information(graph, subject, ranked, observed, session.model)
+        found = _by_information(graph, subject, ranked, observed, session.model,
+                                among={row["cause"] for row in open_rows})
         if found is not None:
-            return found
+            chosen = next(row for row in open_rows if row["cause"] == found["entity"])
+            found.update(_need(session.model, graph, chosen))
+            return found, None
     stamps.add(FAULTS_VISIBLE_ALONG_CHANNELS)
-    return _by_structure(graph, subject, ranked, max_hops, session.model)
+    return _by_screening(session.model, graph, subject, ranked, standings,
+                         open_rows), None
+
+
+#: the order standings rank in where any candidate lacks a posterior.
+_STANDING_ORDER: Dict[str, int] = {"frontier": 0, "trail": 1, "open": 2, "screened": 3}
+
+#: The states a candidate's checks give that count as a finding on the walk.
+_FOUND = ("faulty", "deviating")
+
+
+def _standings(graph: CausalGraph, subject: str, ranked: List[Dict[str, Any]]
+               ) -> Tuple[Dict[str, str], Dict[str, List[str]]]:
+    """Where each candidate stands on the walk up from `subject`.
+
+    - `trail` -- it has a finding (`faulty` or `deviating`), and it is
+      reachable from the subject through candidates that are not clean;
+    - `frontier` -- on the trail, and every cause connected to it within the
+      bound is clean, or none is: where the visible fault stops;
+    - `open` -- `partial` or `unread`, and reachable the same way;
+    - `screened` -- `clean`, or reachable only through a clean candidate.
+
+    `screened_by` names, for each candidate reachable only through clean ones,
+    the clean candidates the walk stopped at below it.
+    """
+    state = {row["cause"]: (row.get("evidence") or {}).get("state") for row in ranked}
+    reached: Set[str] = set()
+    queue = [subject]
+    while queue:
+        current = queue.pop(0)
+        for parent in graph.parents.get(current, ()) or ():
+            if parent not in state or parent in reached:
+                continue
+            reached.add(parent)
+            if state[parent] != "clean":
+                queue.append(parent)
+    live = {node for node in reached if state[node] != "clean"}
+    above = {node: _upstream_within(graph, node, live) for node in live}
+    standings: Dict[str, str] = {}
+    for cause, read in state.items():
+        if cause not in live:
+            standings[cause] = "screened"
+        elif read in _FOUND:
+            # Nothing that is not clean lies above it -- or what does lies on a
+            # loop back to it and has a finding too: a ring of faulty causes is
+            # where the visible fault stops, not a trail with no top.
+            standings[cause] = ("frontier" if all(
+                state[node] in _FOUND and cause in above[node]
+                for node in above[cause]) else "trail")
+        else:
+            standings[cause] = "open"
+    blockers = [node for node in reached if state[node] == "clean"]
+    screened_by: Dict[str, List[str]] = {}
+    for cause in state:
+        if cause not in reached:
+            screened_by[cause] = sorted(
+                blocker for blocker in blockers
+                if cause in _upstream_within(graph, blocker, state))
+    return standings, screened_by
+
+
+def _upstream_within(graph: CausalGraph, node: str, within: Any) -> Set[str]:
+    """Every member of `within` that reaches `node` along declared causal
+    edges whose every node is a member too."""
+    seen: Set[str] = set()
+    queue = [node]
+    while queue:
+        current = queue.pop(0)
+        for parent in graph.parents.get(current, ()) or ():
+            if parent in within and parent not in seen:
+                seen.add(parent)
+                queue.append(parent)
+    return seen
+
+
+def _walk_record(ranked: List[Dict[str, Any]], standings: Dict[str, str],
+                 ranked_by: Optional[str]) -> Dict[str, Any]:
+    """The walk as a whole: its state, where the visible fault stops, what is
+    still open and what each open candidate needs, the counts by standing, and
+    the order the candidates are in.
+
+    `traced` -- a frontier and nothing open; `partly_traced` -- a frontier and
+    something open; `open` -- no frontier, something open; `unexplained` --
+    every connected cause screened; `cut` -- no cause connected. A trail always
+    has a frontier above it, so the five are the only answers.
+    """
+    frontier = [{"entity": row["cause"],
+                 "findings": sorted((row.get("evidence") or {}).get("findings") or {})}
+                for row in ranked if standings.get(row["cause"]) == "frontier"]
+    still_open = [{"entity": row["cause"],
+                   "needs": list((row.get("evidence") or {}).get("needs") or [])}
+                  for row in ranked if standings.get(row["cause"]) == "open"]
+    counts = {name: sum(1 for standing in standings.values() if standing == name)
+              for name in _STANDING_ORDER}
+    if not standings:
+        state = "cut"
+    elif frontier:
+        state = "partly_traced" if still_open else "traced"
+    elif still_open:
+        state = "open"
+    else:
+        state = "unexplained"
+    return {"state": state, "frontier": frontier, "open": still_open,
+            "counts": counts, "ranked_by": ranked_by}
+
+
+def _cut_walk() -> Dict[str, Any]:
+    """The walk for a subject no declared cause reaches."""
+    return _walk_record([], {}, None)
+
+
+def _need(model, graph: CausalGraph, row: Dict[str, Any]) -> Dict[str, Any]:
+    """The reading an open candidate is waiting on: of those its last check
+    could not take, the first value its type declares. `None` where none of
+    them is a value -- a relation is outstanding, or nothing a reading would
+    cure -- because a reading named is one a person can take and
+    one the walk is owed."""
+    node = row["cause"]
+    owed = {need.get("reading") for need in (row.get("evidence") or {}).get("needs") or []}
+    for name in _readable_properties(model, graph.entity_type.get(node, "")):
+        if f"{node}.{name}" in owed:
+            return {"entity": node, "reading": f"{node}.{name}"}
+    return {"entity": node, "reading": None}
+
+
+def _by_screening(model, graph: CausalGraph, subject: str,
+                  ranked: List[Dict[str, Any]], standings: Dict[str, str],
+                  open_rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """The open candidate whose clean reading would screen the most of what
+    remains, nearest first on a tie; `screens` counts the others it would
+    screen., replacing the even split of the graph's shape, which
+    counted candidates already read as still in play."""
+    scored = []
+    for row in open_rows:
+        trial = [dict(other, evidence=dict(other.get("evidence") or {}, state="clean"))
+                 if other["cause"] == row["cause"] else other for other in ranked]
+        after, _blocked_by = _standings(graph, subject, trial)
+        screens = sum(1 for cause, standing in after.items()
+                      if cause != row["cause"] and standing == "screened"
+                      and standings.get(cause) != "screened")
+        scored.append((-screens, row["hops"], row["cause"], row))
+    scored.sort(key=lambda item: item[:3])
+    negative, _hops, _cause, row = scored[0]
+    return dict(_need(model, graph, row), basis="screening", screens=-negative)

@@ -509,10 +509,20 @@ def run_inference(session, query: Query,
 
     checked["answered"] = 1
     checked["posterior"] = round(posterior, 6)
-    session.ledger.record_prediction(
-        entity_id=query.target, probability=posterior,
-        horizon_s=0.0, severity="medium", kind="stated",
-        predicted_at=predicted_at)
+    # ONE CLAIM IS FILED ONCE. Every answered call filed its
+    # posterior, so a walk asked twice over one check filed each candidate
+    # twice, and the ledger graded the same claim as two. The same entity,
+    # value, check and instant is the same claim, and is not filed again.
+    filed = getattr(session, "_filed_posteriors", None)
+    claim = (query.target, round(posterior, 6),
+             getattr(session, "_last_checked_at", None), predicted_at)
+    if filed is None or claim not in filed:
+        if filed is not None:
+            filed.add(claim)
+        session.ledger.record_prediction(
+            entity_id=query.target, probability=posterior,
+            horizon_s=0.0, severity="medium", kind="stated",
+            predicted_at=predicted_at)
 
     if report_above is None:
         # The number in this sentence was the literal `0.31` at every

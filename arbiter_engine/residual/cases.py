@@ -192,7 +192,8 @@ def confirmed_causes(cases: List[Case]) -> Dict[str, Any]:
                 "case_id": case.case_id, "cause": cause,
                 "rank": rank,
                 "of": len(causes),
-                "ranked_by": _ranked_by(ranked_rows) if rank is not None else None,
+                "ranked_by": (_ranked_by(ranked_rows, ranking.get("ranked_by"))
+                              if rank is not None else None),
                 "named_by": _text(discriminating.get("basis")),
                 "named_reading_settled_it": bool(named) and named == cause,
                 "named_reading": named_reading,
@@ -227,11 +228,18 @@ def confirmed_causes(cases: List[Case]) -> Dict[str, Any]:
     }
 
 
-def _ranked_by(causes: List[Dict[str, Any]]) -> Optional[str]:
+def _ranked_by(causes: List[Dict[str, Any]], kept: Any = None) -> Optional[str]:
     """What a ranking's order rested on: every cause's posterior, none (so
-    nearest hop first, then entity id), or some of each."""
+    nearest hop first, then entity id), or some of each.
+
+    a ranking from 0.2.27 on keeps the order it was ranked in, and
+    without every posterior that order is the standing first, so `standing` is
+    read from it; one kept before then is ranked by the rule above, which was
+    the order it was in."""
     if not causes:
         return None
+    if kept in ("posterior", "standing"):
+        return kept
     with_posterior = sum(1 for row in causes if row.get("posterior") is not None)
     if with_posterior == len(causes):
         return "posterior"

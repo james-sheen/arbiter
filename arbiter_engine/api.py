@@ -100,6 +100,10 @@ class EngineSession:
         #: instant a finding was found at, which `hypothesize` reads each cause
         #: back from by its declared delay.
         self._last_checked_at: Optional[datetime] = None
+        #: each posterior already filed to the ledger, by entity,
+        #: value, the check it rests on and the instant it is about, so a
+        #: walk asked again files nothing new.
+        self._filed_posteriors: set = set()
         #: the instant the current feeding pass stamps bare
         #: readings against. See `_bare_reading_instant`.
         self._bare_pass_instant: Optional[datetime] = None
@@ -1072,6 +1076,61 @@ def _projection_record(session: EngineSession, target_type: str,
     }
 
 
+def _causal_coverage(model) -> Dict[str, Any]:
+    """Which relationship rules declare a fault channel, and which types that
+    can raise a finding no declared channel enters.
+
+    Per rule: the strength as declared, `None` where nobody declared one --
+    inference stops there rather than spend the engine's number -- and the
+    leak and dead time in effect, each saying whether it was declared. A type
+    can raise a finding when one of its indicators declares an axiom; with no
+    channel into it, `hypothesize` on its finding is `not_identifiable` and the
+    walk is `cut`, which this says before a capture is fed.
+    """
+    from arbiter_engine.inference.causal import (
+        SOURCE_DECLARED, _declared_time_course, _weight_from, resolve_strength)
+    rules = [rule for rule in (getattr(model, "relationship_rules", None) or [])
+             if isinstance(rule, dict)]
+    declared: List[Dict[str, Any]] = []
+    into: Dict[str, List[str]] = {}
+    for rule in rules:
+        if str(rule.get("edge_direction", "")) != "causal":
+            continue
+        label = (f"{rule.get('source_type', '?')}"
+                 f"-{rule.get('type', '?')}->"
+                 f"{rule.get('target_type', '?')}")
+        weight = _weight_from(rule, None)
+        block = rule.get("causal") if isinstance(rule.get("causal"), dict) else {}
+        leak_declared, _unresolved = resolve_strength(block.get("leak"))
+        delay, tau = _declared_time_course(rule)
+        declared.append({
+            "rule": label,
+            "weight": weight.weight if weight.source == SOURCE_DECLARED else None,
+            "weight_source": weight.source,
+            "leak": weight.leak,
+            "leak_source": "declared" if leak_declared is not None else "default",
+            "propagation_delay_s": delay,
+            "time_constant_s": tau,
+        })
+        into.setdefault(str(rule.get("target_type", "")), []).append(label)
+    findable = sorted(entity_type
+                      for entity_type, specs in (model.indicators or {}).items()
+                      if any(getattr(spec, "relevant_axioms", None) for spec in specs))
+    without = [entity_type for entity_type in findable if not into.get(entity_type)]
+    return {
+        "declared": declared,
+        "findable_types": {entity_type: into.get(entity_type, [])
+                           for entity_type in findable},
+        "types_without_cause": without,
+        "checked": {
+            "relationship_rules": len(rules),
+            "causal": len(declared),
+            "findable_types": len(findable),
+            "without_cause": len(without),
+        },
+    }
+
+
 def _transition_coverage(model, session: Optional[EngineSession] = None
                          ) -> Dict[str, Any]:
     """Which relationship rules declare value dynamics, and which do not.
@@ -1278,6 +1337,12 @@ def model_describe(session: EngineSession,
         # to know what a simulation will be able to project should not have
         # to run one and read the declines.
         "transitions": _transition_coverage(model, session),
+        # the CAUSAL twin of `transitions`: each fault channel the
+        # model declares, and each type that can raise a finding with the
+        # channels into it. `stages.hypothesize.declared` says only that some
+        # rule is causal; a type no channel enters was found by feeding a
+        # capture and reading `not_identifiable` back.
+        "causal": _causal_coverage(model),
         # gains FITTED from this session's observations, beside the
         # ones the author declared. Proposals: nothing here has changed the
         # model, and a `gain: estimate` transition projects no value until a
@@ -1324,7 +1389,8 @@ def model_describe(session: EngineSession,
             "axiom_parameters lists every evaluation parameter with the value "
             "in effect and whether the model declared it; stages "
             "says, per stage of the loop, whether the model declares what it "
-            "reads"
+            "reads; causal lists each declared fault channel and "
+            "the types that can raise a finding no channel enters"
         ),
     }
     # the mirror of `model.unreachable_declarations`, and deliberately
@@ -2421,10 +2487,13 @@ def _stage_reference(stage: str, leg: Dict[str, Any]) -> Dict[str, Any]:
         # EVERY cause, in its rank, not the first five: a person who
         # later confirms a cause asks where it stood, and a cut list cannot
         # say. Bounded by the declared graph within `causal.max_hops`.
+        # and the order it was ranked in, which a confirmed row
+        # reports: without posteriors that is the standing now, not hop order.
         return {"causes": [
             {"cause": c.get("cause"), "posterior": c.get("posterior")}
             for c in (leg.get("candidates") or [])],
-            "most_discriminating": leg.get("most_discriminating")}
+            "most_discriminating": leg.get("most_discriminating"),
+            "ranked_by": (leg.get("walk") or {}).get("ranked_by")}
     if stage == "plan":
         # the downward answer as the case needs it later: which plan,
         # against what, what it reaches, and the one source its margin rests on
@@ -3642,6 +3711,11 @@ def hypothesize(session: EngineSession, entity_id: str,
     payload["hypothesis"]["most_discriminating"] = extras.get("most_discriminating")
     if extras.get("read_at"):
         payload["hypothesis"]["read_at"] = extras["read_at"]
+    # the walk as a whole, and why no reading is named when none is.
+    payload["hypothesis"]["walk"] = extras.get("walk")
+    if extras.get("most_discriminating_reason"):
+        payload["hypothesis"]["most_discriminating_reason"] = (
+            extras["most_discriminating_reason"])
     return _WithPayload(envelope, payload)
 
 

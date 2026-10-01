@@ -115,6 +115,14 @@ meaning, as the next section requires; and in `residuals`, an
 `ranked_by_posterior`, `ranked_first_by_posterior` and
 `settling_entity_was_named` -- `ranked_first` and `settling_reading_was_named`
 keep their meaning; and `decisive` and `reaches` on a case's `plan` attachment.
+From 0.2.26: `evidence` on each `hypothesize` candidate. From 0.2.27: on each
+candidate `standing` and `screened_by`; on `hypothesize`, `walk` and
+`most_discriminating_reason`; `ranked_by` on a case's `hypothesize` attachment;
+and `causal` in `model_describe`'s model. Two of 0.2.27's changes are defect
+fixes the changelog lists rather than additions: the order of causes without
+every posterior, which a confirmed row's `ranked_by` now reports as `standing`,
+and `most_discriminating`, which names only a reading an open candidate still
+owes, by the bases the changelog gives.
 
 Three things about it are promises and not accidents:
 

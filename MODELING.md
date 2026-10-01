@@ -1255,6 +1255,30 @@ check could not take, with its reason -- and `declines_no_reading_cures`.
 `own_reading` stays as it was, `{state, severity}` or `null`, with `deviating` as
 one more state.
 
+**Where each cause stands, and the walk.** Each candidate carries a `standing`
+from those states. A candidate with a finding, reached from the subject through
+causes that are not clean, is on the `trail`; on the trail with nothing above it
+that is not clean -- or only a loop of faulty causes back to it -- it is the
+`frontier`, where the visible fault stops. One `partial` or `unread`, reached the
+same way, is `open`. One read `clean`, or reachable only through one that was, is
+`screened`, and `screened_by` names the clean candidates it sits behind. A cause
+whose only way down runs through a cause read clean is screened by it, which
+assumes a fault travelling a declared channel shows at each entity on it; a walk
+that screens anything is stamped `faults_visible_along_channels`, and nothing is
+screened through a cause that is not clean. The hypothesis leg's `walk` gives the
+whole: `state` -- `traced` (a frontier, nothing open), `partly_traced` (a
+frontier, something open), `open` (no frontier, something open), `unexplained`
+(every connected cause screened) or `cut` (no cause connected) -- the `frontier`
+with each entity's findings, the `open` candidates with their `needs`, the counts
+by standing, and `ranked_by`. Where every candidate has a posterior the causes
+are in posterior order; otherwise by standing -- frontier, trail, open, screened
+-- then hops, then id, and `ranked_by` says `standing`. The frontier is where the
+visible fault stops, and nothing calls it a cause. `model_describe` lists under
+`causal` each declared fault channel -- its strength, leak and dead time, each
+declared or not -- each type that can raise a finding with the channels into
+it, and `types_without_cause`: a finding on one of those has no declared cause
+and its walk is `cut`, which the model says before a capture is fed.
+
 **A cause with no number says why.** A model that declares causal edges and no
 strengths gets `cpt_missing` from `infer`, by name. `hypothesize` carries every
 decline of the inferences behind its ranking into its own `not_checked`, and
@@ -1292,23 +1316,27 @@ as a claim about that instant.
 ordering -- a value, never a relation: a RELATIONSHIP indicator declares an edge
 CONNECTIVITY checks, nobody takes a value of it, and it is skipped, so a type that
 declares only relations names none (`null`). What the ranking itself rests on is
-named beside it, by the same rule. Where every
+named beside it, by the same rule, and among the `open` candidates only -- a
+reading already taken has nothing left to tell -- as a reading the candidate's
+check could not take: of those, the first value its type declares. Where every
 candidate has a posterior, each outcome of a reading is weighed by the model's
 own probability of it given everything else, and the reading named moves the
 posteriors furthest (`basis: strengths`, with `expected_change` and the outcome
-that would change the top candidate); a reading already taken counts only
-through the outcome it did not give. On the chain above, read at the finding, it
-names the tank. Where no strength is declared nothing can be weighed, and the
-reading named is the candidate on every declared path from the most candidates
--- the most even split (`basis: structure`, `splits`), stamped
-`faults_visible_along_channels` for the assumption that makes it a test. One
-candidate names itself (`basis: only_candidate`).
+that would change the top candidate). On the chain above with the tank and pump
+unread, it names the tank. Where no strength is declared nothing can be weighed,
+and the reading named is the open candidate's whose clean reading would screen
+the most of what remains (`basis: screening`, with `screens`, how many others it
+would screen), stamped `faults_visible_along_channels` for the assumption that
+makes it a test. One open candidate names itself (`basis: only_candidate` when
+it is the only candidate, `only_open` when the rest were read). With nothing
+open it is `null`, and `most_discriminating_reason` says why.
 
 **Forcing a cause: `do_would_answer`.** Each candidate carries the finding's
 posterior under `do(candidate faulty)`, given the rest of the evidence, as
 `infer` answers `do` -- `null` wherever `infer` would decline. Neither it nor
 any reading `most_discriminating` weighs is filed in the ledger: a value nobody
-observed is not a prediction.
+observed is not a prediction. Each candidate's posterior is filed, once: a walk
+asked again over the same check files nothing new.
 
 ### How far upstream: `causal.max_hops`
 
@@ -1638,7 +1666,7 @@ the key being absent. The `inference` sub-envelope -- what `infer` and
 | `evidence_read_at_declared_delay` | `hypothesize` read at least one entity upstream of the finding at the finding's instant minus the dead times declared along its path, and ranked on that evidence -- absent whenever no causal edge in reach declares a delay |
 | `read_at_dead_time` | a path read back along also declares a time constant, so its response goes on developing after the dead time, and the entity was read at the dead time alone |
 | `read_at_each_path_delay` | an entity reached by paths of unequal declared delay was read at each of their instants, and counted faulty if any of those readings was |
-| `faults_visible_along_channels` | the reading named to separate the candidates was chosen by the declared graph's shape, because no causal strength was declared to weigh them; it assumes a fault travelling a declared channel shows at each entity on it |
+| `faults_visible_along_channels` | a candidate was screened -- read clean, or reachable only through one that was -- or the reading named was chosen by what its clean reading would screen, because no causal strength was declared to weigh the candidates; it assumes a fault travelling a declared channel shows at each entity on it |
 
 One stamp carries a value rather than standing alone:
 `action_property_from_parameter_name:<property>` says that an action template

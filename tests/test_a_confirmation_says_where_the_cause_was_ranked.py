@@ -51,11 +51,12 @@ def _model(cases=True):
     return {"domain": domain}
 
 
-def _session(tank=90.0):
+def _session(tank=90.0, pump=1000.0):
+    """`None` leaves that cause unread; an internal ruling names a reading only of one."""
     session = api.EngineSession()
     session.load_model(_model())
-    session.add_entity("pump-1", "Pump", {"speed_rpm": 1000.0})
-    session.add_entity("tank-1", "Tank", {"level_pct": tank})
+    session.add_entity("pump-1", "Pump", {} if pump is None else {"speed_rpm": pump})
+    session.add_entity("tank-1", "Tank", {} if tank is None else {"level_pct": tank})
     session.add_entity("basin-1", "Basin", {"basin_level": 65.0})
     session.add_relationship("pump-1", "feeds", "tank-1")
     session.add_relationship("tank-1", "spills", "basin-1")
@@ -87,7 +88,7 @@ def _confirmed(session):
 class TestWhereTheConfirmedCauseStood:
 
     def test_the_first_ranked_cause_confirmed_counts_as_first(self):
-        session = _session()
+        session = _session(tank=None, pump=None)
         case_id = _open(session)
         _rank(session, case_id, 1)
         _confirm(session, case_id, 2, {"cause": "tank-1",

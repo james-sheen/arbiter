@@ -316,14 +316,15 @@ action somebody took (`file_action`), and rank what could explain a finding (`hy
 last three keep the case book (`open_case`, `attach_stage`, `case_book`).
 
 **Given a finding, three of them walk the declared graph.** `hypothesize` goes back along causal
-channels to a ranked list of candidate causes and names the one reading the ranking rests on most.
+channels to a ranked list of candidate causes, says where the visible fault stops, and names the one
+reading still owed that the ranking rests on most.
 `plan` goes forward along propagation channels to the declared actions, ranked against a declared
 objective, each saying what it reaches downstream and -- where a spread is declared -- how close
 its call is and which declared number decides it. `gaps` goes across the declaration to the places
 it cannot explain what was observed, each with the reading that would settle it or the reason there
 is none. None of them names a cause, chooses an objective or invents a node. What comes back is a
-short list of things to check. A case keeps each walk's causes with their posteriors and the reading
-it named first, and where a confirmed cause stood in the ranking.
+short list of things to check. A case keeps each walk's causes with their posteriors, the order it
+ranked them in and the reading it named first, and where a confirmed cause stood in the ranking.
 
 ```python
 from importlib.resources import files

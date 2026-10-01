@@ -9,11 +9,17 @@ reverses the ranking, the pump rising from 0.010 to 0.808 above the tank's
 
 `most_discriminating` now names it. Where strengths are declared, each outcome
 of a reading is weighed by the model's own probability of it given everything
-else, and the reading chosen moves the posteriors furthest; a reading already
-taken counts only through the outcome it did not give. Where none are declared,
-the reading is the candidate on every declared path from the most candidates,
-and the assumption that makes that a test is stamped. None of the hypothetical
-readings reaches the ledger: a value nobody observed is not a prediction.
+else, and the reading chosen moves the posteriors furthest. None of the
+hypothetical readings reaches the ledger: a value nobody observed is not a
+prediction.
+
+AND ONLY A READING STILL OWED. The chain below used to name the
+tank's level with the tank already read, and the even split of the graph's
+shape counted causes already read as still in play. A reading is now named
+only on an OPEN candidate -- one whose checks could not all run -- and where
+none is declared a strength, it is the open candidate whose clean reading would
+screen the most of what remains, stamped as the assumption that makes it a
+test. The fixtures below leave the causes unread so that a reading is owed.
 """
 
 from __future__ import annotations
@@ -43,8 +49,9 @@ domain:
 
 
 def _tree(causal="", members=("m-1", "m-2", "m-3"), led=("t-a", "t-a", "t-b"),
-          cases=""):
-    """Members lead teams, teams belong to a group; no strength anywhere."""
+          cases="", unread=False):
+    """Members lead teams, teams belong to a group; no strength anywhere.
+    `unread` leaves every team and member without a score."""
     model = f"""
 domain:
   id: discriminating_tree
@@ -66,21 +73,23 @@ domain:
     session = api.EngineSession()
     session.load_model(model)
     session.add_entity("g-1", "Group", {"score": 20.0})
+    read = {} if unread else {"score": 1.0}
     for team in sorted(set(led)):
-        session.add_entity(team, "Team", {"score": 1.0})
+        session.add_entity(team, "Team", dict(read))
         session.add_relationship(team, "part_of", "g-1")
     for member, team in zip(members, led):
-        session.add_entity(member, "Member", {"score": 1.0})
+        session.add_entity(member, "Member", dict(read))
         session.add_relationship(member, "leads", team)
     api.check(session)
     return session
 
 
-def _chain(tank=90.0, pump=1000.0):
+def _chain(tank=None, pump=None):
+    """`None` leaves that cause unread, so a reading of it is still owed."""
     session = api.EngineSession()
     session.load_model(CHAIN)
-    session.add_entity("pump-1", "Pump", {"speed_rpm": pump})
-    session.add_entity("tank-1", "Tank", {"level_pct": tank})
+    session.add_entity("pump-1", "Pump", {} if pump is None else {"speed_rpm": pump})
+    session.add_entity("tank-1", "Tank", {} if tank is None else {"level_pct": tank})
     session.add_entity("basin-1", "Basin", {"basin_level": 65.0})
     session.add_relationship("pump-1", "feeds", "tank-1")
     session.add_relationship("tank-1", "spills", "basin-1")
@@ -107,12 +116,12 @@ class TestByTheStrengths:
         rounded to six places, from answers that were not rounded, so the
         difference read as a move and a reading could be named with
         `expected_change: 0.0`. Here elimination is stubbed so that no reading
-        changes any posterior; the answer then comes from the graph's shape."""
+        changes any posterior; the answer then comes from screening."""
         from arbiter_engine.inference import hypothesis
         monkeypatch.setattr(hypothesis, "eliminate",
                             lambda factors, target, evidence: 0.123456789)
         named = _hypothesis(_chain())["most_discriminating"]
-        assert named["basis"] != "strengths"
+        assert named["basis"] == "screening"
 
     def test_the_named_reading_does_reorder_it(self):
         """What the name claims, measured by taking the reading."""
@@ -124,7 +133,7 @@ class TestByTheStrengths:
         """Given the rest of the evidence, as `infer` answers `do`: the tank read
         clean screens the pump off from the basin."""
         rows = {row["cause"]: row["do_would_answer"]
-                for row in _hypothesis(_chain())["candidates"]}
+                for row in _hypothesis(_chain(tank=90.0, pump=1000.0))["candidates"]}
         assert rows == {"tank-1": pytest.approx(0.703, abs=1e-6),
                         "pump-1": pytest.approx(0.01, abs=1e-6)}
 
@@ -136,20 +145,27 @@ class TestByTheStrengths:
             "only the two ranked causes are claims; the weighed readings are not")
 
 
-class TestByTheShapeOfTheGraph:
+class TestWithoutStrengths:
 
-    def test_without_strengths_it_is_the_candidate_on_the_most_paths(self):
-        hypothesis = _hypothesis(_tree(), subject="g-1")
+    def test_it_is_the_open_candidate_whose_clean_reading_screens_the_most(self):
+        """`t-a` read clean would screen both its members; `t-b`, one."""
+        hypothesis = _hypothesis(_tree(unread=True), subject="g-1")
         assert hypothesis["most_discriminating"] == {
-            "entity": "t-a", "reading": "t-a.score", "basis": "structure",
-            "splits": [3, 2]}
+            "entity": "t-a", "reading": "t-a.score", "basis": "screening",
+            "screens": 2}
         assert "faults_visible_along_channels" in hypothesis["assumptions"]
 
     def test_one_candidate_is_its_own_answer(self):
-        hypothesis = _hypothesis(_tree(), subject="t-b")
+        hypothesis = _hypothesis(_tree(unread=True), subject="t-b")
         assert hypothesis["most_discriminating"] == {
             "entity": "m-3", "reading": "m-3.score", "basis": "only_candidate"}
         assert "faults_visible_along_channels" not in hypothesis["assumptions"]
+
+    def test_causes_already_read_leave_no_reading_to_name(self):
+        """Every team and member read clean: the walk has nothing left to ask."""
+        hypothesis = _hypothesis(_tree(), subject="g-1")
+        assert hypothesis["most_discriminating"] is None
+        assert hypothesis["most_discriminating_reason"]
 
     def test_a_subject_with_nothing_upstream_names_nothing(self):
         assert _hypothesis(_tree(), subject="m-1")["most_discriminating"] is None
@@ -190,7 +206,7 @@ class TestTheCaseKeepsTheWholeRanking:
 
     def test_every_cause_and_the_named_reading_are_attached(self):
         members = tuple(f"m-{i}" for i in range(1, 8))
-        session = _tree(members=members, led=("t-a",) * 7,
+        session = _tree(members=members, led=("t-a",) * 7, unread=True,
                         cases="  cases: {severity: critical, consecutive_checks: 2}\n")
         case = api.open_case(session, "g-1", "score").to_dict()["case"]
         envelope = api.hypothesize(session, "g-1")
@@ -200,7 +216,7 @@ class TestTheCaseKeepsTheWholeRanking:
         assert len(reference["causes"]) == 8, "the ranking was cut at five"
         named = envelope.to_dict()["hypothesis"]["most_discriminating"]
         assert reference["most_discriminating"] == named
-        # Seven members all run through one team, so reading the team splits
-        # the eight candidates eight to none and says nothing about which; a
-        # member splits them one to seven, the most even split there is.
-        assert named["basis"] == "structure" and named["splits"] == [1, 7]
+        # Seven members all run through one team, so the team read clean
+        # would screen all seven; a member read clean screens none.
+        assert named == {"entity": "t-a", "reading": "t-a.score",
+                         "basis": "screening", "screens": 7}

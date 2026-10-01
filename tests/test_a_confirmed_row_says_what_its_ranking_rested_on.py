@@ -14,6 +14,11 @@ decides that entity's state, so a person who settled the named entity on
 another of its readings was counted as not named. `settling_entity_was_named`
 asks whether the settling reading is on the named entity. Every earlier field
 keeps its meaning.
+
+without every posterior a ranking is ordered by standing first, and
+a `hypothesize` attachment keeps the order it was ranked in, so a row reads
+`standing` from it. A ranking kept before then has no order kept, and is read
+by the rule above, which was the order it was in.
 """
 
 from __future__ import annotations
@@ -24,15 +29,17 @@ from arbiter_engine import api
 from arbiter_engine.residual.cases import Case, confirmed_causes
 
 
-def _case(causes, *, cause, named=None, reading=None, case_id="c-1"):
-    """A case holding one ranking, then one confirmation of `cause`."""
+def _case(causes, *, cause, named=None, reading=None, case_id="c-1", kept=None):
+    """A case holding one ranking, then one confirmation of `cause`. `kept` is
+    the order the ranking kept, which a ranking from before 0.2.27 lacks."""
     case = Case(case_id=case_id, entity_id="unit-z", indicator="load",
                 opened_at="2026-09-28T12:00:00", basis="a test",
                 severity="warning", consecutive_checks=2)
     case.stages["hypothesize"].append({
         "at": "2026-09-28T12:01:00",
-        "reference": {"causes": [{"cause": c, "posterior": p} for c, p in causes],
-                      "most_discriminating": named}})
+        "reference": dict({"causes": [{"cause": c, "posterior": p} for c, p in causes],
+                           "most_discriminating": named},
+                          **({"ranked_by": kept} if kept else {}))})
     reference = {"cause": cause}
     if reading is not None:
         reference["reading"] = reading
@@ -67,11 +74,19 @@ class TestWhatTheRankingRestedOn:
         row = _row(_case([("unit-a", 0.7), ("unit-b", None)], cause="unit-b"))
         assert (row["rank"], row["ranked_by"]) == (2, "mixed")
 
+    @pytest.mark.parametrize("kept", ["standing", "posterior"])
+    def test_a_ranking_that_kept_its_order_is_read_by_it(self, kept):
+        posterior = 0.7 if kept == "posterior" else None
+        row = _row(_case([("unit-a", posterior), ("unit-b", posterior)],
+                         cause="unit-a", kept=kept))
+        assert row["ranked_by"] == kept
+
     def test_a_cause_the_ranking_did_not_hold_has_no_basis(self):
         row = _row(_case([("unit-a", 0.7)], cause="unit-q"))
         assert (row["rank"], row["ranked_by"]) == (None, None)
 
-    @pytest.mark.parametrize("basis", ["strengths", "structure", "only_candidate"])
+    @pytest.mark.parametrize("basis", ["strengths", "structure", "only_candidate",
+                                       "screening", "only_open"])
     def test_named_by_is_the_named_readings_basis(self, basis):
         row = _row(_case([("unit-a", None), ("unit-b", None)], cause="unit-a",
                          named={"entity": "unit-b", "reading": "unit-b.load",
@@ -150,12 +165,12 @@ domain:
 
 class TestOnARealRanking:
 
-    def test_with_no_strengths_the_row_says_hops_and_structure(self):
+    def test_with_no_strengths_the_row_says_standing_and_screening(self):
         session, case_id = _loop(strengths=False)
         api.attach_stage(session, case_id, "confirm",
                          reference={"cause": "t-a", "reading": "t-a.score"})
         row = api.case_book(session).to_dict()["cases"]["confirmed"]["rows"][0]
-        assert (row["ranked_by"], row["named_by"]) == ("hops", "structure")
+        assert (row["ranked_by"], row["named_by"]) == ("standing", "screening")
 
     def test_with_strengths_the_row_says_posterior(self):
         session, case_id = _loop(strengths=True)

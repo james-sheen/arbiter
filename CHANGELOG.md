@@ -34,6 +34,39 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+## [0.2.27] — 2026-10-01
+
+### Added
+
+- **Each `hypothesize` candidate says where it stands:** `standing` is `frontier`, `trail`, `open`
+  or `screened`, from what its own checks said, and `screened_by` names the candidates read clean
+  that a screened one sits behind. A candidate read clean screens every cause whose only way down
+  runs through it. MODELING.md gives the rule.
+- **The hypothesis leg carries the `walk`:** its `state` -- `traced`, `partly_traced`, `open`,
+  `unexplained` or `cut` -- the `frontier` with each entity's findings, the `open` candidates with
+  what each still needs, the counts by standing, and `ranked_by`.
+- **`model_describe` says which findings the model can explain:** under `causal`, each declared
+  fault channel with its strength, leak and dead time and whether each was declared, each type that
+  can raise a finding with the channels into it, and the types no channel enters.
+- A case's `hypothesize` attachment keeps `ranked_by`, the order its causes were ranked in.
+
+### Fixed
+
+- **Without every posterior, the causes were in hop-then-id order, and nothing said so.** They are
+  ordered by standing now -- frontier, trail, open, screened -- then hops, then id, and
+  `walk.ranked_by` says `standing`. A confirmed row's `ranked_by` reads `standing` for a ranking
+  kept with that order; one kept earlier reads as before.
+- **`most_discriminating` named readings already taken:** the level of a tank read clean, on a
+  chain that tank screens. It is chosen among `open` candidates only now and names a reading the
+  candidate's check could not take, by `basis` `strengths`, `screening` (with `screens`, how many
+  others its clean reading would screen), `only_open` or `only_candidate`. With nothing open it is
+  `null`, and `most_discriminating_reason` says why. The even split, `basis: structure` with
+  `splits`, counted causes already read as still in play and is no longer produced.
+- `faults_visible_along_channels` is stamped whenever a candidate is screened, not only when the
+  graph's shape chose the reading.
+- **A walk asked twice filed every posterior twice**, and the ledger graded one claim as two. A
+  posterior already filed for the same entity, value, check and instant is not filed again.
+
 ## [0.2.26] — 2026-10-01
 
 ### Changed

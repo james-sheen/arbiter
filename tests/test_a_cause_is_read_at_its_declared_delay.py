@@ -115,8 +115,10 @@ class TestACauseIsReadAtItsDelay:
         assert _ranking(hypothesis) == [("tank-1", pytest.approx(0.415239, abs=1e-6)),
                                         ("pump-1", pytest.approx(0.010417, abs=1e-6))]
         assert "read_at" not in hypothesis
+        # the pump read clean is screened, on the stamped assumption.
         assert hypothesis["assumptions"] == ["evidence_severity_not_declared",
-                                             "target_reading_set_aside"]
+                                             "target_reading_set_aside",
+                                             "faults_visible_along_channels"]
         assert all(row["read_at"] is None for row in hypothesis["candidates"])
 
     def test_each_cause_says_when_it_was_read(self):
