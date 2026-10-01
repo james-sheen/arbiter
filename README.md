@@ -57,6 +57,9 @@ contract, so sort it yourself if you need it fixed.
 
 **Every envelope carries `meta.schema_version`.** It names the WIRE SHAPE, not the package
 version, and it moves only when a reader that worked stops working — adding a key does not move it.
+From the next major release, a change inside `simulation`, `plan` or `execution` will not move it
+either: those three take provisional terms, announced in
+[`COMPATIBILITY.md`](COMPATIBILITY.md), and every 0.2 release keeps their promise as written.
 [`COMPATIBILITY.md`](COMPATIBILITY.md) says what a patch release may change and what waits, and
 [`schema/envelope.schema.json`](schema/envelope.schema.json) is the shape machine-readable. The
 reason all three exist: the describe payload's nesting moved once between releases with no signal at

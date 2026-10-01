@@ -36,6 +36,13 @@ They are separate because tying them would make every patch release look like a
 contract change, and a version field that cries wolf is one people stop reading.
 Most releases move the first and not the second.
 
+**One exception is announced, and it is not in force yet.** From the next major
+release, a change made inside `simulation`, `plan` or `execution` under their
+provisional terms does not move `meta.schema_version` either: moving it for them
+would make it cry wolf for every reader of every other envelope. The changelog
+of the release that makes the change says so. The terms are in their own
+section, *Provisional terms*, below.
+
 The schema itself is at [`schema/envelope.schema.json`](schema/envelope.schema.json).
 
 ## The sub-envelope
@@ -62,17 +69,21 @@ through being governed by nothing here — and asked for the whole package to be
 marked experimental. The package under them is unpromised for the ordinary
 reason, two bullets down: it is deeper than the public API. **Their payloads are
 not**, they are returned by supported names, and the promises above apply to
-them exactly as written. Validate against the schema, which was right first.
+them exactly as written for the whole 0.2 line. From the next major release
+they take the provisional terms in their own section below. Validate against
+the schema, which was right first.
 
 **`execution` is the third of that kind**, returned by `file_action`:
 the same four-part shape, with the recorded execution's `id`, `action`,
 `parameters`, `executed_at` and `basis` beside it, and the ledger's `calibration`.
 Its decline reasons are the `simulation` vocabulary's. It is declared as
-`$defs/execution_envelope`, and the promises above apply to it as written.
+`$defs/execution_envelope`, and the promises above apply to it as written,
+until the provisional terms below take effect.
 **`case` and `cases` are two more of that kind**: `open_case` and `attach_stage`
 return the case as it stands in `case`, and `case_book` returns every case with
 its counts in `cases`, declared as `$defs/case_envelope` and
-`$defs/case_book_envelope`, with the same vocabulary and the same promises.
+`$defs/case_book_envelope`, with the same vocabulary and the same promises --
+which the provisional terms below do not reach.
 **`residuals` is one more**, returned by `gaps` beside what it reports about
 the model: the same four-part shape with the located `hypotheses` beside it,
 its decline reasons the `discovery` vocabulary's, declared as
@@ -261,6 +272,57 @@ member.
   replace. Their default VALUES remain calibration, below.
 - **Renaming or removing a tool**, or making an optional argument required.
 - **Raising the minimum Python version.**
+
+**From the next major release, three envelopes leave this list for keys beside
+their four-part shape:** `simulation`, `plan` and `execution`, under the terms
+in the next section.
+
+## Provisional terms: `simulation`, `plan` and `execution`
+
+**Announced, and not yet in force.** From the next major release -- the first
+outside the `<0.3` ceiling -- the three sub-envelopes the world-model verbs
+return take terms of their own, with everything inside them:
+
+- `simulation`, returned by `rollout` and carried in each candidate of `plan`,
+  with `$defs/simulation_step`;
+- `plan`, returned by `plan`, with `$defs/plan_candidate`;
+- `execution`, returned by `file_action`.
+
+**What a patch release may then change in them**, besides everything the patch
+section above allows:
+
+- remove, rename or relocate a key beside the four-part shape;
+- change what such a key means.
+
+Each such change is listed in the changelog of the release that makes it, under
+the words *Provisional terms*, and it does not move `meta.schema_version`.
+
+**What stays promised in them:**
+
+- the four-part shape -- `checked`, `findings`, `not_checked`, `questions` --
+  and `meta.source` with its `reason`;
+- the three-valued reading of their decline vocabulary;
+- the `imagined_` prefix on a finding drawn from a value the engine imagined;
+- the names `rollout`, `plan` and `file_action`, and their arguments.
+
+**The terms follow the envelope, not the code that fills it.** Every other
+envelope keeps the promises above in full, including what it carries from these
+three: a case's `plan` and `act` attachments, on `open_case`, `attach_stage` and
+`case_book`, and `couplings` and `rollouts` in `residuals` on `gaps`. A reader
+who never opens `simulation`, `plan` or `execution` loses nothing.
+
+**Why.** These three are the newest payloads in the engine, and the ones that
+have changed most since `rollout` and `plan` arrived in 0.2.3: the changelog
+from there on is the record. A promise written for the core cannot keep pace
+with that without either holding fixes back or breaking its word.
+
+**Why not now.** This document promised these three to the 0.2 line by name, so
+every 0.2 release keeps that promise as written, and a consumer has the rest of
+the line as notice. The next major release's number is not predicted here, for
+the reason *Numbers you cannot have*, below, gives.
+
+**If you read them,** pin the engine exactly, or run your reader against each
+release before taking it.
 
 ## What is NOT part of the contract, at any version
 

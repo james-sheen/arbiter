@@ -292,15 +292,15 @@
       "$ref": "#/$defs/residuals_envelope"
     },
     "simulation": {
-      "description": "The `simulation` sub-envelope, carried by `rollout` and by `plan`'s per-candidate rollouts. Present only on the verbs that produce it; NOT required, so an envelope from an engine predating it still validates.",
+      "description": "The `simulation` sub-envelope, carried by `rollout` and by `plan`'s per-candidate rollouts. Present only on the verbs that produce it; NOT required, so an envelope from an engine predating it still validates. PROVISIONAL from the next major release; see `$defs/simulation_envelope`.",
       "$ref": "#/$defs/simulation_envelope"
     },
     "plan": {
-      "description": "The `plan` sub-envelope, carried by `plan`. Present only on the verb that produces it; NOT required, so an envelope from an engine predating it still validates.",
+      "description": "The `plan` sub-envelope, carried by `plan`. Present only on the verb that produces it; NOT required, so an envelope from an engine predating it still validates. PROVISIONAL from the next major release; see `$defs/plan_envelope`.",
       "$ref": "#/$defs/plan_envelope"
     },
     "execution": {
-      "description": "The `execution` sub-envelope, carried by `file_action`: an action somebody took, filed as two predictions. Present only on that verb; NOT required, so an envelope from an engine predating it still validates.",
+      "description": "The `execution` sub-envelope, carried by `file_action`: an action somebody took, filed as two predictions. Present only on that verb; NOT required, so an envelope from an engine predating it still validates. PROVISIONAL from the next major release; see `$defs/execution_envelope`.",
       "$ref": "#/$defs/execution_envelope"
     },
     "case": {
@@ -592,8 +592,9 @@
       }
     },
     "simulation_envelope": {
-      "title": "Simulation sub-envelope",
-      "description": "THE `simulation` SUB-ENVELOPE, carried by `rollout` and by `plan`'s per-candidate rollouts. A sub-envelope in the shape above, PLUS the payload below. The payload is declared here because for three releases it was not: this key and `plan` were named in `properties` and both pointed at the generic definition, which declares the five legs and allows anything beside them, so the trajectory, the tier and the approximation disclosures all rode undeclared one level below the fix that named them.",
+      "title": "Simulation sub-envelope (provisional from the next major release)",
+      "$comment": "PROVISIONAL TERMS from the next major release: a patch release may then remove, rename or relocate a key beside the four-part shape, or change what one means, and lists the change in the changelog; every 0.2 release keeps the promise as written. COMPATIBILITY.md, Provisional terms.",
+      "description": "THE `simulation` SUB-ENVELOPE, carried by `rollout` and by `plan`'s per-candidate rollouts. A sub-envelope in the shape above, PLUS the payload below. The payload is declared here because for three releases it was not: this key and `plan` were named in `properties` and both pointed at the generic definition, which declares the five legs and allows anything beside them, so the trajectory, the tier and the approximation disclosures all rode undeclared one level below the fix that named them. PROVISIONAL FROM THE NEXT MAJOR RELEASE: this envelope and everything inside it take the terms in COMPATIBILITY.md's *Provisional terms*. Every 0.2 release keeps the promise as written, and no other envelope takes the terms -- not even the parts of one that carry what this one returned.",
       "allOf": [
         {
           "$ref": "#/$defs/sub_envelope"
@@ -629,8 +630,9 @@
       }
     },
     "plan_envelope": {
-      "title": "Plan sub-envelope",
-      "description": "THE `plan` SUB-ENVELOPE, carried by `plan`. A sub-envelope in the shape above, PLUS the payload below. Declared for the reason given on `simulation_envelope`.",
+      "title": "Plan sub-envelope (provisional from the next major release)",
+      "$comment": "PROVISIONAL TERMS from the next major release: a patch release may then remove, rename or relocate a key beside the four-part shape, or change what one means, and lists the change in the changelog; every 0.2 release keeps the promise as written. COMPATIBILITY.md, Provisional terms.",
+      "description": "THE `plan` SUB-ENVELOPE, carried by `plan`. A sub-envelope in the shape above, PLUS the payload below. Declared for the reason given on `simulation_envelope`. PROVISIONAL FROM THE NEXT MAJOR RELEASE: this envelope and everything inside it take the terms in COMPATIBILITY.md's *Provisional terms*. Every 0.2 release keeps the promise as written, and no other envelope takes the terms -- not even the parts of one that carry what this one returned.",
       "allOf": [
         {
           "$ref": "#/$defs/sub_envelope"
@@ -692,8 +694,9 @@
       }
     },
     "execution_envelope": {
-      "title": "Execution sub-envelope",
-      "description": "THE `execution` SUB-ENVELOPE, carried by `file_action`. A sub-envelope in the shape above, PLUS the execution it records. Its `checked` counts pairs filed and records filed (two per pair), values the action did not move, values with no declared band, and the steps both arms completed. The reasons in `not_checked` are the `simulation` vocabulary's. The execution's own keys are absent when the verb refused before filing anything.",
+      "title": "Execution sub-envelope (provisional from the next major release)",
+      "$comment": "PROVISIONAL TERMS from the next major release: a patch release may then remove, rename or relocate a key beside the four-part shape, or change what one means, and lists the change in the changelog; every 0.2 release keeps the promise as written. COMPATIBILITY.md, Provisional terms.",
+      "description": "THE `execution` SUB-ENVELOPE, carried by `file_action`. A sub-envelope in the shape above, PLUS the execution it records. Its `checked` counts pairs filed and records filed (two per pair), values the action did not move, values with no declared band, and the steps both arms completed. The reasons in `not_checked` are the `simulation` vocabulary's. The execution's own keys are absent when the verb refused before filing anything. PROVISIONAL FROM THE NEXT MAJOR RELEASE: this envelope and everything inside it take the terms in COMPATIBILITY.md's *Provisional terms*. Every 0.2 release keeps the promise as written, and no other envelope takes the terms -- not even the parts of one that carry what this one returned.",
       "allOf": [
         {
           "$ref": "#/$defs/sub_envelope"

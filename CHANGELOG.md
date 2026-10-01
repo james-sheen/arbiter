@@ -34,6 +34,17 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+## [0.2.24] — 2026-10-01
+
+### Documentation
+
+- **`simulation`, `plan` and `execution` take provisional terms from the next major release:** a
+  patch release may then rename, remove, relocate or re-mean a key beside their four-part shape,
+  listed here, without moving `meta.schema_version`. Every 0.2 release keeps the promise as
+  written, and no other envelope takes the terms. [COMPATIBILITY.md](COMPATIBILITY.md) has them.
+- The three schema definitions say so in their titles, descriptions and a `$comment`; no shape
+  changed.
+
 ## [0.2.23] — 2026-09-30
 
 ### Changed
