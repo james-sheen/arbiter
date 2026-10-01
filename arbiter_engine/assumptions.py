@@ -102,6 +102,15 @@ EVIDENCE_SEVERITY_UNUSABLE = "evidence_severity_unusable"
 #: needed -- the reading it had already taken and set aside.
 TARGET_READING_SET_ASIDE = "target_reading_set_aside"
 
+#: ruled 2026-10-01. An entity whose checks found nothing counted as
+#: CLEAN evidence although declines stood beside it that no reading would cure:
+#: a threshold, a config block or a role the model does not declare, or a check
+#: that does not cover the indicator. Those say the model is short of a
+#: declaration, not that anything is wrong. They used to leave the entity out,
+#: which on a model with such a gap on every unit left every unit out. Each
+#: such entity names the reasons under `declines_no_reading_cures`.
+CLEAN_BESIDE_DECLINES_NO_READING_CURES = "clean_beside_declines_no_reading_cures"
+
 #: The horizon was long enough that the transient had finished, so the value
 #: reported is the steady state rather than a point on the way to it.
 STEADY_STATE_REACHED = "steady_state_reached"
@@ -285,6 +294,7 @@ ASSUMPTION_STAMPS: Tuple[str, ...] = (
     EVIDENCE_SEVERITY_NOT_DECLARED,
     EVIDENCE_SEVERITY_UNUSABLE,
     TARGET_READING_SET_ASIDE,
+    CLEAN_BESIDE_DECLINES_NO_READING_CURES,
     STEADY_STATE_REACHED,
     SERIES_EDGES_COMPOSED_EXACTLY,
     SERIES_EDGES_COMPOSE_BY_PRODUCT,

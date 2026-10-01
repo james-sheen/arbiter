@@ -76,8 +76,9 @@ from ..types import (DEFAULT_CAUSAL_MAX_HOPS, Severity,
                      read_causal_max_hops)
 from .causal import SOURCE_DEFAULT, CausalGraph, causal_subgraph
 from .runner import (Evidence, Query, _factors, _open_backdoor_latent,
-                     _own_severity, _relevant_edges, _surgery, evidence_from,
-                     evidence_severities, run_inference)
+                     _own_severity, _relevant_edges, _surgery, entity_evidence,
+                     evidence_from, evidence_severities, node_evidence,
+                     run_inference)
 from .ve import FactorTooWide, eliminate
 
 #: How far upstream a hypothesis reaches when the model declares no
@@ -223,8 +224,10 @@ def _worst(severities: Sequence[Optional[str]]) -> Optional[str]:
 
 def _states_at(session: Any, graph: CausalGraph, at: datetime,
                severities, check: Callable[[Any], Any]
-               ) -> Dict[str, Tuple[Optional[int], Optional[str], bool]]:
-    """Each causal node as a check at `at` saw it: `(state, severity, unread)`.
+               ) -> Dict[str, Tuple[Optional[int], Optional[str], bool,
+                                    Optional[Dict[str, Any]]]]:
+    """Each causal node as a check at `at` saw it: `(state, severity, unread,
+    summary)`, the summary being `entity_evidence` at that instant.
 
     ON A SCRATCH COPY. The live session's entities, ledger, case book and last
     result are never touched: an explanation that rewrote the state it explains
@@ -269,9 +272,9 @@ def _states_at(session: Any, graph: CausalGraph, at: datetime,
             unread.add(entity.id)
     with as_of(at):
         check(scratch)
-    observed, _unobserved = evidence_from(scratch, graph, severities)
+    observed, _unobserved, summaries = node_evidence(scratch, graph, severities)
     return {node: (observed.get(node), _own_severity(scratch, node),
-                   node in unread)
+                   node in unread, summaries.get(node))
             for node in graph.nodes}
 
 
@@ -287,8 +290,9 @@ def _aligned_evidence(session: Any, graph: CausalGraph, subject: str,
     gave a definite answer, and `insufficient_samples` names it when no
     instant held a reading at all.
     """
-    observed, unobserved = evidence_from(session, graph, severities)
+    observed, unobserved, base = node_evidence(session, graph, severities)
     severity = {node: _own_severity(session, node) for node in graph.nodes}
+    summaries: Dict[str, Dict[str, Any]] = dict(base)
     shifts = {node: sorted({walk[0] for walk in summaries})
               for node, summaries in walks.items()}
     instants = sorted({dead for dead_times in shifts.values()
@@ -305,25 +309,33 @@ def _aligned_evidence(session: Any, graph: CausalGraph, subject: str,
         if node == subject or node not in graph.nodes \
                 or not any(dead > 0 for dead in dead_times):
             continue
-        readings: List[Tuple[Optional[int], Optional[str], bool]] = []
+        readings: List[Tuple[Optional[int], Optional[str], bool,
+                             Optional[Dict[str, Any]]]] = []
         for dead in dead_times:
             if dead > 0:
                 readings.append(states[dead][node])
             else:
                 readings.append((None if node in left_out else observed.get(node),
-                                 severity.get(node), False))
+                                 severity.get(node), False, base.get(node)))
         read_at[node] = [(anchor - timedelta(seconds=dead)).isoformat()
                          for dead in dead_times]
-        if any(state == 1 for state, _sev, _unread in readings):
+        if any(state == 1 for state, _sev, _unread, _summary in readings):
             value: Optional[int] = 1
-        elif all(state == 0 for state, _sev, _unread in readings):
+        elif all(state == 0 for state, _sev, _unread, _summary in readings):
             value = 0
         else:
             value = None
+        # the summary of the instant that decided the node: the
+        # first faulty reading, or the first reading when all were clean, or
+        # the first that gave no definite answer.
+        deciding = next((summary for state, _sev, _unread, summary in readings
+                         if state == value and summary), None)
+        if deciding is not None:
+            summaries[node] = deciding
         if value is None:
             live.pop(node, None)
             left_out.add(node)
-            if all(unread for _state, _sev, unread in readings):
+            if all(unread for _state, _sev, unread, _summary in readings):
                 declines.append(Decline(
                     "insufficient_samples", {"entity": node},
                     detail=(f"`{node}` has no reading at the instants its "
@@ -334,8 +346,8 @@ def _aligned_evidence(session: Any, graph: CausalGraph, subject: str,
         else:
             live[node] = value
             left_out.discard(node)
-        severity[node] = _worst([sev for _state, sev, _unread in readings])
-    return (Evidence(live, tuple(sorted(left_out)), severity), read_at,
+        severity[node] = _worst([sev for _state, sev, _unread, _summary in readings])
+    return (Evidence(live, tuple(sorted(left_out)), severity, summaries), read_at,
             declines)
 
 
@@ -647,6 +659,14 @@ def hypothesize(session: Any, entity_id: str, *,
             # needed, sending an operator to take a reading already taken.
             # `None` means unread -- the case `evidence_needed` is written for.
             "own_reading": checked_here.get("target_reading"),
+            # WHAT ITS CHECKS SAID, whether or not the posterior
+            # used it: `state` (faulty, deviating, clean, partial, unread),
+            # `looked` as ran of declared, the findings by type, and `needs`
+            # -- each reading the check could not take, with its reason. Read
+            # at the instant the cause was read, where a delay moved it.
+            "evidence": ((evidence.summaries.get(node)
+                          if evidence is not None else None)
+                         or entity_evidence(session, node, severities)),
             "test_action": _test_action(session.model, entity_type),
             # why this cause's inference answered less than a
             # number, in the vocabulary `not_checked` above uses. Empty when

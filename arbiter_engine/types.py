@@ -604,6 +604,54 @@ class NotEvaluatedReason(str, Enum):
     PRECONDITION_UNMET = "precondition_unmet"
 
 
+#: WHO WOULD CURE EACH DECLINE, as something code can ask. The
+#: comments above and the bridge guide's decline section say it reason by
+#: reason, in prose; the inference needs it to tell an entity with something
+#: outstanding from one whose only declines no reading could change. Four
+#: answers:
+#:
+#:   `reading`      more or better observations would let the check run
+#:   `declaration`  only the model can: a threshold, a config block, a role
+#:   `nobody`       the model is right and the check does not cover it here
+#:   `engine`       the engine's own fault, and never a clean result
+#:
+#: `missing_entity_type` is filed under `reading`. Whether it is a modelling
+#: error or a source that never turned up depends on how the model was
+#: written, which the engine cannot know; filed with the readings, it can
+#: never make an entity look clean.
+DECLINE_REMEDY: Dict[str, str] = {
+    "insufficient_samples": "reading",
+    "missing_property": "reading",
+    "no_current_value": "reading",
+    "missing_entity_type": "reading",
+    "missing_config": "declaration",
+    "no_threshold": "declaration",
+    "partially_checked": "declaration",
+    "wrong_indicator_type": "declaration",
+    "missing_role": "declaration",
+    "undefined_for_values": "nobody",
+    "no_rule_for_role": "nobody",
+    "precondition_unmet": "nobody",
+    "not_applicable": "engine",
+    "checker_error": "engine",
+}
+
+#: The four answers, in the order above.
+DECLINE_REMEDIES: Tuple[str, ...] = ("reading", "declaration", "nobody", "engine")
+
+
+def decline_remedy(reason: Any) -> str:
+    """Who would cure this decline: `reading`, `declaration`, `nobody` or
+    `engine`.
+
+    A reason this table does not hold is answered `reading`. That is the
+    reading that can never call an entity clean on a decline nobody has
+    classified; the table covers every member of `NotEvaluatedReason`, and a
+    test holds it to that.
+    """
+    return DECLINE_REMEDY.get(str(getattr(reason, "value", reason)), "reading")
+
+
 @dataclass(frozen=True)
 class NotEvaluated:
     """One axiom-on-indicator evaluation that did not happen, and why.

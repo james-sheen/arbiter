@@ -110,12 +110,13 @@ class TestTheAnswerSaysWhichReadingItLeftOut:
         assert inference["checked"]["target_reading"] == {
             "state": "clean", "severity": None}
 
-    def test_a_warning_under_the_engines_floor_reads_clean_and_says_warning(self):
-        """Under the default floor a warning is not evidence, so the state is
-        `clean` -- and `clean` alone would read as *nothing was found*."""
+    def test_a_warning_under_the_engines_floor_reads_deviating_and_says_warning(self):
+        """Under the default floor a warning is not evidence of a fault. It read
+        `clean`, with the warning beside it, which left a reader to notice there
+        was a finding at all. A finding below the floor is `deviating`."""
         session = _session(11.0, READ_CLEAN, panels=(200.0, 212.0))
         reading = _inference(session, "pnl-2")["checked"]["target_reading"]
-        assert reading == {"state": "clean", "severity": "warning"}
+        assert reading == {"state": "deviating", "severity": "warning"}
 
     def test_an_unread_target_has_nothing_to_set_aside(self):
         inference = _inference(_session(11.0), "fdr-1")

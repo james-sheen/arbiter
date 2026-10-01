@@ -34,6 +34,28 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+## [0.2.26] — 2026-10-01
+
+### Changed
+
+- **An entity is read by what its checks said.** The inference counted an entity clean when nothing
+  was recorded against it -- one nothing was checked on included -- and left out any entity with a
+  decline. Each now has a state: `faulty`, `deviating`, `clean`, `partial` or `unread`, and only the
+  first three are evidence. MODELING.md gives the rule.
+- **A decline no reading would cure does not stop an entity reading clean**, and the posterior stamps
+  `clean_beside_declines_no_reading_cures` when it counts one. On a model that declares no threshold
+  for most of what it reads, no entity could read clean before.
+- `own_reading` gains the state `deviating`, a finding below the evidence floor, which read `clean`.
+
+### Added
+
+- **Each `hypothesize` candidate carries `evidence`:** its `state`, `looked` as checks ran of
+  declared, `findings` by type, `needs` -- each reading the check could not take, with its reason --
+  and `declines_no_reading_cures`.
+- `DECLINE_REMEDY` and `DECLINE_REMEDIES`, in `types`, say who would cure each decline reason: a
+  reading, a declaration, nobody, or the engine. `CLEAN_BESIDE_DECLINES_NO_READING_CURES`, in
+  `assumptions`, is the new stamp. Both are deep paths.
+
 ## [0.2.25] — 2026-10-01
 
 ### Fixed

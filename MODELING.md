@@ -1234,6 +1234,27 @@ have set and the target's own worst severity. `hypothesize` carries the same
 row per candidate as `own_reading`, so a candidate the graph implicates can be
 read beside what its own meter already said.
 
+**An entity is read by what its checks said.** A check is one declared axiom on
+one declared indicator, and it ran unless it declined. From its checks each
+entity has a state:
+
+- `faulty` -- a finding at the evidence floor;
+- `deviating` -- a finding below it;
+- `clean` -- nothing found, at least one check ran, and nothing a reading would
+  cure, or the engine failed at, is outstanding;
+- `partial` -- something of that kind is outstanding;
+- `unread` -- nothing ran.
+
+Only the first three are evidence, and nothing reads clean where nothing ran. A
+decline only a declaration would cure -- a threshold, a config block or a role
+the model does not declare -- or one nobody owes does not stop an entity reading
+clean, and the posterior stamps `clean_beside_declines_no_reading_cures` when it
+counted one. `hypothesize` carries each candidate's `evidence`: its `state`,
+`looked` as ran of declared, its findings by type, `needs` -- each reading the
+check could not take, with its reason -- and `declines_no_reading_cures`.
+`own_reading` stays as it was, `{state, severity}` or `null`, with `deviating` as
+one more state.
+
 **A cause with no number says why.** A model that declares causal edges and no
 strengths gets `cpt_missing` from `infer`, by name. `hypothesize` carries every
 decline of the inferences behind its ranking into its own `not_checked`, and
@@ -1594,6 +1615,7 @@ the key being absent. The `inference` sub-envelope -- what `infer` and
 | `evidence_severity_not_declared` | `infer` read the last check against THIS engine's severity floor, because the model declared none. Declare `causal.evidence_severity:` to choose it |
 | `evidence_severity_unusable` | the model DID declare `causal.evidence_severity:` and this engine could not use it, so the floor above was its own. Carried beside the stamp above, never instead of it; `model_describe` names the value that was refused |
 | `target_reading_set_aside` | the queried entity had a reading of its own and the posterior was computed without it -- the question answered is whether everything else implicates it. `checked.target_reading` says what the reading would have set, and the target's own worst severity |
+| `clean_beside_declines_no_reading_cures` | an entity whose checks found nothing was counted as clean evidence although declines stood beside it that no reading would cure -- a threshold, a config block or a role the model does not declare, or a check that does not cover the indicator. They say the model is short of a declaration, not that anything is wrong; the candidate's `evidence.declines_no_reading_cures` names them |
 | `steady_state_reached` | the horizon outlasted the transient, so the value reported is the settled one |
 | `series_edges_composed_exactly` | two couplings in series were composed by the exact cascade response |
 | `series_edges_compose_by_product` | two couplings in series were composed by multiplying response fractions, which is an approximation |

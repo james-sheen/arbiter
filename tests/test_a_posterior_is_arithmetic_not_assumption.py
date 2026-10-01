@@ -404,18 +404,50 @@ def test_a_node_the_check_declined_is_unobserved_rather_than_clean():
     assert "feed1" in declined, "the fixture did not produce a decline"
 
     sub = run_inference(session, Query(target="strat1"))
-    assert sub.checked["unobserved"] == 1
+    # Two left out: `feed1`, which declined, and `strat1`, the target, which
+    # declares no indicator -- nothing ran on it, so it is unread, not clean.
+    assert sub.checked["unobserved"] == 2
     assert sub.checked["evidence"] == 0
+
+
+def _fan_in_checked():
+    """`_fan_in` with an indicator on every type that the check runs and
+    passes, so *cleared* means a check ran and found nothing."""
+    session = EngineSession()
+    model = _model([_causal("Feed", "Strategy", "serves", W_FEED),
+                    _causal("Venue", "Strategy", "routes_to", W_VENUE)])
+    bound = [{"name": "load", "type": "NUMERIC", "axioms": ["BOUNDEDNESS"],
+              "window": "1h", "critical": 10}]
+    model["domain"]["indicators"] = {"Feed": bound, "Venue": bound, "Strategy": bound}
+    session.load_model(model)
+    for entity_id, entity_type in (("feed1", "Feed"), ("venue1", "Venue"),
+                                   ("strat1", "Strategy")):
+        session.add_entity(entity_id, entity_type, {"load": 1.0})
+    session.add_relationship("feed1", "serves", "strat1")
+    session.add_relationship("venue1", "routes_to", "strat1")
+    return session
 
 
 def test_an_entity_the_check_cleared_is_observed_clean():
     """The discriminator: unobserved and clean must not collapse into each
-    other in the other direction either."""
-    session = _fan_in()
+    other in the other direction either. CLEARED means a check ran and found
+    nothing: this fixture used `_fan_in`, whose types declare no indicator, so
+    nothing ran and the engine read all three clean -- the defect this test now
+    stands against, beside the one above."""
+    session = _fan_in_checked()
     check(session)
     sub = run_inference(session, Query(target="strat1"))
     assert sub.checked["evidence"] == 2
     assert sub.checked["unobserved"] == 0
+
+
+def test_an_entity_nothing_ran_on_is_unobserved_not_clean():
+    """The same fan-in with no indicator declared anywhere: nothing ran, and
+    nothing is evidence."""
+    session = _fan_in()
+    check(session)
+    sub = run_inference(session, Query(target="strat1"))
+    assert sub.checked["evidence"] == 0
 
 
 def test_evidence_the_model_calls_impossible_is_a_decline():

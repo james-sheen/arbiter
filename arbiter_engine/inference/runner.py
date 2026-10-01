@@ -22,13 +22,15 @@ from dataclasses import dataclass, field
 from typing import (Any, Dict, FrozenSet, List, Optional, Sequence, Set,
                     Tuple)
 
-from ..assumptions import (EVIDENCE_SEVERITY_NOT_DECLARED,
+from ..assumptions import (CLEAN_BESIDE_DECLINES_NO_READING_CURES,
+                           EVIDENCE_SEVERITY_NOT_DECLARED,
                            EVIDENCE_SEVERITY_UNUSABLE,
                            TARGET_READING_SET_ASIDE)
 from ..subenvelope import Decline, SubEnvelope
 from ..twin.gap import GAP_CONFIDENCE_THRESHOLDS as _GAP_WEIGHT
 from ..twin.topology import GapType, TopologyGap, TopologyQuestion
-from ..types import Axiom, Severity, read_severity_floor
+from ..types import (Axiom, NotEvaluatedReason, Severity, decline_remedy,
+                     read_severity_floor)
 from .causal import SOURCE_DEFAULT, CausalGraph, causal_subgraph
 from .ve import Factor, FactorTooWide, eliminate, noisy_or_factor
 
@@ -68,6 +70,10 @@ class Evidence:
     observed: Dict[str, int] = field(default_factory=dict)
     unobserved: Tuple[str, ...] = ()
     severity: Dict[str, Optional[str]] = field(default_factory=dict)
+    #: what each node's checks said at the instant it was read, as
+    #: `entity_evidence` gives it. Empty for a caller that built the evidence
+    #: itself; a node absent here is summarised from the last check.
+    summaries: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
 
 def _question(gap_type, location, description, text):
@@ -108,45 +114,141 @@ def evidence_severities(model) -> Tuple[FrozenSet[str], bool, bool]:
     return DEFAULT_EVIDENCE_SEVERITIES, False, read.present
 
 
+def entity_evidence(session, entity_id: str,
+                    severities: Optional[FrozenSet[str]] = None,
+                    result: Any = None) -> Dict[str, Any]:
+    """What the last check said about one entity, as the inference reads it.
+
+    The inference used to infer an entity's state from the records
+    that were ABSENT: faulty on a finding at the evidence floor, left out on a
+    decline of any reason, clean otherwise -- so an entity nothing was checked
+    on read clean, and one carrying a decline no reading could cure (a
+    threshold nobody declared) could never read clean at all. On the
+    consulting model that was every unit.
+
+    `state` is one of five:
+
+    - `faulty` -- a finding at the evidence floor;
+    - `deviating` -- a finding below it, and none at it;
+    - `clean` -- no finding, at least one check ran, and nothing is
+      outstanding that a reading would cure or that the engine failed at;
+    - `partial` -- no finding, at least one check ran, and something a
+      reading would cure, or the engine failed at, is outstanding;
+    - `unread` -- no finding, and nothing ran.
+
+    A check is one declared axiom on one declared indicator; it ran unless it
+    declined, and `partially_checked` counts as ran, because part of it did.
+    `looked` is `[ran, declared]`. `needs` names each reading the check could
+    not take, with its reason: the declines a reading would cure, and the
+    engine's own. `declines_no_reading_cures` lists the reasons that stood
+    beside a reading without blocking it -- the declines only a declaration
+    would cure, or that nobody owes. Counting those as clean is the ruling
+    the posterior stamps.
+    """
+    result = result if result is not None else getattr(session, "_last_result", None)
+    floor = {str(s).upper() for s in (severities or DEFAULT_EVIDENCE_SEVERITIES)}
+    findings: Dict[str, int] = {}
+    at_floor = False
+    if result is not None:
+        for problem in list(getattr(result, "problems", ()) or ()) + \
+                list(getattr(result, "warnings", ()) or ()):
+            if str(getattr(problem, "entity_id", "")) != entity_id:
+                continue
+            kind = str(getattr(problem, "problem_type", "") or "")
+            findings[kind] = findings.get(kind, 0) + 1
+            raw = getattr(problem, "severity", None)
+            if str(getattr(raw, "value", raw)).upper() in floor:
+                at_floor = True
+
+    entity = getattr(session, "entities", {}).get(entity_id)
+    declared = set()
+    if entity is not None:
+        model = getattr(session, "model", None)
+        for spec in ((getattr(model, "indicators", None) or {}).get(entity.type) or ()):
+            for axiom in getattr(spec, "relevant_axioms", None) or ():
+                declared.add((str(spec.name), str(getattr(axiom, "value", axiom))))
+
+    silent = set()
+    needs: List[Dict[str, str]] = []
+    beside: Set[str] = set()
+    for record in (getattr(result, "not_evaluated", ()) or ()) if result is not None else ():
+        if str(getattr(record, "entity_id", "") or "") != entity_id:
+            continue
+        reason = str(getattr(getattr(record, "reason", None), "value",
+                             getattr(record, "reason", "")))
+        indicator = str(getattr(record, "indicator", "") or "")
+        axiom = str(getattr(getattr(record, "axiom", None), "value",
+                            getattr(record, "axiom", "")))
+        if reason != NotEvaluatedReason.PARTIALLY_CHECKED.value:
+            silent.add((indicator, axiom))
+        if decline_remedy(reason) in ("reading", "engine"):
+            need = {"reading": f"{entity_id}.{indicator}" if indicator else entity_id,
+                    "reason": reason}
+            if need not in needs:
+                needs.append(need)
+        else:
+            beside.add(reason)
+
+    ran = declared - silent
+    if findings:
+        state = "faulty" if at_floor else "deviating"
+    elif not ran:
+        state = "unread"
+    elif needs:
+        state = "partial"
+    else:
+        state = "clean"
+    return {"state": state,
+            "severity": _own_severity_from(result, entity_id),
+            "looked": [len(ran), len(declared)],
+            "findings": dict(sorted(findings.items())),
+            "needs": sorted(needs, key=lambda n: (n["reading"], n["reason"])),
+            "declines_no_reading_cures": sorted(beside)}
+
+
+def node_evidence(session, graph: CausalGraph,
+                  severities: Optional[FrozenSet[str]] = None
+                  ) -> Tuple[Dict[str, int], List[str], Dict[str, Dict[str, Any]]]:
+    """`(observed, unobserved, summaries)` from the last check, by each node's
+    `entity_evidence` state: `faulty` is 1, `clean` and `deviating` are 0,
+    and `partial` and `unread` are left out.
+
+    `deviating` counts as 0 for the reason it always has: the evidence floor
+    says which findings make an entity faulty, and a finding below it does not.
+    """
+    result = getattr(session, "_last_result", None)
+    if result is None:
+        return {}, list(graph.nodes), {}
+    summaries = {node: entity_evidence(session, node, severities, result)
+                 for node in graph.nodes}
+    observed: Dict[str, int] = {}
+    unobserved: List[str] = []
+    for node in graph.nodes:
+        state = summaries[node]["state"]
+        if state == "faulty":
+            observed[node] = 1
+        elif state in ("clean", "deviating"):
+            observed[node] = 0
+        else:
+            unobserved.append(node)
+    return observed, unobserved, summaries
+
+
 def evidence_from(session, graph: CausalGraph,
                   severities: Optional[FrozenSet[str]] = None
                   ) -> Tuple[Dict[str, int], List[str]]:
     """`(observed, unobserved)` from the last check.
 
-    An entity in `not_checked` is left OUT, not set clean. Reporting the list
-    is half the answer: a posterior computed with six of ten nodes unobserved
-    is a different claim from one computed with all ten.
+    An entity is read by what its checks said, not by which records are
+    absent -- `entity_evidence` gives the rule. Reporting the list of the
+    unobserved is half the answer: a posterior computed with six of ten nodes
+    unobserved is a different claim from one computed with all ten.
 
     `severities` is the floor above which a finding makes an entity FAULTY.
     Default when the caller supplies none, which is the shape this function had
     before the floor was declarable at all.
     """
-    result = getattr(session, "_last_result", None)
-    if result is None:
-        return {}, list(graph.nodes)
-
-    faulty: Set[str] = set()
-    for problem in list(getattr(result, "problems", ()) or ()) + \
-            list(getattr(result, "warnings", ()) or ()):
-        severity = getattr(getattr(problem, "severity", None), "value", "")
-        if str(severity).upper() in (severities or DEFAULT_EVIDENCE_SEVERITIES):
-            faulty.add(str(getattr(problem, "entity_id", "")))
-
-    declined: Set[str] = set()
-    for record in getattr(result, "not_evaluated", ()) or ():
-        entity_id = str(getattr(record, "entity_id", "") or "")
-        if entity_id:
-            declined.add(entity_id)
-
-    observed: Dict[str, int] = {}
-    unobserved: List[str] = []
-    for node in graph.nodes:
-        if node in faulty:
-            observed[node] = 1
-        elif node in declined:
-            unobserved.append(node)
-        else:
-            observed[node] = 0
+    observed, unobserved, _summaries = node_evidence(session, graph, severities)
     return observed, unobserved
 
 
@@ -164,7 +266,12 @@ def _own_severity(session, entity_id: str) -> Optional[str]:
     the set-aside reading is owed both facts -- what the floor made of it and
     what the check actually said -- or *clean* reads as *nothing was found*.
     """
-    result = getattr(session, "_last_result", None)
+    return _own_severity_from(getattr(session, "_last_result", None), entity_id)
+
+
+def _own_severity_from(result: Any, entity_id: str) -> Optional[str]:
+    """`_own_severity` over a given check result -- the one `entity_evidence`
+    was handed, which may be a check at a read instant rather than the last."""
     if result is None:
         return None
     worst: Optional[Severity] = None
@@ -307,9 +414,10 @@ def run_inference(session, query: Query,
     severities, floor_declared, floor_unusable = \
         evidence_severities(session.model)
     if evidence is None:
-        observed, unobserved = evidence_from(session, working, severities)
+        observed, unobserved, summaries = node_evidence(session, working, severities)
     else:
         observed, unobserved = dict(evidence.observed), list(evidence.unobserved)
+        summaries = dict(evidence.summaries or {})
     for node in query.do:
         observed[node] = query.do[node]
     # The target's own state is left out, because conditioning on it answers 1
@@ -326,6 +434,13 @@ def run_inference(session, query: Query,
     stamps: Tuple[str, ...] = () if floor_declared else (
         (EVIDENCE_SEVERITY_NOT_DECLARED,)
         + ((EVIDENCE_SEVERITY_UNUSABLE,) if floor_unusable else ()))
+    # RULING 2, AND IT IS STAMPED. A node whose only declines are
+    # ones no reading would cure counts as clean evidence; it used to be left
+    # out on any decline, and on a model with a threshold it cannot declare
+    # that left every node out. The stamp names the reading the posterior took.
+    if any(value == 0 and (summaries.get(node) or {}).get("declines_no_reading_cures")
+           for node, value in observed.items() if node not in query.do):
+        stamps = stamps + (CLEAN_BESIDE_DECLINES_NO_READING_CURES,)
     # AND WHICH READING WAS NOT USED. A target in breach answered
     # exactly as a healthy one did, with nothing on the envelope saying its own
     # reading had been excluded: measured, the supply at 9.0 kV and at 11.0 kV
@@ -336,10 +451,14 @@ def run_inference(session, query: Query,
     # a warning counts as clean and *clean* alone would read as *nothing found*.
     target_reading: Optional[Dict[str, Any]] = None
     if set_aside is not None:
-        target_reading = {"state": "faulty" if set_aside else "clean",
-                          "severity": (_own_severity(session, query.target)
-                                       if evidence is None else
-                                       evidence.severity.get(query.target))}
+        own = (_own_severity(session, query.target) if evidence is None
+               else evidence.severity.get(query.target))
+        # `deviating` is a finding below the floor. It read
+        # `clean`, with the severity beside it, which told a reader the floor
+        # set the finding aside and left them to notice there was one.
+        target_reading = {"state": ("faulty" if set_aside
+                                    else "deviating" if own else "clean"),
+                          "severity": own}
         checked["target_reading"] = target_reading
         stamps = stamps + (TARGET_READING_SET_ASIDE,)
 
