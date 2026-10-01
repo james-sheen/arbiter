@@ -45,7 +45,7 @@ from arbiter_engine.interfaces import (
     Entity, RelationshipGraph,
 )
 from arbiter_engine.types import (
-    IndicatorType, read_gaps_min_cycles)
+    IndicatorType, read_causal_root_prior, read_gaps_min_cycles)
 from arbiter_engine.twin.actions import (
     as_action_instance, load_templates as _load_templates)
 from arbiter_engine.ontology.axioms.roles import (
@@ -1116,8 +1116,12 @@ def _causal_coverage(model) -> Dict[str, Any]:
                       for entity_type, specs in (model.indicators or {}).items()
                       if any(getattr(spec, "relevant_axioms", None) for spec in specs))
     without = [entity_type for entity_type in findable if not into.get(entity_type)]
+    root = read_causal_root_prior(getattr(model, "causal", None))
     return {
         "declared": declared,
+        # the prior on a root cause, as the inference reads it.
+        "root_prior": root.prior,
+        "root_prior_source": "declared" if root.declared else "default",
         "findable_types": {entity_type: into.get(entity_type, [])
                            for entity_type in findable},
         "types_without_cause": without,

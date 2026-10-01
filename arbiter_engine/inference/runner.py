@@ -25,24 +25,24 @@ from typing import (Any, Dict, FrozenSet, List, Optional, Sequence, Set,
 from ..assumptions import (CLEAN_BESIDE_DECLINES_NO_READING_CURES,
                            EVIDENCE_SEVERITY_NOT_DECLARED,
                            EVIDENCE_SEVERITY_UNUSABLE, LEAK_NOT_DECLARED,
-                           TARGET_READING_SET_ASIDE)
+                           ROOT_PRIOR_NOT_DECLARED, TARGET_READING_SET_ASIDE)
 from ..subenvelope import Decline, SubEnvelope
 from ..twin.gap import GAP_CONFIDENCE_THRESHOLDS as _GAP_WEIGHT
 from ..twin.topology import GapType, TopologyGap, TopologyQuestion
-from ..types import (Axiom, NotEvaluatedReason, Severity, decline_remedy,
-                     read_severity_floor)
+from ..types import (DEFAULT_CAUSAL_ROOT_PRIOR, Axiom, NotEvaluatedReason,
+                     Severity, decline_remedy, read_severity_floor)
 from .causal import SOURCE_DEFAULT, CausalGraph, causal_subgraph
 from .ve import Factor, FactorTooWide, eliminate, noisy_or_factor
 
 __all__ = ["Query", "Evidence", "run_inference", "ROOT_PRIOR"]
 
-#: The prior on a root cause with no parents and no evidence. A DEFAULT -- but
-#: unlike an edge weight it cannot be declared away yet, so it is stated rather
-#: than refused. It is reported, as `root_prior` with `root_prior_source:
-#: default`, in the evidence of a posterior FINDING only; an answer that raises
-#: no finding does not carry it. This said every answer reported it,
-#: in a `priors` key that never existed.
-ROOT_PRIOR = 0.05
+#: The prior on a root cause with no parents and no evidence, when the model
+#: declares none. a model declares it under `causal.root_prior` now,
+#: and an answer resting on this default is stamped `root_prior_not_declared`.
+#: Until then it was reported only in the evidence of a posterior FINDING, and
+#: this comment named a `priors` key that never existed. Kept under its
+#: published name; the graph carries the prior in effect.
+ROOT_PRIOR = DEFAULT_CAUSAL_ROOT_PRIOR
 
 
 @dataclass(frozen=True)
@@ -306,8 +306,20 @@ def _surgery(graph: CausalGraph, do: Dict[str, int]) -> CausalGraph:
         entity_type=dict(graph.entity_type),
         delays={e: v for e, v in graph.delays.items() if e[1] not in do},
         time_constants={e: v for e, v in graph.time_constants.items()
-                        if e[1] not in do})
+                        if e[1] not in do},
+        root_prior=graph.root_prior,
+        root_prior_declared=graph.root_prior_declared)
     return cut
+
+
+def _relevant_nodes(graph: CausalGraph, query: Query,
+                    observed: Dict[str, int]) -> Set[str]:
+    """The target, the evidence, what is set, and everything upstream of
+    them: the nodes an answer can depend on."""
+    relevant = {query.target} | set(observed) | set(query.do)
+    for node in list(relevant):
+        relevant |= graph.ancestors(node)
+    return relevant
 
 
 def _relevant_edges(graph: CausalGraph, query: Query,
@@ -315,9 +327,7 @@ def _relevant_edges(graph: CausalGraph, query: Query,
     """Edges the answer can depend on: those among the target, the evidence,
     and everything upstream of either. Conservative on purpose -- naming too
     many edges makes a refusal noisier, naming too few makes it wrong."""
-    relevant = {query.target} | set(observed) | set(query.do)
-    for node in list(relevant):
-        relevant |= graph.ancestors(node)
+    relevant = _relevant_nodes(graph, query, observed)
     return [edge for edge in graph.weights
             if edge[0] in relevant and edge[1] in relevant]
 
@@ -344,7 +354,8 @@ def _factors(graph: CausalGraph) -> List[Factor]:
             out.append(noisy_or_factor(node, parents, weights,
                                        graph.leak_for(node)))
         else:
-            out.append(Factor((node,), {(0,): 1.0 - ROOT_PRIOR, (1,): ROOT_PRIOR}))
+            out.append(Factor((node,), {(0,): 1.0 - graph.root_prior,
+                                        (1,): graph.root_prior}))
     return out
 
 
@@ -493,6 +504,14 @@ def run_inference(session, query: Query,
     # engine's 0.01 the answer rests on a number nobody wrote.
     if any(not working.leak_declared(node) for node in {t for _s, t in relevant}):
         stamps = stamps + (LEAK_NOT_DECLARED,)
+    # AND A ROOT PRIOR NOBODY DECLARED. A root cause the answer
+    # depends on, not observed, enters at its prior -- a node set by `do` is
+    # in the evidence by now -- and where the model declares no
+    # `causal.root_prior` that prior is the engine's.
+    if not working.root_prior_declared and any(
+            not working.parents.get(node) and node not in observed
+            for node in _relevant_nodes(working, query, observed)):
+        stamps = stamps + (ROOT_PRIOR_NOT_DECLARED,)
 
     try:
         posterior = eliminate(_factors(working), query.target, observed)
@@ -580,6 +599,7 @@ def _posterior_finding(session, graph, query, posterior, observed,
                   # a finding travels without its envelope, so the
                   # reading it did not use travels with it.
                   "target_reading": target_reading,
-                  "root_prior": ROOT_PRIOR,
-                  "root_prior_source": "default",
+                  "root_prior": graph.root_prior,
+                  "root_prior_source": ("declared" if graph.root_prior_declared
+                                        else "default"),
                   "do": dict(query.do)})

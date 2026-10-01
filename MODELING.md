@@ -1281,7 +1281,8 @@ visible fault stops, and nothing calls it a cause. `model_describe` lists under
 `causal` each declared fault channel -- its strength, leak and dead time, each
 declared or not -- each type that can raise a finding with the channels into
 it, and `types_without_cause`: a finding on one of those has no declared cause
-and its walk is `cut`, which the model says before a capture is fed.
+and its walk is `cut`, which the model says before a capture is fed. Beside them
+it reports the root prior in effect, `root_prior` with `root_prior_source`.
 
 **A cause with no number says why.** A model that declares causal edges and no
 strengths gets `cpt_missing` from `infer`, by name. `hypothesize` carries every
@@ -1356,6 +1357,22 @@ at least 1 is taken; anything else is refused by value in `unread_fields` and
 the four is used. Declared causes past the bound are not ranked -- they are
 counted in `checked.beyond_bound` and declined `depth_exceeded`, so a ranking cut
 short is never read as whole. The walk is layered and bounded, never recursive.
+
+### The prior on a root cause: `causal.root_prior`
+
+```yaml
+domain:
+  causal:
+    root_prior: 0.02     # P(a cause with no declared parent is at fault)
+```
+
+Every posterior rests on the prior of each root cause it reaches -- a cause with
+no declared parent, neither observed nor set by `do`. A probability strictly
+between 0 and 1 is taken; anything else is refused by value in `unread_fields`
+and the engine's 0.05 is used. An answer resting on the engine's 0.05 is stamped
+`root_prior_not_declared`, and `model_describe` reports the prior in effect under
+`causal`, as `root_prior` with `root_prior_source`. A root that was read is
+evidence, and its prior drops out of the answer.
 
 ### What counts as faulty evidence: `causal.evidence_severity`
 
@@ -1647,6 +1664,7 @@ the key being absent. The `inference` sub-envelope -- what `infer` and
 | `evidence_severity_not_declared` | `infer` read the last check against THIS engine's severity floor, because the model declared none. Declare `causal.evidence_severity:` to choose it |
 | `evidence_severity_unusable` | the model DID declare `causal.evidence_severity:` and this engine could not use it, so the floor above was its own. Carried beside the stamp above, never instead of it; `model_describe` names the value that was refused |
 | `leak_not_declared` | a posterior rests on a node whose leak -- the chance it is faulty with no faulty parent -- is the engine's 0.01, because no causal rule into it declared `causal.leak`; a leak declared below 0.01 beside an undeclared one leaves the engine's number in effect too |
+| `root_prior_not_declared` | a posterior rests on the prior of a root cause -- one with no declared parent, not observed -- and the model declares no `causal.root_prior`, so that prior is the engine's 0.05 |
 | `target_reading_set_aside` | the queried entity had a reading of its own and the posterior was computed without it -- the question answered is whether everything else implicates it. `checked.target_reading` says what the reading would have set, and the target's own worst severity |
 | `clean_beside_declines_no_reading_cures` | an entity whose checks found nothing was counted as clean evidence although declines stood beside it that no reading would cure -- a threshold, a config block or a role the model does not declare, or a check that does not cover the indicator. They say the model is short of a declaration, not that anything is wrong; the candidate's `evidence.declines_no_reading_cures` names them |
 | `steady_state_reached` | the horizon outlasted the transient, so the value reported is the settled one |

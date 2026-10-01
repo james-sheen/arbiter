@@ -116,9 +116,12 @@ class TestACauseIsReadAtItsDelay:
                                         ("pump-1", pytest.approx(0.010417, abs=1e-6))]
         assert "read_at" not in hypothesis
         # the pump read clean is screened, on the stamped assumption;
-        # and the chain declares weights and no leak.
+        # the chain declares weights and no leak; -- and
+        # asking about the pump sets its reading aside, so that root enters at
+        # a prior the model does not declare.
         assert hypothesis["assumptions"] == ["evidence_severity_not_declared",
                                              "leak_not_declared",
+                                             "root_prior_not_declared",
                                              "target_reading_set_aside",
                                              "faults_visible_along_channels"]
         assert all(row["read_at"] is None for row in hypothesis["candidates"])

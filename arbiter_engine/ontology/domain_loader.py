@@ -63,7 +63,8 @@ from ..axiom_thresholds import THRESHOLD_FIELDS
 from ..interfaces import IndicatorSpec
 from ..types import (Axiom, AxiomParameters, IndicatorType, Severity,
                      read_severity_floor, DEFAULT_CAUSAL_MAX_HOPS,
-                     read_causal_max_hops, read_gaps_min_cycles)
+                     DEFAULT_CAUSAL_ROOT_PRIOR, read_causal_max_hops,
+                     read_causal_root_prior, read_gaps_min_cycles)
 from .axioms.roles import (
     ROLES, explain_absence, normalise_role, unreachable_axioms,
 )
@@ -836,6 +837,7 @@ class DomainModel:
                _KNOWN_CAUSAL_KEYS, "")
         out.extend(self._unread_evidence_severity())
         out.extend(self._unread_causal_max_hops())
+        out.extend(self._unread_causal_root_prior())
         report("axiom_parameters", getattr(self, "axiom_parameters", None),
                _KNOWN_AXIOM_PARAMETER_KEYS, "")
         out.extend(self._unread_axiom_parameter_values())
@@ -912,6 +914,28 @@ class DomainModel:
             "remedy": (f"`causal.max_hops` takes a whole number of at least 1, "
                        f"so the declaration was refused and the engine's own "
                        f"{DEFAULT_CAUSAL_MAX_HOPS} was used"),
+        }]
+
+    def _unread_causal_root_prior(self) -> List[Dict[str, Any]]:
+        """The VALUE side of `causal.root_prior:`.
+
+        The inference reads the key through `read_causal_root_prior`, which
+        refuses anything but a probability strictly between 0 and 1 and uses
+        the default instead -- and stamps `root_prior_not_declared`, which an
+        omission produces identically. Said here, by value.
+        """
+        read = read_causal_root_prior(getattr(self, "causal", None))
+        if not read.refused:
+            return []
+        written = read.value
+        return [{
+            "field": "causal.root_prior", "reason": "malformed_value",
+            "value": (written if isinstance(written, (str, int, float, bool))
+                      or written is None else repr(written)),
+            "read_by": [], "did_you_mean": None,
+            "remedy": (f"`causal.root_prior` takes a probability strictly "
+                       f"between 0 and 1, so the declaration was refused and "
+                       f"the engine's own {DEFAULT_CAUSAL_ROOT_PRIOR} was used"),
         }]
 
     def _unread_evidence_severity(self) -> List[Dict[str, Any]]:
@@ -1271,8 +1295,9 @@ _CASE_SEVERITIES = ("critical", "high", "medium", "low", "warning", "info")
 #: The domain-level `causal:` block, here from the first day rather than after
 #: a typo reached somebody: a misspelled key in a block whose absence is legal
 #: would silently take the default it was written to replace. An internal ruling added
-#: `max_hops`, how far upstream `hypothesize` walks.
-_KNOWN_CAUSAL_KEYS = frozenset({"evidence_severity", "max_hops"})
+#: `max_hops`, how far upstream `hypothesize` walks; `root_prior`, the
+#: prior on a root cause.
+_KNOWN_CAUSAL_KEYS = frozenset({"evidence_severity", "max_hops", "root_prior"})
 
 #: The domain-level `axiom_parameters:` block -- the evaluation parameters a
 #: model may set for itself., closing the second half of issue #14:

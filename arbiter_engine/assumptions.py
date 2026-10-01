@@ -95,6 +95,13 @@ EVIDENCE_SEVERITY_UNUSABLE = "evidence_severity_unusable"
 #: undeclared one still leaves the engine's number in effect.
 LEAK_NOT_DECLARED = "leak_not_declared"
 
+#: a posterior rests on the prior of a root cause -- one with no
+#: declared parent, neither observed nor set -- and the model declares no
+#: `causal.root_prior`, so that prior is the engine's 0.05. It was reported
+#: only in the evidence of a posterior that raised a finding, and the comment
+#: beside it named a `priors` key that never existed.
+ROOT_PRIOR_NOT_DECLARED = "root_prior_not_declared"
+
 #: The queried entity had a reading of its own, and the posterior was computed
 #: WITHOUT it. `infer` answers *does the rest of the graph implicate this
 #: entity*, which is the informative question -- conditioning on the target's
@@ -304,6 +311,7 @@ ASSUMPTION_STAMPS: Tuple[str, ...] = (
     EVIDENCE_SEVERITY_NOT_DECLARED,
     EVIDENCE_SEVERITY_UNUSABLE,
     LEAK_NOT_DECLARED,
+    ROOT_PRIOR_NOT_DECLARED,
     TARGET_READING_SET_ASIDE,
     CLEAN_BESIDE_DECLINES_NO_READING_CURES,
     STEADY_STATE_REACHED,

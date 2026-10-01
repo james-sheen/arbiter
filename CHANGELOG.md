@@ -34,6 +34,22 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+## [0.2.29] — 2026-10-01
+
+### Added
+
+- **A model declares the prior on a root cause:** `causal.root_prior`, a probability strictly
+  between 0 and 1, refused by value in `unread_fields` otherwise. `read_causal_root_prior` and
+  `DEFAULT_CAUSAL_ROOT_PRIOR`, in `types`, are the one reader and its default. `model_describe`
+  reports the prior in effect under `causal`, as `root_prior` with `root_prior_source`.
+
+### Fixed
+
+- **The prior on a root cause decided every posterior and was disclosed only on a finding.** An
+  answer resting on the engine's 0.05 -- a root cause not observed, in a model that declares no
+  `causal.root_prior` -- is stamped `root_prior_not_declared` (`ROOT_PRIOR_NOT_DECLARED`, in
+  `assumptions`). A finding's evidence reports the prior in effect and where it came from.
+
 ## [0.2.28] — 2026-10-01
 
 ### Fixed

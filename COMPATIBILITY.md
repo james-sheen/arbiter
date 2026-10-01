@@ -123,7 +123,9 @@ fixes the changelog lists rather than additions: the order of causes without
 every posterior, which a confirmed row's `ranked_by` now reports as `standing`,
 and `most_discriminating`, which names only a reading an open candidate still
 owes, by the bases the changelog gives. From 0.2.28: the stamp
-`leak_not_declared`, on an answer a leak nobody declared reaches.
+`leak_not_declared`, on an answer a leak nobody declared reaches. From 0.2.29: the
+key `causal.root_prior`, the stamp `root_prior_not_declared`, and `root_prior` with
+`root_prior_source` in `model_describe`'s `causal`.
 
 Three things about it are promises and not accidents:
 

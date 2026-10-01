@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import (Any, Dict, FrozenSet, List, NamedTuple, Optional, Set,
                     Tuple, Union)
+import math
 import uuid
 
 
@@ -194,6 +195,42 @@ def read_causal_max_hops(block: Any) -> CausalHops:
     if isinstance(written, int) and not isinstance(written, bool) and written >= 1:
         return CausalHops(written, True, False, written)
     return CausalHops(DEFAULT_CAUSAL_MAX_HOPS, False, True, written)
+
+
+#: the prior on a root cause with no parents and no evidence when a
+#: model declares no `causal.root_prior:`. It was the inference's own constant,
+#: reported only on a posterior that raised a finding.
+DEFAULT_CAUSAL_ROOT_PRIOR = 0.05
+
+
+class CausalRootPrior(NamedTuple):
+    """What `causal.root_prior:` declares, as `read_causal_root_prior` read it."""
+    prior: float
+    #: True when a usable value was written; False for the default.
+    declared: bool
+    #: True when the key was written with something that is not a probability
+    #: strictly between 0 and 1; `value` then carries what was written.
+    refused: bool
+    value: Any
+
+
+def read_causal_root_prior(block: Any) -> CausalRootPrior:
+    """The prior on a root cause, from a `causal:`-shaped block.
+
+    A number strictly between 0 and 1 is taken: a prior of 0 or 1 says a root
+    can never, or must always, be at fault, and the answer would then come
+    from the declaration rather than the evidence. Anything else written
+    under the key is REFUSED rather than coerced -- `"0.1"`, `true`, `0`,
+    `1.5` -- the default is used, and the refusal carries what was written so
+    the loader can name it. The one reader the loader and the inference ask.
+    """
+    if not isinstance(block, dict) or "root_prior" not in block:
+        return CausalRootPrior(DEFAULT_CAUSAL_ROOT_PRIOR, False, False, None)
+    written = block["root_prior"]
+    if (isinstance(written, (int, float)) and not isinstance(written, bool)
+            and math.isfinite(written) and 0.0 < float(written) < 1.0):
+        return CausalRootPrior(float(written), True, False, written)
+    return CausalRootPrior(DEFAULT_CAUSAL_ROOT_PRIOR, False, True, written)
 
 
 class GapsCycles(NamedTuple):

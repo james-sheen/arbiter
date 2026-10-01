@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from ..temporal.temporal_edge import resolve_number
+from ..types import DEFAULT_CAUSAL_ROOT_PRIOR, read_causal_root_prior
 
 __all__ = ["EdgeWeight", "CausalGraph", "causal_subgraph",
            "SOURCE_DECLARED", "SOURCE_LEARNED", "SOURCE_DEFAULT",
@@ -81,6 +82,10 @@ class CausalGraph:
     delays: Dict[Tuple[str, str], Optional[float]] = field(default_factory=dict)
     time_constants: Dict[Tuple[str, str], Optional[float]] = field(
         default_factory=dict)
+    #: the prior on a root cause, and whether the model declared it
+    #: under `causal.root_prior`.
+    root_prior: float = DEFAULT_CAUSAL_ROOT_PRIOR
+    root_prior_declared: bool = False
 
     def leak_for(self, node: str) -> float:
         incoming = [self.weights[(p, node)] for p in self.parents.get(node, ())]
@@ -199,6 +204,8 @@ def causal_subgraph(model, graph, entities,
     learned = learned or {}
     out = CausalGraph()
     out.entity_type = {eid: e.type for eid, e in entities.items()}
+    root = read_causal_root_prior(getattr(model, "causal", None))
+    out.root_prior, out.root_prior_declared = root.prior, root.declared
 
     for source_id in list(getattr(graph, "edges", {}) or {}):
         for relation in graph.get_relationship_types(source_id) or ():
