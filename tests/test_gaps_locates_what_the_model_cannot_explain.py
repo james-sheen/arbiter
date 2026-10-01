@@ -325,9 +325,11 @@ class TestTheArmsRefuseByName:
         api.check(session)
         residuals = _residuals(session)
         assert residuals["hypotheses"] == []
+        # and the walk arm: no rule declares a causal direction.
         assert _declined(residuals) == {("missing_config", "presence"),
                                         ("missing_config", "conservation"),
-                                        ("missing_config", "dynamics")}
+                                        ("missing_config", "dynamics"),
+                                        ("missing_config", "walk")}
 
     def test_every_reason_is_a_discovery_name(self):
         for session in (_plant(checked=False), _plant(),

@@ -1509,6 +1509,10 @@ confirm or dissolve it:
 | `effect_not_observed` | the pairs `file_action` filed: the action's arm falsified and the no-action arm confirmed, in each of the last `gaps.min_cycles` graded executions on the property | `on` the `entity.property` | what the action was declared to write, which says whether it took hold at all |
 | `unexplained_change` | the same pairs: both arms falsified, in each of the last `gaps.min_cycles` graded executions | `on` the `entity.property`, with the relation types into it that declare no transition to it as `candidates` | a reading on an entity connected by one of them, or null when every relation into it already drives it |
 | `unexplained_change` | a coupling's own forecasts, with nobody acting: the last `gaps.min_cycles` rollouts on the property all missed | `on` the `entity.property`, naming the `couplings` that missed and the `rollouts` counted, with `candidates` as above | as above |
+| `no_cause_connected` | the walk up from a finding: the subject, or an entity on its frontier, is of a type some causal rule targets, and no causal edge of that relation reaches it | `at` the entity, naming the `relation` and the `subjects` whose walks reached it | the relation on the entity |
+| `unexplained_finding` | the walk: every cause it reaches read clean, or sits behind one that did | `at` the subject, naming the `screened` causes and, as `candidates`, the undeclared channels at it | null, with the reason |
+| `undeclared_channel` | the walk: a relation fed between a subject, or an entity on a trail, and an entity with a finding, which no rule gives a causal direction -- not where a causal edge already joins the two | `between` its two ends as fed, naming the `relation` and the `subjects` | null: which way a failure runs is the model's to declare, and no reading settles it |
+| `confirmed_outside_graph` | a confirmation naming a cause that is no declared ancestor of the case's subject, at any distance | `between` the cause and the subject, with the `case_id` and the confirmation's own `basis` | null, with the reason |
 
 The first two are read off the last check, so before any check they decline
 `precondition_unmet`. The dynamics rows need a number only the domain has -- how
@@ -1542,6 +1546,18 @@ indicator, no action template -- declines `missing_config` naming the arm. Every
 reason is from the `discovery` vocabulary. **It proposes nothing into the
 graph**: a located gap is a question, and a declaration, `discover` or `adopt`
 answers it. Attach it to a case as the `gaps` stage.
+
+**The walk rows read the walk `hypothesize` takes**, for every finding of the last
+check, and infer nothing: no posterior is computed and nothing is filed. Their
+`basis` is `walk`, except a confirmation's, which is the person's own.
+`checked.walks_read` counts the walks, `walk_states` the states they ended in, and
+`confirmations_read` the confirmations read. Per relation with an undeclared
+channel, `undeclared_channels` gives the `instances` and the findings each
+direction would connect: `if_cause_is_source`, the findings at the targets, and
+`if_cause_is_target`, those at the sources. Both are given and neither is
+preferred, because a count says what a direction would connect, not which way a
+failure runs. A model that declares no causal rule declines `missing_config` at
+`walk`, and before any check the walk declines `precondition_unmet`.
 
 ## Choosing between actions: `planning`
 

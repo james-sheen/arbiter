@@ -3024,7 +3024,7 @@ def _located_residuals(session: EngineSession
                        ) -> Tuple[SubEnvelope, List[Dict[str, Any]]]:
     """ -- where the declaration fails to explain what was observed.
 
-    Three arms, one shape per entry: a `kind`, where it is (`at`, `between` or
+    Four arms, one shape per entry: a `kind`, where it is (`at`, `between` or
     `on`), the `basis` that produced it, and `evidence_needed` -- the reading
     that would confirm or dissolve it, or `None` beside a `reason`.
 
@@ -3037,6 +3037,10 @@ def _located_residuals(session: EngineSession
       beside a confirmed no-action arm is a declared effect that did not show.
       Located once `gaps.min_cycles` executions show it -- a number the model
       declares and this engine never chooses.
+    - WALK, from the walk up from each finding: a cause the model
+      expects and nothing connects, a finding every connected cause screened,
+      a relation fed with no causal direction, a cause confirmed outside the
+      graph. `inference.hypothesis.walk_residuals` says how each is read.
 
     It proposes nothing into the graph. A located gap is a question, and a
     declaration, `discover` or `adopt` is what answers one.
@@ -3221,6 +3225,19 @@ def _located_residuals(session: EngineSession
                 hypotheses.append(entry)
 
     _locate_missed_forecasts(session, checked, hypotheses, declines)
+
+    # THE WALK, the fourth arm: where the walk up from each finding
+    # ends and why -- a cause the model expects and nothing connects, a finding
+    # every connected cause has screened, a relation fed with no direction, a
+    # cause a person confirmed outside the graph. Read where `hypothesize` takes
+    # the same walk, so the two cannot disagree about one; imported relatively,
+    # as `.clock` is, so it ports unchanged.
+    from .inference.hypothesis import walk_residuals
+    walked, counts, refused = walk_residuals(
+        session, problems if result is not None else None, check=check)
+    hypotheses.extend(walked)
+    checked.update(counts)
+    declines.extend(refused)
     checked["hypotheses"] = len(hypotheses)
     return SubEnvelope("discovery", checked, not_checked=declines), hypotheses
 

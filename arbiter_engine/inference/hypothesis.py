@@ -66,13 +66,22 @@ Without posteriors the order is the standing, and the reading named is one an
 OPEN candidate's check could not take -- never one already taken, and none at
 all when nothing is open. On the same chain, with the tank read clean, the pump
 is screened and the finding is unexplained.
+
+AND WHERE A WALK ENDS, FOR `gaps`. Everything this verb reads before
+it infers -- the graph, the candidates, the evidence -- is `_upward`, and
+`walk_up` takes the standings off it with nothing inferred, so `gaps` cannot
+disagree with this verb about where a walk stands. `walk_residuals` locates what
+the walk cannot explain: a cause the model expects and nothing connects, a
+finding every connected cause screened, a relation fed with no causal
+direction, and a cause a person confirmed outside the graph.
 """
 
 from __future__ import annotations
 
 import copy
 from datetime import datetime, timedelta
-from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
+from typing import (Any, Callable, Dict, List, NamedTuple, Optional, Sequence,
+                    Set, Tuple)
 
 from ..assumptions import (ASSUMPTION_STAMPS, EVIDENCE_READ_AT_DECLARED_DELAY,
                            FAULTS_VISIBLE_ALONG_CHANNELS, READ_AT_DEAD_TIME,
@@ -465,6 +474,110 @@ def _by_information(graph: CausalGraph, subject: str,
                 expected_change=round(moved, 6), changes_top_if=flips)
 
 
+class _Upward(NamedTuple):
+    """What a walk up from a finding reads before anything is inferred."""
+    graph: CausalGraph
+    checked: Dict[str, Any]
+    declines: List[Decline]
+    candidates: List[Tuple[str, int, List[str]]]
+    severities: Any
+    walks: Dict[str, Set[_Walk]]
+    aligned: bool
+    evidence: Optional[Evidence]
+    read_at: Dict[str, List[str]]
+    anchor: Optional[datetime]
+    stamps: Set[str]
+
+
+def _upward(session: Any, entity_id: str, check: Optional[Callable[[Any], Any]],
+            graph: Optional[CausalGraph] = None) -> _Upward:
+    """ -- the walk up from a finding as far as it goes without
+    inference: the declared causal graph, the candidates within the bound -- or
+    the decline saying why there are none -- and the evidence, each cause read
+    at its declared delays. `hypothesize` infers on top of it, and `walk_up`
+    reads the walk off it and infers nothing, so the two cannot disagree about
+    where a walk stands.
+
+    `graph` is the causal subgraph when the caller has already built it for
+    this session, as `gaps` does once for every finding it walks.
+    """
+    hop_bound = read_causal_max_hops(getattr(session.model, "causal", None)).hops
+    checked: Dict[str, Any] = {"candidates": 0, "ranked": 0, "max_hops": hop_bound}
+    declines: List[Decline] = []
+    if graph is None:
+        graph = causal_subgraph(session.model, session.graph, session.entities)
+
+    def nothing() -> _Upward:
+        return _Upward(graph, checked, declines, [], None, {}, False, None, {},
+                       None, set())
+
+    if entity_id not in graph.nodes:
+        declines.append(Decline(
+            "not_identifiable", {"entity": entity_id},
+            detail=(f"`{entity_id}` is not in the declared causal subgraph, so "
+                    f"there is nothing upstream of it to rank. An edge enters "
+                    f"that graph by declaring `edge_direction: causal`; this "
+                    f"verb does not search for one.")))
+        return nothing()
+
+    candidates = _ancestors(graph, entity_id, hop_bound)
+    checked["candidates"] = len(candidates)
+    beyond = len(graph.ancestors(entity_id) - {entity_id}) - len(candidates)
+    if beyond > 0:
+        # A RANKING CUT SHORT IS NEVER READ AS WHOLE. Declared causes
+        # past the bound are not ranked, and the count says how many.
+        checked["beyond_bound"] = beyond
+        declines.append(Decline(
+            "depth_exceeded", {"entity": entity_id},
+            detail=(f"{beyond} declared cause(s) of `{entity_id}` lie more than "
+                    f"{hop_bound} causal hop(s) upstream and were not ranked; "
+                    f"`causal.max_hops` raises the bound"),
+            evidence={"max_hops": hop_bound, "beyond": beyond}))
+    if not candidates:
+        declines.append(Decline(
+            "not_identifiable", {"entity": entity_id},
+            detail=(f"`{entity_id}` has no declared causal ancestor within "
+                    f"{hop_bound} hops, so the model offers nothing that could "
+                    f"explain a finding on it. That is a statement about the "
+                    f"model and not about the system.")))
+        return nothing()
+
+    # WHEN EACH CAUSE IS READ. Only a declared dead time moves a
+    # read, and a model declaring none gets exactly the evidence it always did.
+    severities, _declared, _unusable = evidence_severities(session.model)
+    walks = _walks(graph, entity_id, hop_bound)
+    aligned = any(walk[0] > 0 for summaries in walks.values() for walk in summaries)
+    stamps: Set[str] = set()
+    evidence: Optional[Evidence] = None
+    read_at: Dict[str, List[str]] = {}
+    anchor = getattr(session, "_last_checked_at", None) or now_utc()
+    if aligned:
+        if check is None:
+            raise TypeError("hypothesize reads a cause at its declared delay "
+                            "through the check verb; pass check=")
+        evidence, read_at, read_declines = _aligned_evidence(
+            session, graph, entity_id, walks, anchor, severities, check)
+        declines.extend(read_declines)
+        stamps.add(EVIDENCE_READ_AT_DECLARED_DELAY)
+        cone = [walk for summaries in walks.values() for walk in summaries]
+        if any(undeclared for _dead, undeclared, _lagged in cone):
+            stamps.add(TIME_COURSE_NOT_DECLARED)
+        if any(dead > 0 and lagged for dead, _undeclared, lagged in cone):
+            stamps.add(READ_AT_DEAD_TIME)
+        if any(len({walk[0] for walk in summaries}) > 1
+               for summaries in walks.values()):
+            stamps.add(READ_AT_EACH_PATH_DELAY)
+    return _Upward(graph, checked, declines, candidates, severities, walks,
+                   aligned, evidence, read_at, anchor, stamps)
+
+
+def _evidence_of(session: Any, up: _Upward, node: str) -> Dict[str, Any]:
+    """What a candidate's checks said, at the instant it was read where a
+    declared delay moved the read, and at the finding's otherwise."""
+    return ((up.evidence.summaries.get(node) if up.evidence is not None else None)
+            or entity_evidence(session, node, up.severities))
+
+
 def hypothesize(session: Any, entity_id: str, *,
                 report_above: Optional[float] = None,
                 check: Optional[Callable[[Any], Any]] = None
@@ -488,75 +601,21 @@ def hypothesize(session: Any, entity_id: str, *,
     finding's instant as though none were declared.
     """
     extras: Dict[str, Any] = {"most_discriminating": None}
-    hop_bound = read_causal_max_hops(getattr(session.model, "causal", None)
-                                     if getattr(session, "model", None)
-                                     is not None else None).hops
-    checked: Dict[str, Any] = {"candidates": 0, "ranked": 0, "max_hops": hop_bound}
-    declines: List[Decline] = []
-
     if getattr(session, "model", None) is None:
         return (SubEnvelope("inference", {"candidates": 0}, source="unavailable",
                             reason="no domain model loaded"), [], extras)
 
-    graph = causal_subgraph(session.model, session.graph, session.entities)
-    if entity_id not in graph.nodes:
-        declines.append(Decline(
-            "not_identifiable", {"entity": entity_id},
-            detail=(f"`{entity_id}` is not in the declared causal subgraph, so "
-                    f"there is nothing upstream of it to rank. An edge enters "
-                    f"that graph by declaring `edge_direction: causal`; this "
-                    f"verb does not search for one.")))
-        extras["walk"] = _cut_walk()
-        return SubEnvelope("inference", checked, not_checked=declines), [], extras
-
-    candidates = _ancestors(graph, entity_id, hop_bound)
-    checked["candidates"] = len(candidates)
-    beyond = len(graph.ancestors(entity_id) - {entity_id}) - len(candidates)
-    if beyond > 0:
-        # A RANKING CUT SHORT IS NEVER READ AS WHOLE. Declared causes
-        # past the bound are not ranked, and the count says how many.
-        checked["beyond_bound"] = beyond
-        declines.append(Decline(
-            "depth_exceeded", {"entity": entity_id},
-            detail=(f"{beyond} declared cause(s) of `{entity_id}` lie more than "
-                    f"{hop_bound} causal hop(s) upstream and were not ranked; "
-                    f"`causal.max_hops` raises the bound"),
-            evidence={"max_hops": hop_bound, "beyond": beyond}))
+    # everything before the first inference is the walk's own, and
+    # `gaps` reads the same walk through `walk_up` with nothing inferred.
+    up = _upward(session, entity_id, check)
+    graph, checked, declines, candidates = (up.graph, up.checked, up.declines,
+                                            up.candidates)
     if not candidates:
-        declines.append(Decline(
-            "not_identifiable", {"entity": entity_id},
-            detail=(f"`{entity_id}` has no declared causal ancestor within "
-                    f"{hop_bound} hops, so the model offers nothing that could "
-                    f"explain a finding on it. That is a statement about the "
-                    f"model and not about the system.")))
         extras["walk"] = _cut_walk()
         return SubEnvelope("inference", checked, not_checked=declines), [], extras
-
-    # WHEN EACH CAUSE IS READ. Only a declared dead time moves a
-    # read, and a model declaring none gets exactly the evidence it always did.
-    severities, _declared, _unusable = evidence_severities(session.model)
-    walks = _walks(graph, entity_id, hop_bound)
-    aligned = any(walk[0] > 0 for summaries in walks.values() for walk in summaries)
-    stamps: set = set()
-    evidence: Optional[Evidence] = None
-    read_at: Dict[str, List[str]] = {}
-    anchor = getattr(session, "_last_checked_at", None) or now_utc()
+    walks, aligned, evidence, stamps = up.walks, up.aligned, up.evidence, up.stamps
+    severities, read_at, anchor = up.severities, up.read_at, up.anchor
     if aligned:
-        if check is None:
-            raise TypeError("hypothesize reads a cause at its declared delay "
-                            "through the check verb; pass check=")
-        evidence, read_at, read_declines = _aligned_evidence(
-            session, graph, entity_id, walks, anchor, severities, check)
-        declines.extend(read_declines)
-        stamps.add(EVIDENCE_READ_AT_DECLARED_DELAY)
-        cone = [walk for summaries in walks.values() for walk in summaries]
-        if any(undeclared for _dead, undeclared, _lagged in cone):
-            stamps.add(TIME_COURSE_NOT_DECLARED)
-        if any(dead > 0 and lagged for dead, _undeclared, lagged in cone):
-            stamps.add(READ_AT_DEAD_TIME)
-        if any(len({walk[0] for walk in summaries}) > 1
-               for summaries in walks.values()):
-            stamps.add(READ_AT_EACH_PATH_DELAY)
         extras["read_at"] = {"anchor": anchor.isoformat(),
                              "lookback_s": READ_LOOKBACK.total_seconds(),
                              "entities": read_at}
@@ -637,9 +696,7 @@ def hypothesize(session: Any, entity_id: str, *,
             # `looked` as ran of declared, the findings by type, and `needs`
             # -- each reading the check could not take, with its reason. Read
             # at the instant the cause was read, where a delay moved it.
-            "evidence": ((evidence.summaries.get(node)
-                          if evidence is not None else None)
-                         or entity_evidence(session, node, severities)),
+            "evidence": _evidence_of(session, up, node),
             "test_action": _test_action(session.model, entity_type),
             # why this cause's inference answered less than a
             # number, in the vocabulary `not_checked` above uses. Empty when
@@ -887,3 +944,206 @@ def _by_screening(model, graph: CausalGraph, subject: str,
     scored.sort(key=lambda item: item[:3])
     negative, _hops, _cause, row = scored[0]
     return dict(_need(model, graph, row), basis="screening", screens=-negative)
+
+
+#: the states a walk ends in, counted in this order.
+_WALK_STATES = ("traced", "partly_traced", "open", "unexplained", "cut")
+
+
+def walk_up(session: Any, entity_id: str, *,
+            check: Optional[Callable[[Any], Any]] = None,
+            graph: Optional[CausalGraph] = None) -> Dict[str, Any]:
+    """ -- the walk up from a finding on `entity_id` as `hypothesize`
+    takes it, with nothing inferred: no posterior is computed, so nothing is
+    filed. `walk` is the record `hypothesize` reports, but its `ranked_by` is
+    null, since nothing here is ranked; `standings` and `screened_by` are per
+    candidate."""
+    up = _upward(session, entity_id, check, graph)
+    if not up.candidates:
+        return {"walk": _cut_walk(), "standings": {}, "screened_by": {}}
+    rows = [{"cause": node, "hops": hops, "evidence": _evidence_of(session, up, node)}
+            for node, hops, _path in up.candidates]
+    standings, screened_by = _standings(up.graph, entity_id, rows)
+    rows.sort(key=lambda row: (_STANDING_ORDER[standings[row["cause"]]],
+                               row["hops"], row["cause"]))
+    return {"walk": _walk_record(rows, standings, None),
+            "standings": standings, "screened_by": screened_by}
+
+
+def walk_residuals(session: Any, problems: Optional[Sequence[Any]], *,
+                   check: Optional[Callable[[Any], Any]] = None
+                   ) -> Tuple[List[Dict[str, Any]], Dict[str, Any], List[Decline]]:
+    """ -- where the walk up from each finding ends, and what the
+    declaration says about why: `gaps`' fourth arm. The located shape is the
+    other arms', with `basis: walk`.
+
+    - `no_cause_connected`: the subject of a walk, or an entity on its
+      frontier, is of a type some causal rule targets, and no causal edge of
+      that relation reaches it. Its `evidence_needed` is the relation on the
+      entity, as the presence arm gives it.
+    - `unexplained_finding`: every cause the walk reaches read clean, or sits
+      behind one that did. Its `candidates` are the undeclared channels at it,
+      or there are none and the `reason` says so.
+    - `undeclared_channel`: a relation somebody fed joins a subject, or an
+      entity on a trail, to an entity that shows a finding, and no rule gives
+      that relation, between those types, a causal direction. Not where a
+      causal edge already joins the two. Per relation, `undeclared_channels`
+      counts the instances and the findings each direction would connect --
+      both, and neither preferred: a count says what a direction would
+      connect, not which way a failure runs.
+    - `confirmed_outside_graph`: a person confirmed a cause that is no declared
+      ancestor of the case's subject at any distance. Its `basis` is the
+      confirmation's own.
+
+    It proposes nothing into the graph, infers nothing and files nothing. A
+    model that declares no causal rule has no walk to fail, and is told so by
+    name rather than shown every relation between two findings.
+    """
+    counts: Dict[str, Any] = {"walks_read": 0, "walk_states": {},
+                              "confirmations_read": 0, "undeclared_channels": {}}
+    model = session.model
+    causal = [rule for rule in (model.relationship_rules or ()) if isinstance(rule, dict)
+              and str(rule.get("edge_direction", "")) == "causal"]
+    if not causal:
+        return [], counts, [Decline(
+            "missing_config", {"location": "walk"},
+            detail=("no relationship rule declares `edge_direction: causal`, so no "
+                    "walk runs from a finding and nothing can be missing from one"))]
+    if problems is None:
+        return [], counts, [Decline(
+            "precondition_unmet", {"location": "walk"},
+            detail=("no check has run, so there is no finding to walk from; run "
+                    "check first"))]
+
+    entities = session.entities
+    graph = causal_subgraph(model, session.graph, entities)
+
+    def type_of(entity_id: str) -> str:
+        return str(getattr(entities.get(entity_id), "type", "") or "")
+
+    found: Dict[str, int] = {}
+    for problem in problems:
+        unit = str(getattr(problem, "entity_id", "") or "")
+        if unit:
+            found[unit] = found.get(unit, 0) + 1
+    walked = {unit: walk_up(session, unit, check=check, graph=graph) for unit in found}
+    states = dict.fromkeys(_WALK_STATES, 0)
+    for result in walked.values():
+        states[result["walk"]["state"]] = states.get(result["walk"]["state"], 0) + 1
+    counts["walks_read"], counts["walk_states"] = len(walked), states
+
+    outgoing = getattr(session.graph, "edges", {}) or {}
+    incoming = getattr(session.graph, "reverse_edges", {}) or {}
+
+    # No cause connected: a relation a causal rule says brings a cause in, and
+    # nothing arrives by it.
+    sources: Dict[Tuple[str, str], Set[str]] = {}
+    for rule in causal:
+        sources.setdefault((str(rule.get("target_type", "")), str(rule.get("type", ""))),
+                           set()).add(str(rule.get("source_type", "")))
+    unconnected: Dict[Tuple[str, str], List[str]] = {}
+    for unit, result in walked.items():
+        for entity_id in [unit] + [row["entity"] for row in result["walk"]["frontier"]]:
+            for (target_type, relation), source_types in sorted(sources.items()):
+                if target_type != type_of(entity_id) or any(
+                        str(kind) == relation and type_of(source) in source_types
+                        for kind, source in incoming.get(entity_id, ())):
+                    continue
+                subjects = unconnected.setdefault((entity_id, relation), [])
+                if unit not in subjects:
+                    subjects.append(unit)
+    located: List[Dict[str, Any]] = [
+        {"kind": "no_cause_connected", "at": entity_id, "basis": "walk",
+         "relation": relation, "subjects": sorted(subjects),
+         "evidence_needed": f"{entity_id}.{relation}"}
+        for (entity_id, relation), subjects in unconnected.items()]
+
+    # Undeclared channels: a relation somebody fed, between an entity on a walk
+    # and one that shows a finding, along which no rule says a failure runs. An
+    # instance a causal rule covers is a causal edge, so the pairs a causal edge
+    # joins are the only ones left out -- the instance itself, and any other
+    # relation between two entities the walk can already cross.
+    joined = {frozenset((parent, child))
+              for child, parents in graph.parents.items() for parent in parents}
+    on_walk: Dict[str, List[str]] = {}
+    for unit, result in walked.items():
+        on_walk.setdefault(unit, [])
+        for entity_id in [unit] + [cause for cause, standing in result["standings"].items()
+                                   if standing in ("trail", "frontier")]:
+            subjects = on_walk.setdefault(entity_id, [])
+            if unit not in subjects:
+                subjects.append(unit)
+    channels: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
+    for entity_id, subjects in on_walk.items():
+        instances = ([(entity_id, str(kind), other) for kind, other in
+                      outgoing.get(entity_id, ())]
+                     + [(other, str(kind), entity_id) for kind, other in
+                        incoming.get(entity_id, ())])
+        for source, relation, target in instances:
+            other = target if source == entity_id else source
+            if (other == entity_id or other not in found
+                    or frozenset((source, target)) in joined):
+                continue
+            entry = channels.setdefault((source, relation, target), {
+                "kind": "undeclared_channel", "between": [source, target],
+                "basis": "walk", "relation": relation, "subjects": [],
+                "evidence_needed": None,
+                "reason": (f"no rule gives `{relation}` from {type_of(source)} to "
+                           f"{type_of(target)} a causal direction, so no walk crosses "
+                           f"it; which way a failure runs along it is the model's to "
+                           f"declare, and no reading settles it")})
+            entry["subjects"] = sorted(set(entry["subjects"]) | set(subjects))
+    per: Dict[str, Dict[str, Any]] = {}
+    for source, relation, target in sorted(channels):
+        row = per.setdefault(relation, {"instances": 0, "sources": set(), "targets": set()})
+        row["instances"] += 1
+        row["sources"].add(source)
+        row["targets"].add(target)
+    counts["undeclared_channels"] = {
+        relation: {"instances": row["instances"],
+                   # Declared with the cause at the source, it would connect the
+                   # findings at the targets; at the target, those at the sources.
+                   "if_cause_is_source": sum(found[node] for node in row["targets"]),
+                   "if_cause_is_target": sum(found[node] for node in row["sources"])}
+        for relation, row in sorted(per.items())}
+
+    for unit, result in walked.items():
+        if result["walk"]["state"] != "unexplained":
+            continue
+        candidates = [{"between": entry["between"], "relation": entry["relation"]}
+                      for _key, entry in sorted(channels.items())
+                      if unit in entry["between"]]
+        located.append({
+            "kind": "unexplained_finding", "at": unit, "basis": "walk",
+            "screened": sorted(cause for cause, standing in result["standings"].items()
+                               if standing == "screened"),
+            "candidates": candidates, "evidence_needed": None,
+            "reason": ("every declared cause it reaches read clean, or sits behind "
+                       "one that did; a causal direction declared on a candidate "
+                       "would connect another" if candidates else
+                       "every declared cause it reaches read clean, or sits behind "
+                       "one that did, and no relation without a causal direction "
+                       "joins it to an entity that shows a finding")})
+    located.extend(entry for _key, entry in sorted(channels.items()))
+
+    # Confirmed outside the graph: the cause a person named, which no declared
+    # channel connects to the finding.
+    book = getattr(getattr(session, "ledger", None), "case_book", None)
+    for case in (book.cases() if book is not None else ()):
+        subject = str(getattr(case, "entity_id", "") or "")
+        ancestors = graph.ancestors(subject)
+        for confirmation in (getattr(case, "stages", None) or {}).get("confirm") or ():
+            counts["confirmations_read"] += 1
+            reference = confirmation.get("reference") or {}
+            cause = reference.get("cause")
+            if not cause or str(cause) == subject or str(cause) in ancestors:
+                continue
+            located.append({
+                "kind": "confirmed_outside_graph", "between": [str(cause), subject],
+                "basis": reference.get("basis"), "case_id": case.case_id,
+                "indicator": getattr(case, "indicator", None),
+                "evidence_needed": None,
+                "reason": ("a person confirmed a cause that no declared causal "
+                           "channel connects to this finding; a channel between "
+                           "them is the model's to declare")})
+    return located, counts, []

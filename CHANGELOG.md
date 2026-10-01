@@ -34,6 +34,18 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+## [0.2.30] — 2026-10-01
+
+### Added
+
+- **`gaps` says where the walk up from each finding ends.** `residuals` gains four kinds:
+  `no_cause_connected`, `unexplained_finding`, `undeclared_channel` and `confirmed_outside_graph`,
+  the first three with `basis: walk`. A reader switching on `kind` meets them as new values. The
+  walk is the one `hypothesize` takes, and nothing is inferred or filed.
+- **`residuals.checked` counts the walks:** `walks_read`, `walk_states`, `confirmations_read`,
+  and `undeclared_channels`, which gives per relation the findings each direction would connect.
+  A model that declares no causal rule is declined `missing_config` at `walk`.
+
 ## [0.2.29] — 2026-10-01
 
 ### Added

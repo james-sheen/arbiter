@@ -125,7 +125,11 @@ and `most_discriminating`, which names only a reading an open candidate still
 owes, by the bases the changelog gives. From 0.2.28: the stamp
 `leak_not_declared`, on an answer a leak nobody declared reaches. From 0.2.29: the
 key `causal.root_prior`, the stamp `root_prior_not_declared`, and `root_prior` with
-`root_prior_source` in `model_describe`'s `causal`.
+`root_prior_source` in `model_describe`'s `causal`. From 0.2.30: in `residuals`, the
+walk's four kinds -- `no_cause_connected`, `unexplained_finding`, `undeclared_channel` and
+`confirmed_outside_graph`, the last with the confirmation's own `basis` -- with
+`checked.walks_read`, `walk_states`, `confirmations_read` and `undeclared_channels`, and
+the decline `missing_config` at `walk` for a model that declares no causal rule.
 
 Three things about it are promises and not accidents:
 
