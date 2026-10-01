@@ -122,7 +122,8 @@ and `causal` in `model_describe`'s model. Two of 0.2.27's changes are defect
 fixes the changelog lists rather than additions: the order of causes without
 every posterior, which a confirmed row's `ranked_by` now reports as `standing`,
 and `most_discriminating`, which names only a reading an open candidate still
-owes, by the bases the changelog gives.
+owes, by the bases the changelog gives. From 0.2.28: the stamp
+`leak_not_declared`, on an answer a leak nobody declared reaches.
 
 Three things about it are promises and not accidents:
 

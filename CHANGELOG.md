@@ -34,6 +34,18 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+## [0.2.28] — 2026-10-01
+
+### Fixed
+
+- **A leak nobody declared decided a posterior, and nothing said so.** A weight nobody declared
+  stops the answer; the leak -- the chance a node is faulty with no faulty parent -- was spent at
+  the engine's 0.01, unannounced. An answer it reaches is stamped `leak_not_declared`
+  (`LEAK_NOT_DECLARED`, in `assumptions`). A node's leak is the largest its incoming rules give,
+  so one declared below 0.01 beside an undeclared one is stamped too.
+- **`infer` with `do=` filed the intervened posterior** as a stated prediction about now, and the
+  ledger graded a value nobody observed. An answer under `do` is not filed.
+
 ## [0.2.27] — 2026-10-01
 
 ### Added

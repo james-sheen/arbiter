@@ -85,6 +85,16 @@ EVIDENCE_SEVERITY_NOT_DECLARED = "evidence_severity_not_declared"
 #: duplicate what is there.
 EVIDENCE_SEVERITY_UNUSABLE = "evidence_severity_unusable"
 
+#: a posterior rests on a node whose leak, the chance it is faulty
+#: with no faulty parent, is the engine's 0.01: no causal rule into it declared
+#: `causal.leak`. A weight nobody declared stops the answer; a leak nobody
+#: declared was spent and not said. Measured on one declared edge of 0.8: the
+#: answer is 0.808468 with no leak and with a leak of 0.01 declared, and
+#: 0.181034 with 0.2 -- so the engine's number decides it. A node's leak is the
+#: largest its incoming rules give, so one declared below 0.01 beside an
+#: undeclared one still leaves the engine's number in effect.
+LEAK_NOT_DECLARED = "leak_not_declared"
+
 #: The queried entity had a reading of its own, and the posterior was computed
 #: WITHOUT it. `infer` answers *does the rest of the graph implicate this
 #: entity*, which is the informative question -- conditioning on the target's
@@ -293,6 +303,7 @@ ASSUMPTION_STAMPS: Tuple[str, ...] = (
     TIME_COURSE_NOT_DECLARED,
     EVIDENCE_SEVERITY_NOT_DECLARED,
     EVIDENCE_SEVERITY_UNUSABLE,
+    LEAK_NOT_DECLARED,
     TARGET_READING_SET_ASIDE,
     CLEAN_BESIDE_DECLINES_NO_READING_CURES,
     STEADY_STATE_REACHED,

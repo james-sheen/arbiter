@@ -24,7 +24,7 @@ from typing import (Any, Dict, FrozenSet, List, Optional, Sequence, Set,
 
 from ..assumptions import (CLEAN_BESIDE_DECLINES_NO_READING_CURES,
                            EVIDENCE_SEVERITY_NOT_DECLARED,
-                           EVIDENCE_SEVERITY_UNUSABLE,
+                           EVIDENCE_SEVERITY_UNUSABLE, LEAK_NOT_DECLARED,
                            TARGET_READING_SET_ASIDE)
 from ..subenvelope import Decline, SubEnvelope
 from ..twin.gap import GAP_CONFIDENCE_THRESHOLDS as _GAP_WEIGHT
@@ -36,10 +36,12 @@ from .ve import Factor, FactorTooWide, eliminate, noisy_or_factor
 
 __all__ = ["Query", "Evidence", "run_inference", "ROOT_PRIOR"]
 
-#: The prior on a root cause with no parents and no evidence. A DEFAULT, and
-#: it is reported as one in every answer's evidence -- but unlike an edge
-#: weight it cannot be declared away yet, so it is stated rather than refused.
-#: An answer that rests on it says so in `priors`.
+#: The prior on a root cause with no parents and no evidence. A DEFAULT -- but
+#: unlike an edge weight it cannot be declared away yet, so it is stated rather
+#: than refused. It is reported, as `root_prior` with `root_prior_source:
+#: default`, in the evidence of a posterior FINDING only; an answer that raises
+#: no finding does not carry it. This said every answer reported it,
+#: in a `priors` key that never existed.
 ROOT_PRIOR = 0.05
 
 
@@ -485,6 +487,13 @@ def run_inference(session, query: Query,
         return SubEnvelope("inference", checked, findings, declines, questions,
                            assumptions=stamps)
 
+    # A LEAK NOBODY DECLARED IS SPENT, AND SAID SO. The weights on
+    # every edge the answer depends on are declared by this point; each node at
+    # the head of one spends its leak too, and where the leak in effect is the
+    # engine's 0.01 the answer rests on a number nobody wrote.
+    if any(not working.leak_declared(node) for node in {t for _s, t in relevant}):
+        stamps = stamps + (LEAK_NOT_DECLARED,)
+
     try:
         posterior = eliminate(_factors(working), query.target, observed)
     except FactorTooWide as wide:
@@ -516,7 +525,11 @@ def run_inference(session, query: Query,
     filed = getattr(session, "_filed_posteriors", None)
     claim = (query.target, round(posterior, 6),
              getattr(session, "_last_checked_at", None), predicted_at)
-    if filed is None or claim not in filed:
+    # AN INTERVENED POSTERIOR IS NOT A CLAIM. Under `do` the answer
+    # is what the target would be with a node SET, and filing it had the ledger
+    # grade a value nobody observed as a claim about now -- the rule the
+    # modelling guide already states for `do_would_answer`.
+    if not query.do and (filed is None or claim not in filed):
         if filed is not None:
             filed.add(claim)
         session.ledger.record_prediction(

@@ -40,8 +40,11 @@ SOURCE_DEFAULT = "default"
 #: have assumed gets an answer -- and `run_inference` declines any query whose
 #: active paths rest on one.
 DEFAULT_WEIGHT = 0.3
-#: The chance a node is faulty with no faulty parent. Also a default, also
-#: refused on an active path.
+#: The chance a node is faulty with no faulty parent. Also a default -- and
+#: SPENT, not refused. this said *also refused on an active path*, and
+#: nothing refused it; a declared weight beside an undeclared leak was answered
+#: with this number and nothing said so. An answer it reaches is now stamped
+#: `leak_not_declared`.
 DEFAULT_LEAK = 0.01
 
 
@@ -51,6 +54,9 @@ class EdgeWeight:
     leak: float
     source: str
     observations: Optional[int] = None
+    #: where the leak came from, beside where the weight did:
+    #: `declared`, or `default` for the engine's `DEFAULT_LEAK`.
+    leak_source: str = SOURCE_DECLARED
 
     def to_dict(self) -> Dict[str, Any]:
         out = {"weight": self.weight, "leak": self.leak, "source": self.source}
@@ -79,6 +85,19 @@ class CausalGraph:
     def leak_for(self, node: str) -> float:
         incoming = [self.weights[(p, node)] for p in self.parents.get(node, ())]
         return max((w.leak for w in incoming), default=DEFAULT_LEAK)
+
+    def leak_declared(self, node: str) -> bool:
+        """Whether the leak in effect at `node` is one somebody declared.
+        The leak in effect is the largest its incoming rules give, so
+        a leak declared BELOW the engine's beside an undeclared one still
+        leaves the engine's number deciding; a node with no parents has no
+        leak to spend."""
+        incoming = [self.weights[(p, node)] for p in self.parents.get(node, ())]
+        if not incoming:
+            return True
+        leak = max(w.leak for w in incoming)
+        return any(w.leak == leak and w.leak_source == SOURCE_DECLARED
+                   for w in incoming)
 
     def sources(self) -> Dict[str, int]:
         counts: Dict[str, int] = {}
@@ -162,13 +181,14 @@ def _weight_from(rule: Dict[str, Any],
     declared, _unresolved = resolve_strength(causal.get("weight"))
     leak_value, _unresolved = resolve_strength(causal.get("leak"))
     leak = DEFAULT_LEAK if leak_value is None else leak_value
+    leak_source = SOURCE_DEFAULT if leak_value is None else SOURCE_DECLARED
     if declared is not None:
-        return EdgeWeight(declared, leak, SOURCE_DECLARED)
+        return EdgeWeight(declared, leak, SOURCE_DECLARED, leak_source=leak_source)
     if learned is not None:
         value, count = learned
         return EdgeWeight(float(value), leak, SOURCE_LEARNED,
-                          observations=int(count))
-    return EdgeWeight(DEFAULT_WEIGHT, leak, SOURCE_DEFAULT)
+                          observations=int(count), leak_source=leak_source)
+    return EdgeWeight(DEFAULT_WEIGHT, leak, SOURCE_DEFAULT, leak_source=leak_source)
 
 
 def causal_subgraph(model, graph, entities,

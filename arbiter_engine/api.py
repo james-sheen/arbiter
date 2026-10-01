@@ -1088,7 +1088,7 @@ def _causal_coverage(model) -> Dict[str, Any]:
     walk is `cut`, which this says before a capture is fed.
     """
     from arbiter_engine.inference.causal import (
-        SOURCE_DECLARED, _declared_time_course, _weight_from, resolve_strength)
+        SOURCE_DECLARED, _declared_time_course, _weight_from)
     rules = [rule for rule in (getattr(model, "relationship_rules", None) or [])
              if isinstance(rule, dict)]
     declared: List[Dict[str, Any]] = []
@@ -1100,15 +1100,14 @@ def _causal_coverage(model) -> Dict[str, Any]:
                  f"-{rule.get('type', '?')}->"
                  f"{rule.get('target_type', '?')}")
         weight = _weight_from(rule, None)
-        block = rule.get("causal") if isinstance(rule.get("causal"), dict) else {}
-        leak_declared, _unresolved = resolve_strength(block.get("leak"))
         delay, tau = _declared_time_course(rule)
         declared.append({
             "rule": label,
             "weight": weight.weight if weight.source == SOURCE_DECLARED else None,
             "weight_source": weight.source,
             "leak": weight.leak,
-            "leak_source": "declared" if leak_declared is not None else "default",
+            # the same predicate the inference stamps by.
+            "leak_source": weight.leak_source,
             "propagation_delay_s": delay,
             "time_constant_s": tau,
         })

@@ -1206,7 +1206,10 @@ anyone writing a full conditional table: two parents at 0.80 and 0.70 with a
 answer** rather than being supplied -- `infer` declines `cpt_missing`, names the
 edges, and asks for the number, because a posterior is a product of weights and
 one the engine chose would make the answer partly a statement about the engine
-with no way to tell which part. `examples/substation_feeder.yaml` is the worked
+with no way to tell which part. A leak nobody declared does not stop it: the
+engine's 0.01 stands in, and the answer is stamped `leak_not_declared`. A node's
+leak is the largest its incoming rules give, so a leak declared below 0.01 beside
+an undeclared one still leaves the engine's number in effect. `examples/substation_feeder.yaml` is the worked
 specimen; its header states one question answered three ways.
 
 `latent_confounder` names an unobserved common cause on an edge. Under an
@@ -1222,7 +1225,8 @@ asking about the supply with the feeder OBSERVED faulty gives 0.679054 and with
 the feeder FORCED faulty gives 0.05 -- the same node in the same state, a factor
 of thirteen apart. Seeing a thing fail is evidence about what feeds it; breaking
 it yourself is not. Forcing the TARGET itself answers exactly: `do={t: v}`
-returns `v`, method `intervention`.
+returns `v`, method `intervention`. An answer under `do` is not filed in the
+ledger: a value nobody observed is not a prediction.
 
 **The target's own reading is not evidence about the target.** `infer` asks
 whether everything ELSE implicates it, because conditioning on its own state
@@ -1642,6 +1646,7 @@ the key being absent. The `inference` sub-envelope -- what `infer` and
 | `time_course_not_declared` | the time course crossed was not declared; this engine supplied a delay or a time constant, or both |
 | `evidence_severity_not_declared` | `infer` read the last check against THIS engine's severity floor, because the model declared none. Declare `causal.evidence_severity:` to choose it |
 | `evidence_severity_unusable` | the model DID declare `causal.evidence_severity:` and this engine could not use it, so the floor above was its own. Carried beside the stamp above, never instead of it; `model_describe` names the value that was refused |
+| `leak_not_declared` | a posterior rests on a node whose leak -- the chance it is faulty with no faulty parent -- is the engine's 0.01, because no causal rule into it declared `causal.leak`; a leak declared below 0.01 beside an undeclared one leaves the engine's number in effect too |
 | `target_reading_set_aside` | the queried entity had a reading of its own and the posterior was computed without it -- the question answered is whether everything else implicates it. `checked.target_reading` says what the reading would have set, and the target's own worst severity |
 | `clean_beside_declines_no_reading_cures` | an entity whose checks found nothing was counted as clean evidence although declines stood beside it that no reading would cure -- a threshold, a config block or a role the model does not declare, or a check that does not cover the indicator. They say the model is short of a declaration, not that anything is wrong; the candidate's `evidence.declines_no_reading_cures` names them |
 | `steady_state_reached` | the horizon outlasted the transient, so the value reported is the settled one |
