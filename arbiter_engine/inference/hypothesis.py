@@ -184,14 +184,22 @@ def _test_action(model, entity_type: str) -> Optional[str]:
     would be recommending a thing it cannot know is safe, on a system it cannot
     see. `None` here means the model declares no way to test this candidate,
     which is a fact about the model and is worth reporting as one.
+
+    ASKED THE WAY THE ACTION VERBS ASK. This matched `applies_to`
+    against the type exactly, so a template declared for a parent type, or one
+    naming no type, was never named for a subtype -- while `file_action` and
+    `plan` applied it there through `actions.applies()`. Measured: a
+    `SmallPump extends Pump` candidate got `None` for a `Pump` template. It
+    reads the templates the action verbs accept, too, so a malformed one the
+    verbs would refuse is not offered as a test. The first in declaration order
+    is named, as before.
     """
-    for template in (getattr(model, "action_templates", None) or ()):
-        applies = getattr(template, "applies_to", None)
-        name = getattr(template, "name", None)
-        if applies is None and isinstance(template, dict):
-            applies, name = template.get("applies_to"), template.get("name")
-        if applies == entity_type and name:
-            return str(name)
+    from ..twin.actions import applies, load_templates
+    templates, _refused = load_templates(model)
+    lineage = getattr(model, "lineage", None)
+    for name, template in templates.items():
+        if applies(template, entity_type, lineage):
+            return name
     return None
 
 
@@ -581,6 +589,13 @@ def hypothesize(session: Any, entity_id: str, *,
     #: `not_checked` -- a ranking with no numbers and no word on why. Found by
     #: the first vertical to declare fault channels without strengths.
     seen: set = set()
+    #: THE QUESTIONS THE INFERENCES RAISE. Each candidate's inference
+    #: asks, per edge it needed and nobody gave a strength, how strongly a
+    #: fault there breaks the next node; `infer` returns that question and this
+    #: verb dropped it, so a ranking under `cpt_missing` said what was missing
+    #: and never asked for it. Once per edge, however many candidates share it.
+    questions: List[Any] = []
+    asked: set = set()
     for node, hops, path in candidates:
         dead_times = sorted({walk[0] for walk in walks.get(node, ())})
         # A cause read only in the past is a claim about that instant, and the
@@ -607,6 +622,14 @@ def hypothesize(session: Any, entity_id: str, *,
             if key not in seen:
                 seen.add(key)
                 declines.append(decline)
+        for question in getattr(sub, "questions", ()) or ():
+            gap = getattr(question, "gap", None)
+            gap_type = getattr(gap, "gap_type", None)
+            asked_key = (getattr(gap_type, "value", gap_type),
+                         getattr(gap, "location", None))
+            if asked_key not in asked:
+                asked.add(asked_key)
+                questions.append(question)
         entity_type = graph.entity_type.get(node, "")
         properties = _readable_properties(session.model, entity_type)
         ranked.append({
@@ -663,7 +686,8 @@ def hypothesize(session: Any, entity_id: str, *,
     order = {stamp: i for i, stamp in enumerate(ASSUMPTION_STAMPS)}
     assumptions = tuple(sorted(stamps, key=lambda s: (order.get(s, len(order)), s)))
     return (SubEnvelope("inference", checked, not_checked=declines,
-                        assumptions=assumptions), ranked, extras)
+                        questions=questions, assumptions=assumptions),
+            ranked, extras)
 
 
 def _most_discriminating(session: Any, graph: CausalGraph, subject: str,

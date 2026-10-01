@@ -34,6 +34,28 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+## [0.2.25] — 2026-10-01
+
+### Fixed
+
+- **A walk reaches every entity within `max_hops`.** Every edge carries a propagation probability of
+  0.3 that no model can declare, and a floor of 0.05 cut `traverse` at its third hop in every
+  direction, and `gaps` from a start node, with nothing in the envelope saying so. Neither verb
+  applies the floor now; `max_hops` is the bound.
+- **`hypothesize` names a test action for a subtype.** It asks the rule `file_action` and `plan` use,
+  so a template declared for a type reaches the types that extend it, and a template those verbs
+  refuse is no longer offered.
+
+### Added
+
+- **`hypothesize` asks what its inferences ask:** where a candidate's inference needs an edge with no
+  `causal.weight`, its question rides in `hypothesis.questions`, once per edge.
+
+### Documentation
+
+- The `cpt_missing` remedy, `infer` and the inference package name `causal.weight` alone; they
+  offered learned strengths, which no verb accepts. The README says what a case keeps.
+
 ## [0.2.24] — 2026-10-01
 
 ### Documentation

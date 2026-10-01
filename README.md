@@ -322,8 +322,8 @@ objective, each saying what it reaches downstream and -- where a spread is decla
 its call is and which declared number decides it. `gaps` goes across the declaration to the places
 it cannot explain what was observed, each with the reading that would settle it or the reason there
 is none. None of them names a cause, chooses an objective or invents a node. What comes back is a
-short list of things to check, and a case keeps the record of which were checked, what they showed
-and where a confirmed cause stood in the ranking.
+short list of things to check. A case keeps each walk's causes with their posteriors and the reading
+it named first, and where a confirmed cause stood in the ranking.
 
 ```python
 from importlib.resources import files

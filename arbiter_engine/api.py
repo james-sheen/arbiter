@@ -1555,6 +1555,10 @@ def traverse(session: EngineSession, start_nodes: Sequence[str],
     An internal ruling records that PREDICT is plumbed but unfed, and a tool that accepts
     a mode it cannot honour is worse than one that declines it.
 
+    ``max_hops`` is the walk's ONLY bound. An edge's propagation probability is
+    the engine's own default, which no model can declare, so nothing prunes on
+    it: every entity within ``max_hops`` is reached, in every direction.
+
     ``horizon_s`` is HOW FAR AHEAD the declared response is read. The
     published verb had no way to say, so every hypothetical walk was evaluated
     at the request default of one hour: a caller could not ask what a value
@@ -1632,11 +1636,19 @@ def traverse(session: EngineSession, start_nodes: Sequence[str],
         return unavailable_envelope(
             "no topology available: supply entities before traversing")
 
+    # NO PROBABILITY FLOOR. Every edge carries the builder's 0.3,
+    # which no model key can set, so the request's default floor of 0.05 cut
+    # every walk at its third hop (0.3 ** 3 is 0.027) -- in each direction, and
+    # in `hypothetical` wherever no transition is declared -- whatever
+    # `max_hops` said, and nothing recorded the cut. A six-node chain with every
+    # node over its bound reported three entities at `max_hops: 5`. The walk is
+    # bounded by the one number its caller sets.
     request = TraversalRequest(
         start_nodes=list(start_nodes),
         direction=TraversalDirection[direction.upper()],
         value_mode=ValueMode[value_mode.upper()],
         max_hops=max_hops,
+        min_probability=0.0,
         overrides=dict(overrides or {}),
         horizon_s=float(horizon_s),
     )
@@ -3265,7 +3277,9 @@ def gaps(session: EngineSession,
     starts = [start_node] if start_node else list(topology.nodes.keys())
     seen: Dict[Any, Any] = {}
     for node_id in starts:
-        for question in traverser.discover_gaps(node_id):
+        # the same floor, the same cut: from a start node a missing
+        # node five hops out came back as no question at all.
+        for question in traverser.discover_gaps(node_id, min_probability=0.0):
             seen.setdefault(_gap_key(getattr(question, "gap", None)), question)
 
     # the topology's STRUCTURAL gaps, which are a separate
@@ -3637,8 +3651,9 @@ def infer(session: EngineSession, target: str,
     """How likely is `target` faulty, given what the last check could see?
 
     The causal edges are the ones the author declared `edge_direction: causal`
-    in `relationship_rules`; the strengths are the ones they declared or a
-    learner measured. A strength nobody supplied STOPS the answer -- a
+    in `relationship_rules`; the strengths are the ones they declared under
+    `causal.weight`, and no verb takes any other. A strength nobody declared
+    STOPS the answer -- a
     posterior is a product of edge weights, and one the engine chose would make
     the number partly a statement about the engine with no way to tell which
     part.

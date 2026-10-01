@@ -880,8 +880,15 @@ class TopologyTraverser:
             horizon_s=horizon_s,
         ))
 
-    def discover_gaps(self, start_node: str) -> List[TopologyQuestion]:
-        """Traverse until blocked, collect all gaps as questions."""
+    def discover_gaps(self, start_node: str,
+                      min_probability: float = 0.05) -> List[TopologyQuestion]:
+        """Traverse until blocked, collect all gaps as questions.
+
+        ``min_probability`` keeps its old default for the callers that set the
+        floor themselves. The engine's ``gaps`` verb passes 0.0: an edge's
+        probability is a default no model can declare, and pruning on it cut
+        the walk at its third hop without a word.
+        """
         result = self.traverse(TraversalRequest(
             start_nodes=[start_node],
             direction=TraversalDirection.FORWARD,
@@ -890,6 +897,7 @@ class TopologyTraverser:
             collect_gaps=True,
             collect_axiom_violations=False,
             max_hops=4,
+            min_probability=min_probability,
         ))
         return sorted(
             result.questions_generated,

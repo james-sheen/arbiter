@@ -349,9 +349,12 @@ def run_inference(session, query: Query,
     if defaulted:
         declines.append(Decline(
             "cpt_missing", scope,
-            detail=("declare `causal.weight` on these edges, or supply learned "
-                    "weights; the engine will not spend its own number on a "
-                    "path the answer depends on"),
+            # this offered learned weights as a second remedy, and
+            # nothing can take them: no verb accepts them and neither caller
+            # fills the slot.
+            detail=("declare `causal.weight` on these edges; the engine will "
+                    "not spend its own number on a path the answer depends "
+                    "on"),
             evidence={"edges": defaulted, "default_weight": working.weights[
                 (relevant[0][0], relevant[0][1])].weight}))
         for edge in defaulted:
