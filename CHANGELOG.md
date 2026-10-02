@@ -34,6 +34,22 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+## [0.2.32] — 2026-10-02
+
+### Added
+
+- **A rule names the end of its relation where a failure starts.** `cause: target` walks the
+  rule against its edge, and `cause: source` says what `edge_direction: causal` says. Beside
+  `edge_direction: causal`, `cause: target` is refused by name as `malformed_value` and the rule
+  carries no causal direction. An earlier engine reads a rule carrying `cause:` alone as no
+  causal direction. `model_describe` reports each channel's `cause` end, and `cause_end`, in
+  `inference.causal`, is the one reader.
+- **The first rung down.** Each frontier entry on a walk carries `explains`, the entities
+  downstream along declared causal edges that show a finding now, with `findings_explained`,
+  and `actions`, the declared templates that apply to it. Each `plan` candidate carries
+  `on_frontier_of`, the open cases whose last walk holds an entity it acts on at the frontier.
+  No ranking moves.
+
 ## [0.2.31] — 2026-10-02
 
 ### Added

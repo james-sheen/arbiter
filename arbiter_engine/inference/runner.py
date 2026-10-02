@@ -388,7 +388,7 @@ def run_inference(session, query: Query,
         return SubEnvelope(
             "inference", checked, source="unavailable",
             reason=(f"{query.target!r} is on no edge declared "
-                    f"`edge_direction: causal`"))
+                    f"`edge_direction: causal` or with a `cause:` end"))
 
     loop = graph.cycle()
     if loop:

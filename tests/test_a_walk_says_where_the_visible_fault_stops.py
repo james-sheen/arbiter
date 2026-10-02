@@ -105,8 +105,15 @@ class TestTheChain:
         hypothesis = _hypothesis(_chain(pump=5000.0, tank=97.0), "basin-1")
         assert _standings(hypothesis) == {"tank-1": "trail", "pump-1": "frontier"}
         assert hypothesis["walk"]["state"] == "traced"
+        # An internal ruling added the first rung down: what the pump explains below it,
+        # and the actions that apply to it -- none are declared here.
         assert hypothesis["walk"]["frontier"] == [
-            {"entity": "pump-1", "findings": ["threshold_exceeded:speed_rpm"]}]
+            {"entity": "pump-1", "findings": ["threshold_exceeded:speed_rpm"],
+             "explains": [
+                 {"entity": "tank-1", "hops": 1, "findings": ["threshold_exceeded:level_pct"]},
+                 {"entity": "basin-1", "hops": 2,
+                  "findings": ["threshold_exceeded:basin_level"]}],
+             "findings_explained": 2, "actions": []}]
         assert STAMP not in hypothesis["assumptions"], "nothing is screened"
 
     def test_a_tank_deviating_screens_nothing_behind_it(self):
@@ -159,9 +166,12 @@ class TestTheDepartment:
         hypothesis = _hypothesis(_org(exec_cro=22.0, exec_vp_sales=18.0), "dept-sales")
         walk = hypothesis["walk"]
         assert walk["state"] == "traced"
-        assert walk["frontier"] == [
-            {"entity": "exec-cro", "findings": ["threshold_exceeded:direct_reports"]},
-            {"entity": "exec-vp-sales", "findings": ["threshold_warning:direct_reports"]}]
+        # An internal ruling added the first rung down, read here by lookup.
+        assert [(row["entity"], row["findings"]) for row in walk["frontier"]] == [
+            ("exec-cro", ["threshold_exceeded:direct_reports"]),
+            ("exec-vp-sales", ["threshold_warning:direct_reports"])]
+        assert [[r["entity"] for r in row["explains"]] for row in walk["frontier"]] == [
+            ["dept-sales"], ["dept-sales"]]
         assert walk["ranked_by"] == "standing"
         assert hypothesis["most_discriminating"] is None
 
@@ -346,10 +356,11 @@ class TestTheModelSaysWhatCanBeExplained:
 
     def test_each_fault_channel_says_what_was_declared(self):
         causal = self._causal(CHAIN)
+        # An internal ruling added the end of the relation where a failure starts.
         assert causal["declared"][0] == {
             "rule": "Pump-feeds->Tank", "weight": 0.8, "weight_source": "declared",
             "leak": 0.01, "leak_source": "default",
-            "propagation_delay_s": None, "time_constant_s": None}
+            "propagation_delay_s": None, "time_constant_s": None, "cause": "source"}
 
     def test_a_strength_nobody_declared_is_none_and_says_so(self):
         [rule] = self._causal(FAN)["declared"]

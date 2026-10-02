@@ -573,7 +573,7 @@ class DomainModel:
         The accepted set is imported, never transcribed: the resolver owns it,
         for the reason `_record_unresolved` already states.
         """
-        from ..inference.causal import resolve_strength
+        from ..inference.causal import _CAUSE_ENDS, resolve_strength
         from ..temporal.temporal_edge import (
             RESPONSE_MODEL_NAMES, resolve_number, resolve_response_model,
         )
@@ -587,6 +587,7 @@ class DomainModel:
              list(RESPONSE_MODEL_NAMES)),
             ("", "edge_direction", *_exact_member(EdgeDirection)),
             ("", "flow_type", *_exact_member(FlowType)),
+            ("", "cause", *_exact_words(_CAUSE_ENDS)),
         )
         #: `(block, key, resolver)` for each NUMBER a rule's readers
         #: take, each resolver the one its reader calls. `float()` on `120s`
@@ -689,6 +690,27 @@ class DomainModel:
                     "read_by": [],
                     "did_you_mean": near,
                     "remedy": remedy,
+                    "rule": label,
+                })
+            # THE PAIR THAT CONTRADICTS ITSELF. `edge_direction:
+            # causal` names the source as the cause and `cause: target` the
+            # target, so neither is applied. Reconciling them would pick one,
+            # and an engine before the key reads only the first: it would walk
+            # the rule backwards.
+            if (rule.get("cause") == "target"
+                    and str(rule.get("edge_direction", "")) == "causal"):
+                out.append({
+                    "field": "cause",
+                    "reason": "malformed_value",
+                    "value": "target",
+                    "read_by": [],
+                    "did_you_mean": None,
+                    "remedy": ("`cause: target` names the target as the end where "
+                               "a failure starts, and `edge_direction: causal` names "
+                               "the source, so neither was applied and the rule "
+                               "carries no causal direction; drop `edge_direction: "
+                               "causal` to keep the cause at the target, or "
+                               "`cause:` to keep it at the source"),
                     "rule": label,
                 })
         return out
@@ -1355,6 +1377,8 @@ _KNOWN_RULE_KEYS = frozenset({
     "type", "source_type", "target_type", "edge_direction", "flow_type",
     "temporal", "transition", "causal", "conservation_tolerance",
     "latent_confounder",
+    # the end of the relation where a failure starts.
+    "cause",
 })
 
 #: Keys a relationship rule carries that NO READER IN THIS ENGINE reads -- the
@@ -1461,6 +1485,18 @@ def _read_elsewhere(places: List[Tuple[str, frozenset]],
         for key in known:
             found.setdefault(key, []).append(f"{where}.{key}" if where else key)
     return {key: paths[0] for key, paths in found.items() if len(paths) == 1}
+
+
+def _exact_words(words: Any) -> Tuple[Any, List[str]]:
+    """`(resolver, valid)` for a closed vocabulary of plain words, read exactly,
+    as `_exact_member` reads an enum's values.."""
+    valid = list(words)
+
+    def resolve(raw: Any) -> Tuple[Any, Optional[str]]:
+        if raw is None or raw == "":
+            return None, None
+        return (raw, None) if raw in valid else (None, str(raw))
+    return resolve, valid
 
 
 def _exact_member(members: Any) -> Tuple[Any, List[str]]:

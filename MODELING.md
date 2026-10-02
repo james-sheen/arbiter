@@ -1212,6 +1212,30 @@ leak is the largest its incoming rules give, so a leak declared below 0.01 besid
 an undeclared one still leaves the engine's number in effect. `examples/substation_feeder.yaml` is the worked
 specimen; its header states one question answered three ways.
 
+**A cause at the target of its relation: `cause:`.** `edge_direction: causal`
+reads the edge's source as the cause. A failure can run the other way along a
+relation an author feeds: a process depends on a department, and a department
+that fails takes its process with it. `cause: target` says so, and walks the
+rule against its edge:
+
+```yaml
+  relationship_rules:
+    - type: depends_on
+      source_type: Process
+      target_type: Department
+      cause: target          # the department fails the process
+```
+
+`cause: source` says what `edge_direction: causal` says. The key stands alone:
+beside `edge_direction: causal`, which names the source, `cause: target`
+contradicts it, neither is applied, and `unread_fields` names the pair as
+`malformed_value` -- the rule then carries no causal direction. A value that is
+not `source` or `target` is named `unknown_value` and not applied. An engine
+before 0.2.32 reads a rule carrying `cause:` alone as no causal direction at all,
+so a walk stops there rather than running backwards; that is why the pair is
+refused rather than reconciled. `model_describe` reports each channel's `cause`
+end, and counts a type as findable through the end its cause enters by.
+
 `latent_confounder` names an unobserved common cause on an edge. Under an
 intervention it makes the query unidentifiable, and `infer` says so
 (`not_identifiable`) instead of returning a number that ignores it. It sits on
@@ -1277,7 +1301,17 @@ with each entity's findings, the `open` candidates with their `needs`, the count
 by standing, and `ranked_by`. Where every candidate has a posterior the causes
 are in posterior order; otherwise by standing -- frontier, trail, open, screened
 -- then hops, then id, and `ranked_by` says `standing`. The frontier is where the
-visible fault stops, and nothing calls it a cause. `model_describe` lists under
+visible fault stops, and nothing calls it a cause.
+
+**The first rung down.** Each frontier entity says what looking there would
+account for: `explains`, the entities downstream of it along declared causal
+edges, within `causal.max_hops`, that show a finding at the walk's instant --
+each with its `hops` and `findings`, nearest first -- with `findings_explained`
+counting those findings; and `actions`, every declared template that applies to
+its type, asked the way the action verbs ask. An action listed applies to the
+entity; whether it would relieve anything is `plan`'s question, against a
+declared objective. A case's attachment keeps each frontier entity with its own
+findings, as before: what it explains is the walk's. `model_describe` lists under
 `causal` each declared fault channel -- its strength, leak and dead time, each
 declared or not -- each type that can raise a finding with the channels into
 it, and `types_without_cause`: a finding on one of those has no declared cause
@@ -1677,7 +1711,10 @@ by one is not reached. `decisive` names, at the value and step `margin_sigmas`
 measured, the source with the largest share of that value's declared variance --
 a coupling as `relation:from->to` over the `source->target` edge it crossed, or a
 forecast as the reading it seeded -- with its `share`. It is null exactly when
-`margin_sigmas` is. Neither changes a ranking.
+`margin_sigmas` is. Neither changes a ranking. `on_frontier_of` names the open
+cases whose last walk holds an entity the candidate acts on at its frontier, read
+from the case book's attachments; it is empty with no case book, and it changes
+no ranking either.
 
 **The cost of a finding is derived from `Severity.priority_score`, not declared
 again.** A second severity table is how two parts of one engine come to

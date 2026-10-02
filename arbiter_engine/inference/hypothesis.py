@@ -67,6 +67,14 @@ OPEN candidate's check could not take -- never one already taken, and none at
 all when nothing is open. On the same chain, with the tank read clean, the pump
 is screened and the finding is unexplained.
 
+AND THE FIRST RUNG DOWN. Each frontier entity says what it
+explains: the entities downstream of it along declared causal edges, within the
+bound, that show a finding at the walk's instant, and how many findings that is;
+and which declared actions apply to it, asked the way the action verbs ask. Where
+the visible fault stops is where to look, and this is what looking there would
+account for. -- a rule may name the end where a failure starts,
+`cause: target` walking against the edge the author feeds; see `causal`.
+
 AND WHERE A WALK ENDS, FOR `gaps`. Everything this verb reads before
 it infers -- the graph, the candidates, the evidence -- is `_upward`, and
 `walk_up` takes the standings off it with nothing inferred, so `gaps` cannot
@@ -90,7 +98,7 @@ from ..clock import now_utc
 from ..subenvelope import Decline, SubEnvelope
 from ..types import (DEFAULT_CAUSAL_MAX_HOPS, Severity,
                      read_causal_max_hops)
-from .causal import SOURCE_DEFAULT, CausalGraph, causal_subgraph
+from .causal import SOURCE_DEFAULT, CausalGraph, causal_subgraph, cause_end
 from .runner import (Evidence, Query, _factors, _open_backdoor_latent,
                      _own_severity, _relevant_edges, _surgery, entity_evidence,
                      evidence_from, evidence_severities, node_evidence,
@@ -518,8 +526,9 @@ def _upward(session: Any, entity_id: str, check: Optional[Callable[[Any], Any]],
             "not_identifiable", {"entity": entity_id},
             detail=(f"`{entity_id}` is not in the declared causal subgraph, so "
                     f"there is nothing upstream of it to rank. An edge enters "
-                    f"that graph by declaring `edge_direction: causal`; this "
-                    f"verb does not search for one.")))
+                    f"that graph by declaring `edge_direction: causal`, or the "
+                    f"end its cause sits at with `cause:`; this verb does not "
+                    f"search for one.")))
         return nothing([])
 
     candidates = _ancestors(graph, entity_id, hop_bound)
@@ -760,6 +769,7 @@ def hypothesize(session: Any, entity_id: str, *,
         extras["most_discriminating_reason"] = why
     extras["walk"] = _walk_record(ranked, standings,
                                   "posterior" if by_posterior else "standing")
+    _downward(session, graph, extras["walk"]["frontier"], checked["max_hops"])
 
     if report_above is not None:
         ranked = [r for r in ranked
@@ -919,6 +929,67 @@ def _cut_walk() -> Dict[str, Any]:
     return _walk_record([], {}, None)
 
 
+def _findings_now(session: Any) -> Dict[str, List[str]]:
+    """Each entity's findings in the session's last check, by problem type: the
+    walk's instant. A cause read at a declared delay is read on a scratch
+    session, so this is never a past reading."""
+    result = getattr(session, "_last_result", None)
+    now: Dict[str, List[str]] = {}
+    for problem in (list(getattr(result, "problems", ()) or ())
+                    + list(getattr(result, "warnings", ()) or ())) if result is not None else ():
+        entity = str(getattr(problem, "entity_id", "") or "")
+        if entity:
+            now.setdefault(entity, []).append(str(getattr(problem, "problem_type", "") or ""))
+    return now
+
+
+def _downward(session: Any, graph: CausalGraph, frontier: List[Dict[str, Any]],
+              hop_bound: int) -> None:
+    """ -- the first rung down from each frontier entity, written onto its
+    row: `explains`, the entities downstream of it along declared causal edges,
+    within the walk's bound, that show a finding at the walk's instant, nearest
+    first, with `findings_explained` counting those findings; and `actions`,
+    every declared template that applies to its type, asked the way the action
+    verbs ask. Layered and bounded by the hops, as the walk up is, so a cycle in
+    the declaration costs at most `hop_bound` layers.
+
+    It says where a fix would reach, not that one exists: an action is listed
+    because it applies to the entity, and nothing here says it would relieve
+    anything -- `plan` answers that, against a declared objective.
+    """
+    if not frontier:
+        return
+    from ..twin.actions import applies, load_templates
+    templates, _refused = load_templates(session.model)
+    lineage = getattr(session.model, "lineage", None)
+    children: Dict[str, List[str]] = {}
+    for child, parents in graph.parents.items():
+        for parent in parents:
+            children.setdefault(parent, []).append(child)
+    now = _findings_now(session)
+    for row in frontier:
+        node = row["entity"]
+        reached, layer, explained = {node}, [node], []
+        for hops in range(1, hop_bound + 1):
+            nxt: List[str] = []
+            for current in layer:
+                for child in sorted(children.get(current, ())):
+                    if child in reached:
+                        continue
+                    reached.add(child)
+                    nxt.append(child)
+                    if now.get(child):
+                        explained.append({"entity": child, "hops": hops,
+                                          "findings": sorted(now[child])})
+            if not nxt:
+                break
+            layer = nxt
+        row["explains"] = sorted(explained, key=lambda r: (r["hops"], r["entity"]))
+        row["findings_explained"] = sum(len(r["findings"]) for r in explained)
+        row["actions"] = [name for name, template in templates.items()
+                          if applies(template, graph.entity_type.get(node, ""), lineage)]
+
+
 def _need(model, graph: CausalGraph, row: Dict[str, Any]) -> Dict[str, Any]:
     """The reading an open candidate is waiting on: of those its last check
     could not take, the first value its type declares. `None` where none of
@@ -974,8 +1045,9 @@ def walk_up(session: Any, entity_id: str, *,
     standings, screened_by = _standings(up.graph, entity_id, rows)
     rows.sort(key=lambda row: (_STANDING_ORDER[standings[row["cause"]]],
                                row["hops"], row["cause"]))
-    return {"walk": _walk_record(rows, standings, None),
-            "standings": standings, "screened_by": screened_by}
+    walk = _walk_record(rows, standings, None)
+    _downward(session, up.graph, walk["frontier"], up.checked["max_hops"])
+    return {"walk": walk, "standings": standings, "screened_by": screened_by}
 
 
 def walk_residuals(session: Any, problems: Optional[Sequence[Any]], *,
@@ -1010,13 +1082,13 @@ def walk_residuals(session: Any, problems: Optional[Sequence[Any]], *,
     counts: Dict[str, Any] = {"walks_read": 0, "walk_states": {},
                               "confirmations_read": 0, "undeclared_channels": {}}
     model = session.model
-    causal = [rule for rule in (model.relationship_rules or ()) if isinstance(rule, dict)
-              and str(rule.get("edge_direction", "")) == "causal"]
+    causal = [rule for rule in (model.relationship_rules or ()) if cause_end(rule)]
     if not causal:
         return [], counts, [Decline(
             "missing_config", {"location": "walk"},
-            detail=("no relationship rule declares `edge_direction: causal`, so no "
-                    "walk runs from a finding and nothing can be missing from one"))]
+            detail=("no relationship rule declares `edge_direction: causal` or a "
+                    "`cause:` end, so no walk runs from a finding and nothing can "
+                    "be missing from one"))]
     if problems is None:
         return [], counts, [Decline(
             "precondition_unmet", {"location": "walk"},
@@ -1044,18 +1116,25 @@ def walk_residuals(session: Any, problems: Optional[Sequence[Any]], *,
     incoming = getattr(session.graph, "reverse_edges", {}) or {}
 
     # No cause connected: a relation a causal rule says brings a cause in, and
-    # nothing arrives by it.
-    sources: Dict[Tuple[str, str], Set[str]] = {}
+    # nothing arrives by it. -- from the end the rule names: with the
+    # cause at the source it arrives on an edge into the entity, with the cause
+    # at the target on an edge out of it.
+    sources: Dict[Tuple[str, str, str], Set[str]] = {}
     for rule in causal:
-        sources.setdefault((str(rule.get("target_type", "")), str(rule.get("type", ""))),
-                           set()).add(str(rule.get("source_type", "")))
+        end = cause_end(rule)
+        effect, cause = ((rule.get("target_type"), rule.get("source_type"))
+                         if end == "source" else
+                         (rule.get("source_type"), rule.get("target_type")))
+        sources.setdefault((str(effect or ""), str(rule.get("type", "")), end),
+                           set()).add(str(cause or ""))
     unconnected: Dict[Tuple[str, str], List[str]] = {}
     for unit, result in walked.items():
         for entity_id in [unit] + [row["entity"] for row in result["walk"]["frontier"]]:
-            for (target_type, relation), source_types in sorted(sources.items()):
-                if target_type != type_of(entity_id) or any(
-                        str(kind) == relation and type_of(source) in source_types
-                        for kind, source in incoming.get(entity_id, ())):
+            for (effect_type, relation, end), cause_types in sorted(sources.items()):
+                arriving = (incoming if end == "source" else outgoing).get(entity_id, ())
+                if effect_type != type_of(entity_id) or any(
+                        str(kind) == relation and type_of(other) in cause_types
+                        for kind, other in arriving):
                     continue
                 subjects = unconnected.setdefault((entity_id, relation), [])
                 if unit not in subjects:
@@ -1099,7 +1178,8 @@ def walk_residuals(session: Any, problems: Optional[Sequence[Any]], *,
                 "reason": (f"no rule gives `{relation}` from {type_of(source)} to "
                            f"{type_of(target)} a causal direction, so no walk crosses "
                            f"it; which way a failure runs along it is the model's to "
-                           f"declare, and no reading settles it")})
+                           f"declare, as `cause: source` or `cause: target` on its "
+                           f"rule, and no reading settles it")})
             entry["subjects"] = sorted(set(entry["subjects"]) | set(subjects))
     per: Dict[str, Dict[str, Any]] = {}
     for source, relation, target in sorted(channels):

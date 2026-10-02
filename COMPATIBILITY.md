@@ -137,6 +137,11 @@ the decline `missing_config` at `walk` for a model that declares no causal rule.
 `by_standing` and `confirmed_after_screened`; and `reopened` in `case_book`. `ranked_first`
 keeps its meaning: a cause the walk had screened and the ranking put first is still counted
 there.
+From 0.2.32: on each walk's frontier entries `explains`, `findings_explained` and `actions`;
+`on_frontier_of` on each `plan` candidate; `cause` on each channel `model_describe` lists under
+`causal`; and the rule key `cause`, `source` or `target`. A model that uses the key needs 0.2.32:
+an earlier engine names it `unknown_key` and reads the rule as no causal direction, so its walks
+stop where the key would have carried them.
 
 Three things about it are promises and not accidents:
 

@@ -1088,13 +1088,14 @@ def _causal_coverage(model) -> Dict[str, Any]:
     walk is `cut`, which this says before a capture is fed.
     """
     from arbiter_engine.inference.causal import (
-        SOURCE_DECLARED, _declared_time_course, _weight_from)
+        SOURCE_DECLARED, _declared_time_course, _weight_from, cause_end)
     rules = [rule for rule in (getattr(model, "relationship_rules", None) or [])
              if isinstance(rule, dict)]
     declared: List[Dict[str, Any]] = []
     into: Dict[str, List[str]] = {}
     for rule in rules:
-        if str(rule.get("edge_direction", "")) != "causal":
+        end = cause_end(rule)
+        if end is None:
             continue
         label = (f"{rule.get('source_type', '?')}"
                  f"-{rule.get('type', '?')}->"
@@ -1110,8 +1111,11 @@ def _causal_coverage(model) -> Dict[str, Any]:
             "leak_source": weight.leak_source,
             "propagation_delay_s": delay,
             "time_constant_s": tau,
+            # the end of the relation where a failure starts.
+            "cause": end,
         })
-        into.setdefault(str(rule.get("target_type", "")), []).append(label)
+        effect = rule.get("target_type") if end == "source" else rule.get("source_type")
+        into.setdefault(str(effect or ""), []).append(label)
     findable = sorted(entity_type
                       for entity_type, specs in (model.indicators or {}).items()
                       if any(getattr(spec, "relevant_axioms", None) for spec in specs))
@@ -2507,8 +2511,13 @@ def _stage_reference(stage: str, leg: Dict[str, Any]) -> Dict[str, Any]:
             for c in (leg.get("candidates") or [])],
             "most_discriminating": leg.get("most_discriminating"),
             "ranked_by": (walk or {}).get("ranked_by"),
+            # each frontier entity and its own findings, as 0.2.31
+            # kept them; what it explains below it is the walk's, not the case's.
             "walk": ({"state": walk.get("state"),
-                      "frontier": list(walk.get("frontier") or [])}
+                      "frontier": [{"entity": row.get("entity"),
+                                    "findings": row.get("findings")}
+                                   for row in walk.get("frontier") or []
+                                   if isinstance(row, dict)]}
                      if isinstance(walk, dict) else None),
             "beyond_bound": leg.get("beyond_bound"),
             "reported": (leg.get("checked") or {}).get("reported")}
@@ -2665,6 +2674,9 @@ def case_book(session: EngineSession) -> Envelope:
 
 def _stage_readiness(model: Any) -> Dict[str, Dict[str, Any]]:
     """Per stage of the loop: does this model declare what the stage reads."""
+    # Relative, as `_located_residuals` imports the walk arm, so the import
+    # count stays where the record has it.
+    from .inference.causal import cause_end
     rules = [r for r in (model.relationship_rules or ()) if isinstance(r, dict)]
     templates = list(model.action_templates or ())
     _, _, case_why = model.case_criterion()
@@ -2673,9 +2685,9 @@ def _stage_readiness(model: Any) -> Dict[str, Dict[str, Any]]:
                                   for specs in (model.indicators or {}).values()
                                   for spec in specs),
                   "reads": "indicators that declare axioms"},
-        "hypothesize": {"declared": any(r.get("edge_direction") == "causal"
-                                        for r in rules),
-                        "reads": "relationship rules with edge_direction: causal"},
+        "hypothesize": {"declared": any(cause_end(r) for r in rules),
+                        "reads": "relationship rules with edge_direction: causal, "
+                                 "or a cause: end"},
         "plan": {"declared": bool(templates)
                  and bool((model.planning or {}).get("objective")),
                  "reads": "action_templates and planning.objective"},
@@ -2705,6 +2717,26 @@ def _stage_readiness(model: Any) -> Dict[str, Dict[str, Any]]:
 
 def _case_book_of(session: EngineSession) -> Any:
     return getattr(getattr(session, "ledger", None), "case_book", None)
+
+
+def _open_frontiers(session: EngineSession) -> Dict[str, List[str]]:
+    """Entity -> the open cases whose last walk holds it at the frontier.
+
+    Read from the case book's `hypothesize` attachments, which keep the walk
+    from 0.2.31; a case whose last ranking kept none holds nobody here. With no
+    case book the map is empty."""
+    book = _case_book_of(session)
+    out: Dict[str, List[str]] = {}
+    for case in (book.cases() if book is not None else ()):
+        if case.status != "open":
+            continue
+        walks = [entry["reference"] for entry in case.stages.get("hypothesize") or ()
+                 if isinstance(entry.get("reference"), dict)]
+        walk = walks[-1].get("walk") if walks else None
+        for row in (walk.get("frontier") or ()) if isinstance(walk, dict) else ():
+            if isinstance(row, dict) and row.get("entity"):
+                out.setdefault(str(row["entity"]), []).append(case.case_id)
+    return out
 
 
 def _declared_spec(session: EngineSession, entity_type: str,
@@ -2948,6 +2980,7 @@ def plan(session: EngineSession,
     )
     payload = envelope.to_dict()
     plan_payload = sub.to_dict()
+    frontiers = _open_frontiers(session)
     plan_payload["objective"] = result.objective
     plan_payload["direction"] = result.direction
     plan_payload["ranked"] = result.ranked
@@ -2970,6 +3003,10 @@ def plan(session: EngineSession,
             # of doubt that decides it where the call is closest.
             "reaches": [dict(row) for row in c.reaches],
             "decisive": dict(c.decisive) if c.decisive else None,
+            # the open cases whose last walk holds an entity this
+            # plan acts on at its frontier. No ranking moves.
+            "on_frontier_of": sorted({case_id for a in c.actions
+                                      for case_id in frontiers.get(a.entity_id, ())}),
             "checked": dict(c.checked),
         }
         for c in result.candidates

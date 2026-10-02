@@ -17,6 +17,17 @@ predictive precedence. This module consumes only `edge_direction: causal` from
 here silently would close a loop the engine is not entitled to close: infer
 structure from correlation, then compute probabilities as though the structure
 were given.
+
+A CAUSE AT THE TARGET OF ITS RELATION. A process depends on
+a department, and a failure runs from the department to the process: against the
+edge the author feeds. `cause: target` on the rule says so, and `cause: source`
+says what `edge_direction: causal` says. The key stands alone: beside
+`edge_direction: causal`, which names the source, `cause: target` contradicts it,
+and neither is applied -- the rule carries no causal direction, and the loader
+names the pair. An engine before the key reads a rule carrying only `cause:` as
+no causal direction at all, so the walk stops there and is never walked
+backwards; the pair is refused rather than reconciled because such an engine
+WOULD walk it backwards.
 """
 
 from __future__ import annotations
@@ -30,7 +41,30 @@ from ..types import DEFAULT_CAUSAL_ROOT_PRIOR, read_causal_root_prior
 
 __all__ = ["EdgeWeight", "CausalGraph", "causal_subgraph",
            "SOURCE_DECLARED", "SOURCE_LEARNED", "SOURCE_DEFAULT",
-           "DEFAULT_WEIGHT", "DEFAULT_LEAK"]
+           "DEFAULT_WEIGHT", "DEFAULT_LEAK", "cause_end"]
+
+#: the ends of a relation a `cause:` key may name.
+_CAUSE_ENDS = ("source", "target")
+
+
+def cause_end(rule: Any) -> Optional[str]:
+    """`"source"` or `"target"` -- the end of the rule's relation where a failure
+    starts -- or `None` when the rule declares no causal direction.
+
+    `edge_direction: causal` names the source. `cause:` names either end on its
+    own. Beside `edge_direction: causal`, `cause: target` contradicts it and
+    neither applies. A `cause:` value that is not an end is not applied, and the
+    rule keeps whatever `edge_direction` says. The loader reports both.
+    """
+    if not isinstance(rule, dict):
+        return None
+    causal = str(rule.get("edge_direction", "")) == "causal"
+    end = rule.get("cause")
+    if end not in _CAUSE_ENDS:
+        return "source" if causal else None
+    if causal and end == "target":
+        return None
+    return end
 
 SOURCE_DECLARED = "declared"
 SOURCE_LEARNED = "learned"
@@ -214,21 +248,26 @@ def causal_subgraph(model, graph, entities,
                 if source is None or target is None:
                     continue
                 rule = rules.get((source.type, target.type, str(relation)))
-                if not rule or str(rule.get("edge_direction", "")) != "causal":
+                end = cause_end(rule)
+                if end is None:
                     continue
-                for node in (source_id, target_id):
+                # the cause is the end the rule names; with
+                # `cause: target` the edge is walked against its feed.
+                cause, effect = ((source_id, target_id) if end == "source"
+                                 else (target_id, source_id))
+                for node in (cause, effect):
                     if node not in out.parents:
                         out.parents[node] = []
                         out.nodes.append(node)
-                out.parents[target_id].append(source_id)
-                out.weights[(source_id, target_id)] = _weight_from(
-                    rule, learned.get((source_id, target_id)))
+                out.parents[effect].append(cause)
+                out.weights[(cause, effect)] = _weight_from(
+                    rule, learned.get((cause, effect)))
                 latent = rule.get("latent_confounder")
                 if latent:
-                    out.latents[(source_id, target_id)] = str(latent)
+                    out.latents[(cause, effect)] = str(latent)
                 delay, tau = _declared_time_course(rule)
-                out.delays[(source_id, target_id)] = delay
-                out.time_constants[(source_id, target_id)] = tau
+                out.delays[(cause, effect)] = delay
+                out.time_constants[(cause, effect)] = tau
     return out
 
 
