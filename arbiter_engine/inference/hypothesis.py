@@ -487,6 +487,8 @@ class _Upward(NamedTuple):
     read_at: Dict[str, List[str]]
     anchor: Optional[datetime]
     stamps: Set[str]
+    #: the declared causes past `causal.max_hops`, by name.
+    beyond: List[str]
 
 
 def _upward(session: Any, entity_id: str, check: Optional[Callable[[Any], Any]],
@@ -507,9 +509,9 @@ def _upward(session: Any, entity_id: str, check: Optional[Callable[[Any], Any]],
     if graph is None:
         graph = causal_subgraph(session.model, session.graph, session.entities)
 
-    def nothing() -> _Upward:
+    def nothing(beyond: List[str]) -> _Upward:
         return _Upward(graph, checked, declines, [], None, {}, False, None, {},
-                       None, set())
+                       None, set(), beyond)
 
     if entity_id not in graph.nodes:
         declines.append(Decline(
@@ -518,11 +520,15 @@ def _upward(session: Any, entity_id: str, check: Optional[Callable[[Any], Any]],
                     f"there is nothing upstream of it to rank. An edge enters "
                     f"that graph by declaring `edge_direction: causal`; this "
                     f"verb does not search for one.")))
-        return nothing()
+        return nothing([])
 
     candidates = _ancestors(graph, entity_id, hop_bound)
     checked["candidates"] = len(candidates)
-    beyond = len(graph.ancestors(entity_id) - {entity_id}) - len(candidates)
+    # BY NAME, so a case can say a confirmed cause was declared and
+    # out of reach rather than not connected at all.
+    past = sorted(graph.ancestors(entity_id) - {entity_id}
+                  - {node for node, _hops, _path in candidates})
+    beyond = len(past)
     if beyond > 0:
         # A RANKING CUT SHORT IS NEVER READ AS WHOLE. Declared causes
         # past the bound are not ranked, and the count says how many.
@@ -540,7 +546,7 @@ def _upward(session: Any, entity_id: str, check: Optional[Callable[[Any], Any]],
                     f"{hop_bound} hops, so the model offers nothing that could "
                     f"explain a finding on it. That is a statement about the "
                     f"model and not about the system.")))
-        return nothing()
+        return nothing(past)
 
     # WHEN EACH CAUSE IS READ. Only a declared dead time moves a
     # read, and a model declaring none gets exactly the evidence it always did.
@@ -568,7 +574,7 @@ def _upward(session: Any, entity_id: str, check: Optional[Callable[[Any], Any]],
                for summaries in walks.values()):
             stamps.add(READ_AT_EACH_PATH_DELAY)
     return _Upward(graph, checked, declines, candidates, severities, walks,
-                   aligned, evidence, read_at, anchor, stamps)
+                   aligned, evidence, read_at, anchor, stamps, past)
 
 
 def _evidence_of(session: Any, up: _Upward, node: str) -> Dict[str, Any]:
@@ -585,8 +591,9 @@ def hypothesize(session: Any, entity_id: str, *,
     """Rank the declared causes of a finding on `entity_id`.
 
     Returns the sub-envelope, the ranked candidates and what the ranking
-    carries beside them -- `most_discriminating` and, when a declared delay
-    moved a read, `read_at` -- which the caller attaches. The shape `entail`
+    carries beside them -- `most_discriminating`, the declared causes past the
+    bound by name as `beyond_bound`, and, when a declared delay moved a read,
+    `read_at` -- which the caller attaches. The shape `entail`
     already uses, because `SubEnvelope` is frozen and a verb that mutated one
     would be the only thing here that did.
 
@@ -610,6 +617,7 @@ def hypothesize(session: Any, entity_id: str, *,
     up = _upward(session, entity_id, check)
     graph, checked, declines, candidates = (up.graph, up.checked, up.declines,
                                             up.candidates)
+    extras["beyond_bound"] = list(up.beyond)
     if not candidates:
         extras["walk"] = _cut_walk()
         return SubEnvelope("inference", checked, not_checked=declines), [], extras

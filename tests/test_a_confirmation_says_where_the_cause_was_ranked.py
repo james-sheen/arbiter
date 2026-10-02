@@ -96,14 +96,22 @@ class TestWhereTheConfirmedCauseStood:
                                        "basis": "site visit"})
         # An internal ruling added what the ranking rested on and the entity comparison:
         # this chain declares strengths, so its ranking is by posterior.
+        # An internal ruling added where the cause stood on that walk: both causes unread,
+        # so open, on an open walk.
         assert _confirmed(session) == {
             "confirmations": 1, "ranked_first": 1, "ranked": 1, "not_ranked": 0,
             "ranked_by_posterior": 1, "ranked_first_by_posterior": 1,
             "named_reading_settled_it": 1,
             "settling_reading_given": 1, "settling_reading_was_named": 1,
             "settling_entity_was_named": 1,
+            "by_standing": {"frontier": 0, "trail": 0, "open": 1, "screened": 0,
+                            "beyond_bound": 0, "not_connected": 0},
+            "confirmed_after_screened": 0,
             "rows": [{"case_id": case_id, "cause": "tank-1", "rank": 1, "of": 2,
-                      "ranked_by": "posterior", "named_by": "strengths",
+                      "ranked_by": "posterior",
+                      "standing": "open", "walk_state": "open",
+                      "basis": "site visit", "walks_before": 1,
+                      "named_by": "strengths",
                       "named_reading_settled_it": True,
                       "named_reading": "tank-1.level_pct",
                       "settling_reading": "tank-1.level_pct",
@@ -157,14 +165,16 @@ class TestWhereTheConfirmedCauseStood:
         _confirm(session, _open(session), 1, {"cause": "tank-1"})
         confirmed = _confirmed(session)
         # An internal ruling added the two counts of the reading that settled it;
-        # the counts of rankings a posterior decided and of the entity named.
+        # the counts of rankings a posterior decided and of the entity named;
+        # the counts by standing and of the causes the walk screened.
         assert set(confirmed) == {"confirmations", "ranked_first", "ranked",
                                   "not_ranked", "ranked_by_posterior",
                                   "ranked_first_by_posterior",
                                   "named_reading_settled_it",
                                   "settling_reading_given",
                                   "settling_reading_was_named",
-                                  "settling_entity_was_named", "rows"}
+                                  "settling_entity_was_named", "by_standing",
+                                  "confirmed_after_screened", "rows"}
         assert not any(isinstance(v, float) for v in confirmed.values())
 
 

@@ -129,7 +129,14 @@ key `causal.root_prior`, the stamp `root_prior_not_declared`, and `root_prior` w
 walk's four kinds -- `no_cause_connected`, `unexplained_finding`, `undeclared_channel` and
 `confirmed_outside_graph`, the last with the confirmation's own `basis` -- with
 `checked.walks_read`, `walk_states`, `confirmations_read` and `undeclared_channels`, and
-the decline `missing_config` at `walk` for a model that declares no causal rule.
+the decline `missing_config` at `walk` for a model that declares no causal rule. From 0.2.31:
+`beyond_bound` on `hypothesize`, the causes `checked.beyond_bound` counts, by name; on a case's
+`hypothesize` attachment each cause's `standing`, `state` and `needs`, with `walk`,
+`beyond_bound` and `reported`; `relation` and `reason` on its `gaps` attachment; on each
+`confirmed` row `standing`, `walk_state`, `basis` and `walks_before`, with the totals
+`by_standing` and `confirmed_after_screened`; and `reopened` in `case_book`. `ranked_first`
+keeps its meaning: a cause the walk had screened and the ranking put first is still counted
+there.
 
 Three things about it are promises and not accidents:
 

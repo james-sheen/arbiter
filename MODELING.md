@@ -1494,6 +1494,30 @@ reading did not sit on the pump. The counts sit beside the rows:
 was the one is the number that says whether a ranking is worth reading, and
 over a handful of cases a rate would hide how few there were.
 
+**A case keeps the walk, and a row says where its cause stood on it.** A
+`hypothesize` attachment keeps, per cause, its `standing`, the `state` its checks
+gave and the readings they could not take as `needs`; the walk's `state` and
+`frontier`; `beyond_bound`, the declared causes past `causal.max_hops` by name;
+and `reported`, how many causes `report_above` kept where it cut them, null
+otherwise. Each `confirmed` row reads that record alone, so a session holding the
+ledger and nothing else gives the same row:
+
+| Field | What it says |
+|---|---|
+| `standing` | the cause's standing on the last walk before the confirmation -- `frontier`, `trail`, `open` or `screened`; `beyond_bound` when that walk named it past the bound; `not_connected` when it neither ranked nor named it. Null when that ranking kept no walk (one attached before 0.2.31), and when `report_above` cut this cause from it |
+| `walk_state` | that walk's state |
+| `basis` | the confirmation's own `basis`, as the person gave it |
+| `walks_before` | how many rankings the case held before the confirmation |
+
+`by_standing` counts the rows at each standing, and `confirmed_after_screened`
+those whose cause the walk had screened: the walk's own surprise, which says the
+stamped assumption failed or the evidence floor hid a fault. `ranked_first`
+keeps its meaning, so a screened cause the ranking put first is counted in both.
+A `gaps` attachment keeps each located row's `relation` and `reason` where the
+row carries them. Beside `opened`, `resolved` and `open`, `case_book` counts
+`reopened`: the cases opened on an entity and indicator whose earlier case there
+had resolved.
+
 ## What the observations say the model lacks: `gaps`
 
 Everything else `gaps` reports is read off the declaration: a threshold nobody

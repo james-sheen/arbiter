@@ -2492,11 +2492,26 @@ def _stage_reference(stage: str, leg: Dict[str, Any]) -> Dict[str, Any]:
         # say. Bounded by the declared graph within `causal.max_hops`.
         # and the order it was ranked in, which a confirmed row
         # reports: without posteriors that is the standing now, not hop order.
+        # AND THE WALK: each cause's standing, the state its checks
+        # gave and the readings they could not take; the walk's state and its
+        # frontier; the declared causes past the bound, by name; and, when
+        # `report_above` cut the causes, how many it kept. A confirmation is
+        # read back against this record alone, because a vertical confirms on
+        # a session holding the ledger and nothing else.
+        walk = leg.get("walk")
         return {"causes": [
-            {"cause": c.get("cause"), "posterior": c.get("posterior")}
+            {"cause": c.get("cause"), "posterior": c.get("posterior"),
+             "standing": c.get("standing"),
+             "state": (c.get("evidence") or {}).get("state"),
+             "needs": list((c.get("evidence") or {}).get("needs") or [])}
             for c in (leg.get("candidates") or [])],
             "most_discriminating": leg.get("most_discriminating"),
-            "ranked_by": (leg.get("walk") or {}).get("ranked_by")}
+            "ranked_by": (walk or {}).get("ranked_by"),
+            "walk": ({"state": walk.get("state"),
+                      "frontier": list(walk.get("frontier") or [])}
+                     if isinstance(walk, dict) else None),
+            "beyond_bound": leg.get("beyond_bound"),
+            "reported": (leg.get("checked") or {}).get("reported")}
     if stage == "plan":
         # the downward answer as the case needs it later: which plan,
         # against what, what it reaches, and the one source its margin rests on
@@ -2516,10 +2531,11 @@ def _stage_reference(stage: str, leg: Dict[str, Any]) -> Dict[str, Any]:
     if stage == "gaps":
         # what the declaration could not explain, located, each with
         # the axiom or pair that produced it and the reading that would settle
-        # it, where one was named.
+        # it, where one was named. -- and, where a located row carries
+        # them, its relation and the reason no reading settles it.
         return {"hypotheses": [
             {key: h.get(key) for key in ("kind", "at", "between", "on", "basis",
-                                         "evidence_needed")
+                                         "evidence_needed", "relation", "reason")
              if h.get(key) is not None}
             for h in (leg.get("hypotheses") or [])]}
     return {}
@@ -3733,6 +3749,9 @@ def hypothesize(session: EngineSession, entity_id: str,
         payload["hypothesis"]["read_at"] = extras["read_at"]
     # the walk as a whole, and why no reading is named when none is.
     payload["hypothesis"]["walk"] = extras.get("walk")
+    # the declared causes past `causal.max_hops`, by name, beside
+    # the count `checked.beyond_bound` gives, as `candidates` sits beside its.
+    payload["hypothesis"]["beyond_bound"] = extras.get("beyond_bound")
     if extras.get("most_discriminating_reason"):
         payload["hypothesis"]["most_discriminating_reason"] = (
             extras["most_discriminating_reason"])

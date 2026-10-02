@@ -34,6 +34,20 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+## [0.2.31] — 2026-10-02
+
+### Added
+
+- **A case keeps the walk.** A `hypothesize` attachment keeps each cause's `standing`, `state`
+  and `needs`, the walk's `state` and `frontier`, and `beyond_bound`, the declared causes past
+  `causal.max_hops` by name, which the `hypothesize` leg now gives beside its count. A `gaps`
+  attachment keeps each located row's `relation` and `reason`.
+- **A confirmed row says where its cause stood:** `standing` on the last walk before it (or
+  `beyond_bound`, or `not_connected`; null for a ranking kept by an earlier release),
+  `walk_state`, the confirmation's `basis` and `walks_before`. The totals gain `by_standing` and
+  `confirmed_after_screened`, and `case_book` counts `reopened`. All of it is read from the
+  record, so a session holding only the ledger answers the same.
+
 ## [0.2.30] — 2026-10-01
 
 ### Added

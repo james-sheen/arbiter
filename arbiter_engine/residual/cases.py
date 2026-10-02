@@ -129,9 +129,29 @@ class CaseBook:
             "opened": len(cases),
             "resolved": sum(1 for c in cases if c.status == RESOLVED),
             "open": sum(1 for c in cases if c.status == OPEN),
+            "reopened": reopened(cases),
             "confirmed": confirmed_causes(cases),
             "cases": [c.to_dict() for c in cases],
         }
+
+
+def reopened(cases: List[Case]) -> int:
+    """How many cases opened on an entity and indicator whose earlier case
+    there had already resolved. -- a problem that comes back is not a
+    new one, and `opened` beside `resolved` counted it as one: two cases, one
+    resolved, read as half the work done when the one problem had returned.
+
+    Paired on the entity AND the indicator, so a second case on another of
+    the entity's indicators is a new problem. Each case counts once, however
+    many resolved before it."""
+    resolved_at: Dict[tuple, List[tuple]] = {}
+    for case in cases:
+        if case.status == RESOLVED and case.resolved_at:
+            resolved_at.setdefault((case.entity_id, case.indicator), []).append(
+                (str(case.resolved_at), case.case_id))
+    return sum(1 for case in cases if any(
+        at <= str(case.opened_at) and other != case.case_id
+        for at, other in resolved_at.get((case.entity_id, case.indicator), ())))
 
 
 def confirmed_causes(cases: List[Case]) -> Dict[str, Any]:
@@ -170,6 +190,21 @@ def confirmed_causes(cases: List[Case]) -> Dict[str, Any]:
     as not named; `settling_entity_was_named` asks whether the settling reading
     is on the entity the ranking pointed at, which is the question the count is
     for. All three are additive: every field above keeps its meaning.
+
+    A RANK SAYS NOTHING ABOUT THE WALK, and a screened cause
+    confirmed read as a success: on a board whose only candidate is a fan,
+    the walk read the fan sound and screened it, and the fan confirmed stood
+    "rank 1 of 1", counted in `ranked_first`. Each row now says the cause's
+    `standing` on that last walk -- its own, or `beyond_bound` when the walk
+    counted it among the declared causes past `causal.max_hops`, or
+    `not_connected` when it neither ranked nor counted it -- with the walk's
+    `walk_state`, the confirmation's own `basis`, and `walks_before`, the
+    rankings the case held before it. All of it is read from what the
+    attachments kept, so a session holding only the ledger gives the same
+    row. `by_standing` counts the rows at each standing, and
+    `confirmed_after_screened` the causes the walk had screened -- the walk's
+    own surprise. `ranked_first` keeps its meaning: such a cause ranked first
+    is still counted there, and the new total says the walk had screened it.
     """
     rows: List[Dict[str, Any]] = []
     for case in cases:
@@ -188,12 +223,18 @@ def confirmed_causes(cases: List[Case]) -> Dict[str, Any]:
             named_reading = _text(discriminating.get("reading"))
             settling = _text(reference.get("reading"))
             rank = causes.index(cause) + 1 if cause in causes else None
+            walk = ranking.get("walk")
             rows.append({
                 "case_id": case.case_id, "cause": cause,
                 "rank": rank,
                 "of": len(causes),
                 "ranked_by": (_ranked_by(ranked_rows, ranking.get("ranked_by"))
                               if rank is not None else None),
+                "standing": _standing(ranking, ranked_rows, cause),
+                "walk_state": walk.get("state") if isinstance(walk, dict) else None,
+                "basis": _text(reference.get("basis")),
+                "walks_before": sum(1 for entry in before
+                                    if isinstance(entry.get("reference"), dict)),
                 "named_by": _text(discriminating.get("basis")),
                 "named_reading_settled_it": bool(named) and named == cause,
                 "named_reading": named_reading,
@@ -208,6 +249,8 @@ def confirmed_causes(cases: List[Case]) -> Dict[str, Any]:
             })
     ranked = [row for row in rows if row["rank"] is not None]
     by_posterior = [row for row in ranked if row["ranked_by"] == "posterior"]
+    by_standing = {standing: sum(1 for row in rows if row["standing"] == standing)
+                   for standing in _STANDINGS}
     return {
         "confirmations": len(rows),
         "ranked_first": sum(1 for row in ranked if row["rank"] == 1),
@@ -224,8 +267,39 @@ def confirmed_causes(cases: List[Case]) -> Dict[str, Any]:
             1 for row in rows if row["settling_reading_was_named"]),
         "settling_entity_was_named": sum(
             1 for row in rows if row["settling_entity_was_named"]),
+        "by_standing": by_standing,
+        "confirmed_after_screened": by_standing["screened"],
         "rows": rows,
     }
+
+
+#: where a confirmed cause can have stood on the last walk before
+#: it: the walk's four standings, then declared but past `causal.max_hops`,
+#: then neither ranked nor counted.
+_STANDINGS = ("frontier", "trail", "open", "screened", "beyond_bound",
+             "not_connected")
+
+
+def _standing(ranking: Dict[str, Any], ranked_rows: List[Dict[str, Any]],
+              cause: Any) -> Optional[str]:
+    """Where `cause` stood on the walk a ranking kept, read from that record
+    alone: no graph, because a vertical confirms on a session holding the
+    ledger and nothing else.
+
+    `None` when the ranking kept no walk -- one attached before 0.2.31, a
+    stage that could not run, or none at all -- and when `report_above` cut
+    the causes and this one is not among those kept: where it stood was not
+    kept, which is not the same as not connected."""
+    if not isinstance(ranking.get("walk"), dict):
+        return None
+    for row in ranked_rows:
+        if row.get("cause") == cause:
+            return row.get("standing")
+    if cause in (ranking.get("beyond_bound") or ()):
+        return "beyond_bound"
+    if ranking.get("reported") is not None:
+        return None
+    return "not_connected"
 
 
 def _ranked_by(causes: List[Dict[str, Any]], kept: Any = None) -> Optional[str]:
