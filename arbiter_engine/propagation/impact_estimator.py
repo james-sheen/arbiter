@@ -92,12 +92,21 @@ class ImpactForecast:
                         affected.
     max_hop_distance:   Furthest entity reached by the BFS.
     generated_at:       UTC timestamp when this forecast was produced.
+    assumptions:        Engine-made assumptions the forecast rests on.
+    not_followed:       What the walk behind it did not follow.
     """
     source_problem: Problem
     downstream_impacts: List[DownstreamImpact] = field(default_factory=list)
     total_affected: int = 0
     max_hop_distance: int = 0
     generated_at: datetime = field(default_factory=now_utc)
+    #: `TopologyTraverser.predict_impact` stamps
+    #: `walk_floor_not_declared` and `walk_depth_not_declared` here when its own
+    #: bounds left an edge. `max_hop_distance` is how far the WALK went.
+    assumptions: List[str] = field(default_factory=list)
+    #: In the shape of `TraversalResult.not_followed`. None from a producer
+    #: whose walk keeps no such record -- `ImpactEstimator` among them.
+    not_followed: Optional[Dict[str, Dict[str, Any]]] = None
 
     def as_problems(self, entity_registry: Optional[Dict[str, Entity]] = None) -> List[Problem]:
         """Convert significant downstream impacts to :class:`Problem` instances.

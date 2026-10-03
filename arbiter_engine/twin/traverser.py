@@ -30,6 +30,8 @@ from ..assumptions import (
     SERIES_EDGES_COMPOSE_BY_PRODUCT,
     STEADY_STATE_REACHED,
     TIME_COURSE_NOT_DECLARED,
+    WALK_DEPTH_NOT_DECLARED,
+    WALK_FLOOR_NOT_DECLARED,
 )
 from ..interfaces import Entity, Problem, ObservationHistory
 from ..types import Axiom, Severity, DetectionLayer, AxiomParameters
@@ -273,6 +275,93 @@ def _project_declared(values, spec, horizon_s: float):
     ), None, _curve(fitted)
 
 
+#: how many of the edges a walk left are named, per kind.
+#: The count is always whole; the names are the first few by hop.
+_NOT_FOLLOWED_NAMED = 5
+
+#: The hop bound `discover_gaps` walks to. The engine's number, not a caller's.
+_GAP_WALK_MAX_HOPS = 4
+
+
+def _not_followed_record(cuts, reached, bounds) -> Dict[str, Dict[str, Any]]:
+    """What a walk left, from the cuts it noted: only edges whose target it
+    never reached, counted per kind, the first few named. Empty when nothing
+    was left. See `TraversalResult.not_followed`."""
+    record: Dict[str, Dict[str, Any]] = {}
+    seen: Set[Tuple[str, str, str]] = set()
+    for kind, start, source, target, hop, probability in cuts:
+        if target in reached or (kind, source, target) in seen:
+            continue
+        seen.add((kind, source, target))
+        entry = record.setdefault(
+            kind, {"bound": bounds[kind], "edges": 0, "first": []})
+        entry["edges"] += 1
+        named = {"start": start, "from": source, "to": target, "hop": hop}
+        if probability is not None:
+            named["probability"] = round(probability, 6)
+        entry["first"].append(named)
+    for entry in record.values():
+        entry["first"] = sorted(
+            entry["first"], key=lambda e: (e["hop"], e["from"], e["to"])
+        )[:_NOT_FOLLOWED_NAMED]
+    return record
+
+
+def _merge_not_followed(records) -> Dict[str, Dict[str, Any]]:
+    """Several walks' records as one: counts summed over the walks, the named
+    edges pooled, the first few kept. `find_root_causes` walks once per
+    candidate, and every one of those walks shaped the cover."""
+    merged: Dict[str, Dict[str, Any]] = {}
+    for record in records:
+        for kind, entry in (record or {}).items():
+            into = merged.setdefault(
+                kind, {"bound": entry["bound"], "edges": 0, "first": []})
+            into["edges"] += entry["edges"]
+            for named in entry["first"]:
+                if named not in into["first"]:
+                    into["first"].append(named)
+    for entry in merged.values():
+        entry["first"] = sorted(
+            entry["first"],
+            key=lambda e: (e["hop"], e["start"], e["from"], e["to"])
+        )[:_NOT_FOLLOWED_NAMED]
+    return merged
+
+
+def _engine_stamps(record, *, floor: bool, depth: bool) -> List[str]:
+    """The `walk_*_not_declared` stamps a record earns, for the bounds the
+    CALLER says were the engine's. A bound a caller set earns none: the claim
+    is that the engine's number decided, not that the number is low."""
+    stamps: List[str] = []
+    if floor and record and "below_floor" in record:
+        stamps.append(WALK_FLOOR_NOT_DECLARED)
+    if depth and record and "past_max_hops" in record:
+        stamps.append(WALK_DEPTH_NOT_DECLARED)
+    return stamps
+
+
+class WalkQuestions(list):
+    """The questions a gap walk raised -- a list, as `discover_gaps` always
+    returned -- carrying what the walk did not follow and what that earned.
+
+    The bare list could not say that the walk had stopped:
+    measured on 0.2.32, `gaps` asked from a start node returned no question
+    about a missing node five hops out, and nothing in the answer told it from
+    a topology with no such node. A subclass, so every caller that iterates,
+    sorts or slices it keeps working.
+    """
+
+    def __init__(self, questions=(), *, not_followed=None, assumptions=(),
+                 max_hops: Optional[int] = None):
+        super().__init__(questions)
+        #: As `TraversalResult.not_followed`.
+        self.not_followed = not_followed
+        #: The `walk_*_not_declared` stamps the walk's bounds earned.
+        self.assumptions = list(assumptions)
+        #: The hop bound the walk had.
+        self.max_hops = max_hops
+
+
 class TopologyTraverser:
     """Unified traversal engine for the Digital Twin topology."""
 
@@ -394,6 +483,13 @@ class TopologyTraverser:
         #: afterwards, so a node's value is complete before anything reads it.
         pending_transitions: List[Tuple[Any, str, str, float, TwinNode]] = []
         budget_left = max(0, int(request.max_transitions))
+        #: Every edge the walk declined to take, noted
+        #: where it declined: `(kind, start, from, to, hop, probability)`.
+        #: Kept in the record only if nothing else reached the target.
+        cuts: List[Tuple[str, str, str, str, int, Optional[float]]] = []
+        #: Edges followed to an entity the topology does not hold. The walk
+        #: reached them -- as far as there was anything to reach.
+        reached_missing: Set[str] = set()
 
         # BFS queue: (entity_id, hop, cum_prob, cum_delay, path)
         queue: deque = deque()
@@ -475,9 +571,6 @@ class TopologyTraverser:
             result.steps.append(step)
 
             # Get edges based on direction
-            if hop >= request.max_hops:
-                continue
-
             # BIDIRECTIONAL traversal derives next_id per source
             # collection. Pre-fix the loop used ``edge.target_id`` for
             # everything except direction=REVERSE, so reverse_edges
@@ -499,6 +592,22 @@ class TopologyTraverser:
             ):
                 for e in self.topology.reverse_edges.get(current_id, []):
                     edges_with_next.append((e, e.source_id))
+
+            if hop >= request.max_hops:
+                # the walk stops here, and it used to stop
+                # without a word: a walk its bound cut short and one that had
+                # reached everything returned the same shape. The edges it
+                # would have taken next are noted, filtered as below; one whose
+                # target another path reaches drops out at the end.
+                for edge, next_id in edges_with_next:
+                    if request.edge_filter and edge.direction not in request.edge_filter:
+                        continue
+                    if request.flow_filter and edge.flow_type not in request.flow_filter:
+                        continue
+                    if next_id not in visited:
+                        cuts.append(("past_max_hops", path[0], current_id,
+                                     next_id, hop + 1, None))
+                continue
 
             for edge, next_id in edges_with_next:
                 # Edge filters
@@ -595,12 +704,17 @@ class TopologyTraverser:
 
                 # Pruning
                 if new_prob < request.min_probability and not simulated_here:
+                    cuts.append(("below_floor", path[0], current_id, next_id,
+                                 hop + 1, new_prob))
                     continue
                 if new_delay > request.max_delay_s:
+                    cuts.append(("past_max_delay", path[0], current_id,
+                                 next_id, hop + 1, None))
                     continue
 
                 # Check if next node is missing
                 if next_id not in self.topology.nodes:
+                    reached_missing.add(next_id)
                     if request.collect_gaps:
                         gap = TopologyGap(
                             gap_type=GapType.MISSING_NODE,
@@ -640,6 +754,11 @@ class TopologyTraverser:
                         path=path + [next_id],
                     ))
 
+        result.not_followed = _not_followed_record(
+            cuts, visited | reached_missing,
+            {"below_floor": request.min_probability,
+             "past_max_hops": request.max_hops,
+             "past_max_delay": request.max_delay_s})
         result.total_nodes_visited = len(visited)
         if simulating and pending_transitions:
             budget_left = self._apply_in_dependency_order(
@@ -738,6 +857,7 @@ class TopologyTraverser:
         footprints: Dict[str, Set[str]] = {}
         footprint_probs: Dict[str, float] = {}
         footprint_hops: Dict[str, float] = {}
+        walks_left: List[Dict[str, Dict[str, Any]]] = []
 
         for cid in candidates:
             result = self.traverse(TraversalRequest(
@@ -748,6 +868,7 @@ class TopologyTraverser:
                 collect_axiom_violations=False,
                 collect_gaps=False,
             ))
+            walks_left.append(result.not_followed or {})
             covered = {
                 s.node_id for s in result.steps
                 if s.node_id in anomalies
@@ -771,7 +892,7 @@ class TopologyTraverser:
                     sum(hops_list) / len(hops_list) if hops_list else 0.0
                 )
 
-        return select_root_causes_via_set_cover(
+        answer = select_root_causes_via_set_cover(
             footprints=footprints,
             footprint_probs=footprint_probs,
             footprint_hops=footprint_hops,
@@ -779,6 +900,15 @@ class TopologyTraverser:
             max_roots=max_roots,
             min_coverage=min_coverage,
         )
+        # both bounds above are this method's, and every
+        # edge carries the builder's 0.3, so a candidate's footprint ends at its
+        # second hop. Measured on 0.2.32: a four-node chain whose head explains
+        # all four came back with two roots, and nothing said why. The answer
+        # is unchanged; it now says where each walk stopped.
+        answer.not_followed = _merge_not_followed(walks_left)
+        answer.assumptions = _engine_stamps(
+            answer.not_followed, floor=True, depth=True)
+        return answer
 
     def predict_impact(
         self,
@@ -802,11 +932,18 @@ class TopologyTraverser:
         max_hop = max(
             (i.hop_distance for i in sorted_impacts), default=0
         )
+        # `max_hop_distance` is how far the WALK went,
+        # and on undeclared edges this method's own floor stops it at the
+        # second hop: 2 affected on a six-node chain where 4 lie within its
+        # hops. The stamps and the record say which number stopped it.
         return ImpactForecast(
             source_problem=problem,
             downstream_impacts=sorted_impacts,
             total_affected=len(sorted_impacts),
             max_hop_distance=max_hop,
+            assumptions=_engine_stamps(
+                result.not_followed, floor=True, depth=True),
+            not_followed=result.not_followed,
         )
 
     def check_conservation(self, node_id: str) -> List[Problem]:
@@ -870,7 +1007,7 @@ class TopologyTraverser:
         does not offer: asking for ten minutes returned the one-hour answer
         with nothing to say it had.
         """
-        return self.traverse(TraversalRequest(
+        result = self.traverse(TraversalRequest(
             start_nodes=list(overrides.keys()),
             direction=TraversalDirection.FORWARD,
             value_mode=ValueMode.HYPOTHETICAL,
@@ -879,15 +1016,28 @@ class TopologyTraverser:
             min_probability=0.05,
             horizon_s=horizon_s,
         ))
+        # a declared coupling is never pruned on
+        # probability, so what this floor stops is the undeclared edges whose
+        # gaps the what-if files: on a six-node chain it reached three nodes
+        # and filed three, where its hops allow five and four.
+        for stamp in _engine_stamps(result.not_followed, floor=True, depth=True):
+            if stamp not in result.assumptions:
+                result.assumptions.append(stamp)
+        return result
 
     def discover_gaps(self, start_node: str,
-                      min_probability: float = 0.05) -> List[TopologyQuestion]:
+                      min_probability: Optional[float] = None) -> WalkQuestions:
         """Traverse until blocked, collect all gaps as questions.
 
-        ``min_probability`` keeps its old default for the callers that set the
-        floor themselves. The engine's ``gaps`` verb passes 0.0: an edge's
-        probability is a default no model can declare, and pruning on it cut
-        the walk at its third hop without a word.
+        ``min_probability`` keeps its old default, 0.05, for the callers that
+        set the floor themselves. The engine's ``gaps`` verb passes 0.0: an
+        edge's probability is a default no model can declare, and pruning on it
+        cut the walk at its third hop without a word.
+
+        the answer is the same list of questions, now a
+        `WalkQuestions` carrying what the walk did not follow, its bound, and
+        the stamps its bounds earned. The hops are always this method's; the
+        floor is the engine's only when the caller left it unset.
         """
         result = self.traverse(TraversalRequest(
             start_nodes=[start_node],
@@ -896,13 +1046,16 @@ class TopologyTraverser:
             stop_on_gap=False,
             collect_gaps=True,
             collect_axiom_violations=False,
-            max_hops=4,
-            min_probability=min_probability,
+            max_hops=_GAP_WALK_MAX_HOPS,
+            min_probability=0.05 if min_probability is None else min_probability,
         ))
-        return sorted(
-            result.questions_generated,
-            key=lambda q: q.priority,
-            reverse=True,
+        return WalkQuestions(
+            sorted(result.questions_generated,
+                   key=lambda q: q.priority, reverse=True),
+            not_followed=result.not_followed,
+            assumptions=_engine_stamps(
+                result.not_followed, floor=min_probability is None, depth=True),
+            max_hops=_GAP_WALK_MAX_HOPS,
         )
 
     def project_values(self, horizon_s: float = 3600.0,
@@ -1038,12 +1191,17 @@ class TopologyTraverser:
         self.project_values(horizon_s=horizon_s)
         problems: List[Problem] = []
         for node_id in self.topology.nodes:
+            # NO HOP PAST THE START. Every node is a start of its
+            # own, and a projected value is the node's own whichever walk
+            # reaches it, so a walk onward only re-read what that node's own
+            # start had read: on a six-node chain, 11 problems for 6 findings,
+            # and 15 with the floor removed -- the bound decided how many
+            # copies, never which findings. Each node is evaluated once.
             result = self.traverse(TraversalRequest(
                 start_nodes=[node_id],
                 direction=TraversalDirection.FORWARD,
                 value_mode=ValueMode.PROJECTED,
-                max_hops=2,
-                min_probability=0.1,
+                max_hops=0,
                 collect_axiom_violations=True,
                 collect_gaps=False,
             ))

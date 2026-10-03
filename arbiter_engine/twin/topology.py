@@ -758,6 +758,19 @@ class TraversalResult:
         default_factory=dict)
     #: Engine-made assumptions the imagined values rest on.
     assumptions: List[str] = field(default_factory=list)
+    #: the edges this walk did not follow, by why:
+    #: `below_floor` (the request's `min_probability`), `past_max_hops` and
+    #: `past_max_delay`. Each kind keeps the `bound` that stopped it, how many
+    #: `edges`, and the `first` few named -- `start`, `from`, `to`, the `hop`
+    #: the target would have had, and for the floor the `probability` it would
+    #: have had. Only an edge whose target the walk never reached is counted,
+    #: so a cut another path made up for costs nothing here. EMPTY when the
+    #: walk left nothing; None on a result no walk filled in.
+    #:
+    #: Recorded whoever set the bound -- it is a fact about the walk. Whether
+    #: the bound was the ENGINE's is the caller's to say, which is why the
+    #: `walk_*_not_declared` stamps are added by the methods that chose one.
+    not_followed: Optional[Dict[str, Dict[str, Any]]] = None
     transitions_attempted: int = 0
     #: Transitions the budget stopped. Reported as ONE decline carrying this
     #: count, not one decline each.

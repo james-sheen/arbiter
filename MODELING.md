@@ -1733,6 +1733,10 @@ sub-envelopes, and on each `plan` candidate where the candidates differ. An
 EMPTY list means the engine made none of them, which is a different claim from
 the key being absent. The `inference` sub-envelope -- what `infer` and
 `hypothesize` return -- carries the list only when it has something in it.
+`gaps` asked from a start node carries one beside its `walk`, and the kernel
+class's own walks -- `find_root_causes`, `predict_impact`, `simulate_what_if`
+and `discover_gaps` -- carry one on what they return, beside a `not_followed`
+record of the edges each walk did not take.
 
 | stamp | what it discloses |
 |---|---|
@@ -1763,6 +1767,8 @@ the key being absent. The `inference` sub-envelope -- what `infer` and
 | `ties_break_toward_fewer_actions` | candidates equal on the objective were ordered by acting less |
 | `ties_break_toward_the_wider_margin` | candidates still equal were ordered by the wider signed headroom, and only where a declared spread reached a trajectory |
 | `search_depth_not_declared` | the model declared no `planning.max_depth:`, so every candidate was scored alone and no combination was tried -- absent the moment the key is declared, including at 1, because the claim is that the engine chose rather than that the depth is low |
+| `walk_floor_not_declared` | the walk left at least one edge because its cumulative probability fell below a floor the engine chose, over edge probabilities no model key declares -- every edge carries 0.3, so on undeclared edges the kernel's walks stop at the second hop. The `not_followed` record names the edges; absent when nothing was left and when the caller set the floor |
+| `walk_depth_not_declared` | the walk left at least one edge at a hop bound the engine chose: four, for the kernel's walks and for `gaps` asked from a start node. Absent when nothing lay past the bound and when the caller set it |
 | `evidence_read_at_declared_delay` | `hypothesize` read at least one entity upstream of the finding at the finding's instant minus the dead times declared along its path, and ranked on that evidence -- absent whenever no causal edge in reach declares a delay |
 | `read_at_dead_time` | a path read back along also declares a time constant, so its response goes on developing after the dead time, and the entity was read at the dead time alone |
 | `read_at_each_path_delay` | an entity reached by paths of unequal declared delay was read at each of their instants, and counted faulty if any of those readings was |

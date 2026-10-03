@@ -261,6 +261,29 @@ TIES_BREAK_TOWARD_THE_WIDER_MARGIN = "ties_break_toward_the_wider_margin"
 SEARCH_DEPTH_NOT_DECLARED = "search_depth_not_declared"
 
 # ---------------------------------------------------------------------------
+# How far a walk went: the kernel class's own walks.
+# ---------------------------------------------------------------------------
+
+#: the walk left at least one edge because its
+#: cumulative probability fell below a floor the ENGINE chose, and every edge
+#: probability it multiplied is one no model key declares: the builder gives
+#: each edge 0.3. `find_root_causes`, `predict_impact` and `simulate_what_if`
+#: walk with a floor of 0.05, so on undeclared edges they stop at the second
+#: hop -- measured on 0.2.32, a four-node chain whose head explains all four
+#: was answered with two root causes. The walk's `not_followed` record names
+#: the edges. Absent when the cut left nothing, and when the caller set the
+#: floor: the claim is that the engine's number decided.
+WALK_FLOOR_NOT_DECLARED = "walk_floor_not_declared"
+
+#: the walk left at least one edge at a hop bound the
+#: ENGINE chose: four for the kernel's convenience walks and for `gaps` asked
+#: from a start node, which on 0.2.32 asked nothing about a missing node five
+#: hops out. Stamped for the reason `search_depth_not_declared` is: a walk cut
+#: short and a walk that reached everything are the same shape on the wire.
+#: Absent when nothing lay past the bound, and when the caller set it.
+WALK_DEPTH_NOT_DECLARED = "walk_depth_not_declared"
+
+# ---------------------------------------------------------------------------
 # When and how a cause was read: `hypothesize`.
 # ---------------------------------------------------------------------------
 
@@ -333,6 +356,8 @@ ASSUMPTION_STAMPS: Tuple[str, ...] = (
     TIES_BREAK_TOWARD_FEWER_ACTIONS,
     TIES_BREAK_TOWARD_THE_WIDER_MARGIN,
     SEARCH_DEPTH_NOT_DECLARED,
+    WALK_FLOOR_NOT_DECLARED,
+    WALK_DEPTH_NOT_DECLARED,
     EVIDENCE_READ_AT_DECLARED_DELAY,
     READ_AT_DEAD_TIME,
     READ_AT_EACH_PATH_DELAY,

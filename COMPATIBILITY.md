@@ -142,6 +142,12 @@ From 0.2.32: on each walk's frontier entries `explains`, `findings_explained` an
 `causal`; and the rule key `cause`, `source` or `target`. A model that uses the key needs 0.2.32:
 an earlier engine names it `unknown_key` and reads the rule as no causal direction, so its walks
 stop where the key would have carried them.
+From 0.2.33: `walk` and `assumptions` on `gaps` asked from a start node, and the stamps
+`walk_floor_not_declared` and `walk_depth_not_declared`. On what `TopologyTraverser`'s walks
+return, `not_followed`, with `assumptions` on `RootCauseResult` and `ImpactForecast`, and the
+same two on the list `discover_gaps` returns. One change is a defect fix the changelog lists
+rather than an addition: `predict_all` returns each finding once, where it returned one per
+walk that reached it.
 
 Three things about it are promises and not accidents:
 

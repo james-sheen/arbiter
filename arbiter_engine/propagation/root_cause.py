@@ -87,12 +87,22 @@ class RootCauseResult:
     explained_count:   Number of anomalies explained by the identified roots.
     coverage_ratio:    explained_count / anomaly_count.
     generated_at:      UTC timestamp.
+    assumptions:       Engine-made assumptions the answer rests on.
+    not_followed:      What the walks behind it did not follow.
     """
     root_causes: List[RootCauseCandidate] = field(default_factory=list)
     anomaly_count: int = 0
     explained_count: int = 0
     coverage_ratio: float = 0.0
     generated_at: datetime = field(default_factory=now_utc)
+    #: `TopologyTraverser.find_root_causes` stamps
+    #: `walk_floor_not_declared` and `walk_depth_not_declared` here when its own
+    #: bounds left an edge, which can name a second root where one explains all.
+    assumptions: List[str] = field(default_factory=list)
+    #: In the shape of `TraversalResult.not_followed`, summed over the
+    #: candidates' walks. None from a producer whose walks keep no such record
+    #: -- `RootCauseIdentifier` among them -- which is not the same as empty.
+    not_followed: Optional[Dict[str, Dict[str, Any]]] = None
 
 
 # ─────────────────────────────────────────────────────────────────────────────

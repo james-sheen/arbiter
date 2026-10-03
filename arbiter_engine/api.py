@@ -3418,10 +3418,14 @@ def gaps(session: EngineSession,
 
     starts = [start_node] if start_node else list(topology.nodes.keys())
     seen: Dict[Any, Any] = {}
+    walked = None
     for node_id in starts:
         # the same floor, the same cut: from a start node a missing
         # node five hops out came back as no question at all.
-        for question in traverser.discover_gaps(node_id, min_probability=0.0):
+        questions = traverser.discover_gaps(node_id, min_probability=0.0)
+        if start_node:
+            walked = questions
+        for question in questions:
             seen.setdefault(_gap_key(getattr(question, "gap", None)), question)
 
     # the topology's STRUCTURAL gaps, which are a separate
@@ -3532,6 +3536,15 @@ def gaps(session: EngineSession,
             sub, located = _raised("discovery", exc, {"hypotheses": 0}), []
         payload["residuals"] = sub.to_dict()
         payload["residuals"]["hypotheses"] = located
+    # AND HOW FAR THE WALK FROM A START NODE WENT. Its four
+    # hops are the engine's number, and on 0.2.32 a missing node five hops out
+    # came back as no question, in an answer shaped exactly like one with no
+    # such node. Asked with no start node, every entity is a start and every
+    # edge is followed from its own source, so there is no single walk to name.
+    if walked is not None:
+        payload["walk"] = {"from": start_node, "max_hops": walked.max_hops,
+                           "not_followed": walked.not_followed or {}}
+        payload["assumptions"] = list(walked.assumptions)
     return _WithPayload(envelope, payload)
 
 

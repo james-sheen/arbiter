@@ -34,6 +34,30 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+## [0.2.33] — 2026-10-03
+
+### Added
+
+- **A walk the engine bounded says so.** `TopologyTraverser`'s own walks -- `find_root_causes`,
+  `predict_impact`, `simulate_what_if` and `discover_gaps` -- set their bounds themselves, four
+  hops and a probability floor of 0.05, and every edge the builder makes carries 0.3, which no
+  model key sets. So on undeclared edges they stop at the second hop, and nothing said so. Each
+  walk now records the edges it did not take in `not_followed` -- below its floor, past its
+  hops or past its delay, counted, the first few named -- and a method whose own bound left one
+  stamps `walk_floor_not_declared` or `walk_depth_not_declared` (`WALK_FLOOR_NOT_DECLARED` and
+  `WALK_DEPTH_NOT_DECLARED`, in `assumptions`). `RootCauseResult` and
+  `ImpactForecast` gain `assumptions` and `not_followed`, and `discover_gaps` returns its list
+  carrying both. `gaps` asked from a start node gains `walk`, its four hops and what lay past
+  them, and `assumptions`. No answer changes: a four-node chain whose head explains all four
+  still gets two roots, now stamped, with the edge its walk left named.
+
+### Fixed
+
+- **`predict_all` returns each finding once.** It walked two hops onward from every node, and
+  every node is a start of its own, so the walk re-read findings already read: 11 problems for
+  6 findings on a six-node chain, and the bound decided how many copies. Each node is evaluated
+  once.
+
 ## [0.2.32] — 2026-10-02
 
 ### Added
