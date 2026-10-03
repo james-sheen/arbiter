@@ -14,7 +14,7 @@ from typing import (
 )
 import uuid
 
-from .clock import as_naive_utc, now_utc
+from .clock import as_naive_utc, now_utc, span_seconds_back
 from .types import (
     Axiom,
     Severity,
@@ -112,7 +112,9 @@ def sampling_context(history, entity_id: str, property_name: str,
     """
     out: dict = {}
     if window is not None:
-        out["window_seconds"] = window.total_seconds()
+        # a window naming calendar months is as long as the months
+        # it reaches back over from now, and no longer.
+        out["window_seconds"] = span_seconds_back(window, now_utc())
     if history is None:
         return out
     # BEFORE THE EARLY RETURNS BELOW, and that ordering is the whole point. A

@@ -24,7 +24,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
-from ..clock import as_naive_utc, now_utc
+from ..clock import CalendarSpan, as_naive_utc, now_utc, span_seconds_forward
 from ..interfaces import (
     Entity,
     Problem,
@@ -112,6 +112,46 @@ def resolve_number(raw: Any) -> Tuple[Optional[float], Optional[str]]:
         return float(raw), None
     except (TypeError, ValueError):
         return None, str(raw)
+
+
+def declared_delay(block: Any) -> Optional[Any]:
+    """The dead time a rule's `temporal:` block declares, or None.
+
+    In seconds, as a number, under `propagation_delay_s`; or as a duration
+    under `propagation_delay` -- `90s`, `2h`, `1 month` -- which comes back as
+    seconds, or as a `CalendarSpan` where it names calendar months. None when
+    neither key is written, when the value cannot be read, and when BOTH are:
+    two declarations of one delay contradict, so neither is applied, and the
+    domain loader names the pair. Every reader of the delay asks this, so the
+    walk and the simulation cannot disagree about what was declared.
+    """
+    if not isinstance(block, dict):
+        return None
+    if "propagation_delay" in block:
+        if "propagation_delay_s" in block:
+            return None
+        # Imported here: the loader imports this module inside its methods.
+        from ..ontology.domain_loader import read_duration
+        value, problem = read_duration(block.get("propagation_delay"))
+        if problem is not None:
+            return None
+        return value if isinstance(value, CalendarSpan) else value.total_seconds()
+    value, _unresolved = resolve_number(block.get("propagation_delay_s"))
+    return value
+
+
+def delay_seconds(block: Any, default: float,
+                  at: Optional[datetime] = None) -> float:
+    """The declared delay in seconds, for a reader that counts elapsed time --
+    the simulation -- or `default` where none is declared. A delay naming
+    calendar months is as long as those months are from `at`, the instant the
+    reader starts from: now, unless given."""
+    delay = declared_delay(block)
+    if delay is None:
+        return default
+    if isinstance(delay, CalendarSpan):
+        return span_seconds_forward(delay, at or now_utc())
+    return float(delay)
 
 
 @dataclass
@@ -217,8 +257,8 @@ class TemporalAnnotationStore:
                 source_type=rule.get('source_type', ''),
                 target_type=rule.get('target_type', ''),
                 relation_type=rule.get('type', ''),
-                propagation_delay_s=_number_or(
-                    temporal.get('propagation_delay_s'), 0.0),
+                # either delay key, through the one resolver.
+                propagation_delay_s=delay_seconds(temporal, 0.0),
                 time_constant_s=_number_or(temporal.get('time_constant_s'), 60.0),
                 coupling_strength=_number_or(
                     temporal.get('coupling_strength'), 1.0),

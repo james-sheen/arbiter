@@ -60,6 +60,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import yaml
 
 from ..axiom_thresholds import THRESHOLD_FIELDS
+from ..clock import CalendarSpan, Span, span_is_positive
 from ..interfaces import IndicatorSpec
 from ..types import (Axiom, AxiomParameters, IndicatorType, Severity,
                      read_severity_floor, DEFAULT_CAUSAL_MAX_HOPS,
@@ -80,9 +81,7 @@ DEFAULT_TIMEOUT = timedelta(minutes=5)
 # parser matched a PREFIX, so `3 months` read as three minutes, `1h30m` as one
 # hour and `1 ms` as one minute, and anything else -- `12w`, `1y`, `P90D`, `600`
 # -- read as nothing, which `or DEFAULT_TIMEOUT` turned into five minutes.
-# Every unit here has a fixed length. A month and a year do not, so they are
-# refused by name: choosing a length for one is choosing a number for the
-# author, which this engine does not do.
+# Every unit here has a fixed length.
 _DURATION_UNITS: Dict[str, int] = {
     **dict.fromkeys(("s", "sec", "secs", "second", "seconds"), 1),
     **dict.fromkeys(("m", "min", "mins", "minute", "minutes"), 60),
@@ -90,13 +89,21 @@ _DURATION_UNITS: Dict[str, int] = {
     **dict.fromkeys(("d", "day", "days"), 86400),
     **dict.fromkeys(("w", "wk", "wks", "week", "weeks"), 604800),
 }
-_CALENDAR_UNITS = frozenset(("mo", "mon", "mons", "month", "months",
-                             "y", "yr", "yrs", "year", "years"))
+# AND MONTHS AND YEARS ARE CALENDAR UNITS. They were
+# refused, because a month has no fixed length and choosing one would be
+# choosing the author's number; so an author on a monthly series wrote days,
+# and a month written as 30 days read the wrong month on two alignments of
+# three. Read now as a count of calendar months, applied where each reader
+# measures from (`clock.CalendarSpan`); a year is twelve.
+_MONTH_UNITS = frozenset(("mo", "mon", "mons", "month", "months"))
+_YEAR_UNITS = frozenset(("y", "yr", "yrs", "year", "years"))
 _NUMBER = r"\d+(?:\.\d+)?"
 _ISO_DURATION = re.compile(
     rf"P(?:({_NUMBER})Y)?(?:({_NUMBER})M)?(?:({_NUMBER})W)?(?:({_NUMBER})D)?"
     rf"(?:T(?:({_NUMBER})H)?(?:({_NUMBER})M)?(?:({_NUMBER})S)?)?", re.IGNORECASE)
 _SHORT_PART = re.compile(rf"({_NUMBER})\s*([a-z]+)")
+#: the parts of a short form as WRITTEN, case kept, to find a `M`.
+_WRITTEN_PART = re.compile(rf"({_NUMBER})\s*([A-Za-z]+)")
 _SHORT_DURATION = re.compile(
     rf"{_NUMBER}\s*[a-z]+(?:[\s,]*{_NUMBER}\s*[a-z]+)*")
 
@@ -667,6 +674,38 @@ class DomainModel:
                                f"instead; write it as a bare number"),
                     "rule": label,
                 })
+            # THE DELAY AS A DURATION, and the pair. The
+            # duration key is read by `read_duration`, so a delay can be a month;
+            # both keys on one rule declare one delay twice, so neither applies.
+            temporal = rule.get("temporal")
+            if isinstance(temporal, dict) and "propagation_delay" in temporal:
+                written = temporal.get("propagation_delay")
+                if "propagation_delay_s" in temporal:
+                    remedy = ("`temporal.propagation_delay` and "
+                              "`temporal.propagation_delay_s` both declare this "
+                              "rule's delay, so neither was applied and the rule "
+                              "declares none; keep one")
+                else:
+                    _span, problem = read_duration(written)
+                    # A bare number here is most often seconds written under
+                    # the duration key, so the key that takes seconds is named.
+                    seconds = (f", or `propagation_delay_s: {written}` for seconds"
+                               if isinstance(written, (int, float))
+                               and not isinstance(written, bool) else "")
+                    remedy = (None if problem is None else
+                              f"`temporal.propagation_delay: {written}` {problem}, "
+                              f"so no delay was applied; write a duration such as "
+                              f"`90s`, `2h`, `3d` or `1 month`{seconds}")
+                if remedy:
+                    out.append({
+                        "field": "temporal.propagation_delay",
+                        "reason": "malformed_value",
+                        "value": _as_reported(written),
+                        "read_by": [],
+                        "did_you_mean": None,
+                        "remedy": remedy,
+                        "rule": label,
+                    })
             for where, key, resolve, valid in vocabularies:
                 block = rule.get(where) if where else rule
                 if not isinstance(block, dict) or key not in block:
@@ -1289,6 +1328,8 @@ _KNOWN_FORECAST_KEYS = frozenset({
 _KNOWN_TEMPORAL_KEYS = frozenset({
     "propagation_delay_s", "time_constant_s", "response_model",
     "coupling_strength",
+    # the delay as a duration, beside the delay in seconds.
+    "propagation_delay",
 })
 
 #: `clamp_to_bounds` IS NOT HERE, and its absence is the decision. It was
@@ -1576,15 +1617,17 @@ def parse_duration(raw: Optional[str]) -> Optional[timedelta]:
     return read_duration(raw)[0]
 
 
-def read_duration(raw: Any) -> Tuple[Optional[timedelta], Optional[str]]:
+def read_duration(raw: Any) -> Tuple[Optional[Span], Optional[str]]:
     """`(duration, None)`, or `(None, why it was refused)`.
 
     Read WHOLE, never as a prefix: one or more `<number><unit>` joined and
     summed (`90m`, `1h30m`, `2 hours 30 minutes`, `1.5h`), or ISO 8601
     (`PT15M`, `P90D`, `P2W`, `P1DT12H`). The units are seconds, minutes, hours,
-    days and weeks, abbreviated or spelled out. Months and years are refused by
-    name: they have no fixed length, and choosing one would be choosing the
-    author's number for them. A bare number is refused for want of a unit.
+    days and weeks, abbreviated or spelled out, and, since 0.2.34, months and
+    years, which come back as a `CalendarSpan` and are applied at
+    the instant each reader measures from. A month is a whole number of them;
+    a fraction of one has no length to read. A bare number is refused for want
+    of a unit, and so is a capital `M` outside ISO 8601.
     """
     if raw is None or isinstance(raw, bool):
         return None, "was written with no value"
@@ -1597,27 +1640,57 @@ def read_duration(raw: Any) -> Tuple[Optional[timedelta], Optional[str]]:
     iso = _ISO_DURATION.fullmatch(text)
     if iso and any(iso.groups()) and not text.upper().endswith("T"):
         years, months, weeks, days, hours, minutes, seconds = iso.groups()
-        if years or months:
-            return None, ("names months or years, which have no fixed length; "
-                          "this engine chooses none for them")
-        return timedelta(weeks=float(weeks or 0), days=float(days or 0),
-                         hours=float(hours or 0), minutes=float(minutes or 0),
-                         seconds=float(seconds or 0)), None
+        fixed = timedelta(weeks=float(weeks or 0), days=float(days or 0),
+                          hours=float(hours or 0), minutes=float(minutes or 0),
+                          seconds=float(seconds or 0))
+        whole, problem = _whole_months(years, months)
+        if problem:
+            return None, problem
+        return (CalendarSpan(whole, fixed, text) if whole else fixed), None
 
     lowered = text.lower()
     if re.fullmatch(_NUMBER, lowered):
         return None, "is a number with no unit"
     if _SHORT_DURATION.fullmatch(lowered):
+        # `1M` WAS A MINUTE. The parts below are read lower-cased,
+        # so a capital `M` -- a month in most spreadsheet and charting
+        # conventions -- became one minute, accepted, with nothing said. ISO
+        # 8601 keeps the distinction (`P1M`, `PT1M`); the short form has only
+        # the case, so a bare `M` is refused rather than guessed.
+        if any(unit == "M" for _number, unit in _WRITTEN_PART.findall(text)):
+            return None, ("uses `M`, which is a month in some conventions and a "
+                          "minute in others; write `mo` for a month or `min` for "
+                          "a minute")
         total = 0.0
+        years = months = 0.0
         for number, unit in _SHORT_PART.findall(lowered):
-            if unit in _CALENDAR_UNITS:
-                return None, ("names months or years, which have no fixed "
-                              "length; this engine chooses none for them")
-            if unit not in _DURATION_UNITS:
+            if unit in _MONTH_UNITS:
+                months += float(number)
+            elif unit in _YEAR_UNITS:
+                years += float(number)
+            elif unit not in _DURATION_UNITS:
                 return None, f"uses {unit!r}, which is not a unit this engine reads"
-            total += float(number) * _DURATION_UNITS[unit]
-        return timedelta(seconds=total), None
+            else:
+                total += float(number) * _DURATION_UNITS[unit]
+        whole, problem = _whole_months(years or None, months or None)
+        if problem:
+            return None, problem
+        fixed = timedelta(seconds=total)
+        return (CalendarSpan(whole, fixed, text) if whole else fixed), None
     return None, "is not a duration this engine reads"
+
+
+def _whole_months(years: Any, months: Any) -> Tuple[int, Optional[str]]:
+    """The calendar months `years` and `months` name, or why they cannot be
+    read: a fraction of a month has no length, because no month has one."""
+    total = 0.0
+    for value, per in ((years, 12), (months, 1)):
+        if value:
+            total += float(value) * per
+    if total != int(total):
+        return 0, ("names a fraction of a month, and a calendar month has no "
+                   "fixed length to take a fraction of; write days or weeks")
+    return int(total), None
 
 
 #: What an unreadable value under each duration key comes to, for the remedy.
@@ -1641,16 +1714,21 @@ _UNWRITTEN = object()
 
 def _duration_field(written: Any, key: str, malformed: Dict[str, Any],
                     default: Optional[timedelta] = None, *,
-                    positive: bool = False) -> Optional[timedelta]:
+                    positive: bool = False,
+                    calendar: bool = True) -> Optional[Span]:
     """The duration `written` under `key`, or `default` when it was not
     written or was refused; a refusal is recorded in `malformed` with what was
     written and why. `positive` refuses zero, for a key where zero declares
-    nothing. The caller reads the key with `.get(key, _UNWRITTEN)`, so the
+    nothing; `calendar=False` refuses months and years, for a key that needs a
+    fixed length. The caller reads the key with `.get(key, _UNWRITTEN)`, so the
     derivations of what the loader reads still see it."""
     if written is _UNWRITTEN:
         return default
     value, problem = read_duration(written)
-    if problem is None and positive and value.total_seconds() <= 0:
+    if problem is None and not calendar and isinstance(value, CalendarSpan):
+        problem = ("names months or years, and this key compares two readings' "
+                   "stamps, which needs a fixed length; write days or weeks")
+    if problem is None and positive and not span_is_positive(value):
         problem = "is zero, which declares no time at all"
     if problem is None:
         return value
@@ -2033,8 +2111,11 @@ def parse_indicator(
             # than a file that will not load: `unreachable_declarations` says
             # so at load, and a decline says so per cell.
             derived=(str(data["derived"]) if data.get("derived") else None),
+            # the one duration key that refuses months: it is how far
+            # apart two readings' stamps may be, and a month gives no fixed one.
             align_tolerance=_duration_field(data.get("align_tolerance", _UNWRITTEN),
-                                            "align_tolerance", malformed),
+                                            "align_tolerance", malformed,
+                                            calendar=False),
             # the declared role. Normalised here rather than at every
             # read site, and an unrecognised word is reported and dropped —
             # the same convention `_resolve_axioms` and `_resolve_severity`

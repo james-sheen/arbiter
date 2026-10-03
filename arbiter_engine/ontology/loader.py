@@ -541,13 +541,15 @@ class OntologyLoader:
                     indicator_uri, HEALTH.lowerWarningThreshold)
                 spec.lower_critical_threshold = self._get_float(
                     indicator_uri, HEALTH.lowerCriticalThreshold)
-                spec.time_window = self._get_duration(indicator_uri, HEALTH.timeWindow)
+                spec.time_window = self._get_duration(
+                    indicator_uri, HEALTH.timeWindow, spec, "window")
 
             elif indicator_type == IndicatorType.STATE:
                 spec.normal_states = self._get_list(indicator_uri, HEALTH.normalStates)
                 spec.transient_states = self._get_list(indicator_uri, HEALTH.transientStates)
                 spec.problematic_states = self._get_list(indicator_uri, HEALTH.problematicStates)
-                spec.transient_timeout = self._get_duration(indicator_uri, HEALTH.transientTimeout)
+                spec.transient_timeout = self._get_duration(
+                    indicator_uri, HEALTH.transientTimeout, spec, "timeout")
 
             elif indicator_type == IndicatorType.RELATIONSHIP:
                 spec.target_type = self._get_string(indicator_uri, HEALTH.targetType)
@@ -646,45 +648,39 @@ class OntologyLoader:
                 values.append(str(obj))
         return values
 
-    def _get_duration(self, uri: URIRef, predicate: URIRef) -> Optional[timedelta]:
-        """Parse xsd:duration to Python timedelta."""
+    def _get_duration(self, uri: URIRef, predicate: URIRef,
+                      spec: Optional[IndicatorSpec] = None,
+                      key: str = "") -> Optional[Any]:
+        """An `xsd:duration`, read by the one reader the YAML loader uses.
+
+        This parsed its own way -- `PT...` and `<n>[smhd]` only -- so
+        `P1D`, `P30D`, `P1W`, `P1DT12H` and `12w` came back as nothing,
+        silently: round 18's N15, closed for YAML, still open on the ontology
+        path. A refusal is recorded on the indicator under the YAML key's name,
+        so a declined STABILITY quotes what was written here as it does there.
+        """
         if not _rdflib_ready():
             return None
 
         for obj in self.graph.objects(uri, predicate):
-            duration_str = str(obj)
-            return self._parse_duration(duration_str)
+            value, problem = self._read_duration(str(obj))
+            if problem is not None and spec is not None and key:
+                spec.malformed_values = dict(spec.malformed_values or {},
+                                             **{key: {"value": str(obj),
+                                                      "problem": problem}})
+            return value
         return None
 
-    def _parse_duration(self, duration_str: str) -> Optional[timedelta]:
-        """Parse ISO 8601 duration string."""
+    @staticmethod
+    def _read_duration(duration_str: str):
+        from .domain_loader import read_duration
+        return read_duration(duration_str)
+
+    def _parse_duration(self, duration_str: str) -> Optional[Any]:
+        """A duration read whole by `read_duration`, or None."""
         if not duration_str:
             return None
-
-        # Handle PT1H30M format
-        import re
-        match = re.match(r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?', duration_str, re.IGNORECASE)
-        if match:
-            hours = int(match.group(1) or 0)
-            minutes = int(match.group(2) or 0)
-            seconds = int(match.group(3) or 0)
-            return timedelta(hours=hours, minutes=minutes, seconds=seconds)
-
-        # Handle simple formats
-        match = re.match(r'(\d+)\s*([smhd])', duration_str.lower())
-        if match:
-            value = int(match.group(1))
-            unit = match.group(2)
-            if unit == 's':
-                return timedelta(seconds=value)
-            elif unit == 'm':
-                return timedelta(minutes=value)
-            elif unit == 'h':
-                return timedelta(hours=value)
-            elif unit == 'd':
-                return timedelta(days=value)
-
-        return None
+        return self._read_duration(duration_str)[0]
 
     def set_domain_indicators(self, indicators: Dict[str, list],
                               property_mapping: Optional[Dict[str, Dict[str, str]]] = None,

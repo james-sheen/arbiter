@@ -34,7 +34,7 @@ try:                                        # stdlib since 3.9
 except ImportError:                         # pragma: no cover - 3.8 and older
     ZoneInfo = None                         # type: ignore
 
-from ..clock import as_naive_utc, now_utc
+from ..clock import CalendarSpan, as_naive_utc, now_utc
 from ..interfaces import WHOLE_SERIES, Observation, ObservationHistory
 
 __all__ = ["Session", "SessionCalendar", "CalendarHistory"]
@@ -201,11 +201,18 @@ class CalendarHistory(ObservationHistory):
         self.inner = inner
         self.calendar = calendar
 
-    def _wall_window(self, window: timedelta) -> timedelta:
+    def _wall_window(self, window):
         # EVERYTHING IS NOT A SPAN OF OPEN TIME. A reader asking for
         # the whole series means every reading, and translating that into open
         # time walked back `_MAX_LOOKBACK_DAYS` and stopped -- so under any
         # calendar with a session, "all of it" quietly became ten years.
+        #
+        # NOR IS A MONTH. A span naming calendar months names a
+        # position on the calendar, not an amount of open time: it starts that
+        # many months back on the wall clock, whatever sessions lie between,
+        # and the inner history applies it there.
+        if isinstance(window, CalendarSpan):
+            return window
         if window >= WHOLE_SERIES:
             return window
         end = now_utc()

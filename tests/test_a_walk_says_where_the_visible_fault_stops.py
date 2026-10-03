@@ -356,11 +356,13 @@ class TestTheModelSaysWhatCanBeExplained:
 
     def test_each_fault_channel_says_what_was_declared(self):
         causal = self._causal(CHAIN)
-        # An internal ruling added the end of the relation where a failure starts.
+        # The end of the relation where a failure starts, and the
+        # delay as written where it names calendar months.
         assert causal["declared"][0] == {
             "rule": "Pump-feeds->Tank", "weight": 0.8, "weight_source": "declared",
             "leak": 0.01, "leak_source": "default",
-            "propagation_delay_s": None, "time_constant_s": None, "cause": "source"}
+            "propagation_delay_s": None, "propagation_delay": None,
+            "time_constant_s": None, "cause": "source"}
 
     def test_a_strength_nobody_declared_is_none_and_says_so(self):
         [rule] = self._causal(FAN)["declared"]

@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from collections import defaultdict
 import threading
 
-from ..clock import as_naive_utc, now_utc
+from ..clock import as_naive_utc, now_utc, span_back
 from ..interfaces import Observation, ObservationHistory
 
 logger = logging.getLogger(__name__)
@@ -259,7 +259,9 @@ class InMemoryObservationHistory(ObservationHistory):
         """
         key = (entity_id, property_name)
         present = now_utc()
-        cutoff = present - window
+        # a window naming calendar months starts that many months
+        # back from now, not at a number of seconds.
+        cutoff = span_back(window, present)
 
         # BOTH ENDS, and the upper one is the whole point of the fix.
         #
@@ -296,7 +298,9 @@ class InMemoryObservationHistory(ObservationHistory):
         """
         key = (entity_id, property_name)
         present = now_utc()
-        cutoff = present - window
+        # a window naming calendar months starts that many months
+        # back from now, not at a number of seconds.
+        cutoff = span_back(window, present)
 
         # BOTH ENDS, and the upper one is the whole point of the fix.
         #
@@ -424,7 +428,7 @@ class InMemoryObservationHistory(ObservationHistory):
             ``entity_filter`` provided) only that entity.
         """
         result = {}
-        cutoff = now_utc() - window
+        cutoff = span_back(window, now_utc())
 
         with self._lock:
             for (entity_id, prop), values in self._history.items():

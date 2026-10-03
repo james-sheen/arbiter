@@ -100,11 +100,25 @@ class TestAMisspelledCouplingKeyIsReported:
             "transition.gain_sgima": "gain_sigma"}
 
     def test_a_misspelled_dead_time_is_caught_with_a_suggestion(self):
+        """`propagation_delay` was this case's misspelling until an internal ruling made it
+        the delay written as a duration; a transposed letter is one now."""
+        rule = _rule()
+        rule["temporal"].pop("propagation_delay_s")
+        rule["temporal"]["propagation_dealy_s"] = 120
+        assert _unknown(_describe(rule)) == {
+            "temporal.propagation_dealy_s": "propagation_delay_s"}
+
+    def test_the_old_misspelling_is_now_a_duration_with_no_unit_and_says_so(self):
+        """Where an author wrote seconds under the duration key, the row names
+        the missing unit and the key that takes seconds."""
         rule = _rule()
         rule["temporal"].pop("propagation_delay_s")
         rule["temporal"]["propagation_delay"] = 120
-        assert _unknown(_describe(rule)) == {
-            "temporal.propagation_delay": "propagation_delay_s"}
+        described = _describe(rule)
+        assert _unknown(described) == {}
+        [row] = [r for r in described if r["field"] == "temporal.propagation_delay"]
+        assert row["reason"] == "malformed_value" and row["value"] == 120
+        assert "no unit" in row["remedy"] and "`propagation_delay_s: 120`" in row["remedy"]
 
     def test_an_invented_key_is_reported_without_a_guess(self):
         rule = _rule()
@@ -264,9 +278,13 @@ class TestTheKeySetsMatchWhatTheParsersRead:
     which is the failure the check itself exists to report."""
 
     def test_the_temporal_set_is_what_the_builder_reads(self):
+        """ -- the dead time is read by `declared_delay`, which every
+        reader of it asks, so its two keys are read there."""
         from arbiter_engine.ontology.domain_loader import (
             _KNOWN_TEMPORAL_KEYS)
-        assert _KNOWN_TEMPORAL_KEYS == _keys_read("temporal_block")
+        from arbiter_engine.temporal import temporal_edge
+        assert _KNOWN_TEMPORAL_KEYS == (_keys_read("temporal_block")
+                                        | _keys_read("block", temporal_edge))
 
     def test_the_transition_set_is_what_the_builder_reads(self):
         from arbiter_engine.ontology.domain_loader import (
@@ -276,8 +294,9 @@ class TestTheKeySetsMatchWhatTheParsersRead:
         assert {"from", "to", "gain", "source"} <= _KNOWN_TRANSITION_KEYS
 
 
-def _keys_read(varname: str) -> frozenset:
-    """Literal keys read off `varname` in the topology builder, by AST.
+def _keys_read(varname: str, module=None) -> frozenset:
+    """Literal keys read off `varname` in the topology builder, or in `module`,
+    by AST.
 
     THE ABSOLUTE IMPORTS IN THIS FILE ARE DOTTED, and that is not a style
     choice. This suite is derived: one file runs against two package roots, and
@@ -296,7 +315,7 @@ def _keys_read(varname: str) -> frozenset:
     import ast
     import pathlib
     from arbiter_engine.twin import builder
-    tree = ast.parse(pathlib.Path(builder.__file__).read_text())
+    tree = ast.parse(pathlib.Path((module or builder).__file__).read_text())
     found = set()
     for node in ast.walk(tree):
         if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)

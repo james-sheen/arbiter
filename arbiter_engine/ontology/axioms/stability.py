@@ -21,7 +21,7 @@ import logging
 from datetime import timedelta
 from typing import List, Optional
 
-from ...clock import now_utc
+from ...clock import now_utc, span_back, span_seconds_back, span_times
 from ...interfaces import (
     sampling_context,
     Entity,
@@ -308,7 +308,7 @@ class StabilityChecker:
                 'value': values[0],
                 'observations': len(values),
                 'total_observations': total,
-                'window_seconds': window.total_seconds(),
+                'window_seconds': span_seconds_back(window, now_utc()),
             },
             confidence=1.0,
         ))
@@ -614,12 +614,13 @@ class StabilityChecker:
                     f"{indicator.name} is {current_value!r}, which `transient:` "
                     f"names as a state to pass through, and {said} how long it "
                     f"may last; declare `timeout:` on the indicator in seconds, "
-                    f"minutes, hours, days or weeks -- this engine chooses no "
-                    f"number for it"),
+                    f"minutes, hours, days, weeks, months or years -- this engine "
+                    f"chooses no number for it"),
             )
 
         # Get states to find when we entered this state
-        states = history.get_states(entity.id, indicator.property_name, timeout * 2)
+        states = history.get_states(entity.id, indicator.property_name,
+                                    span_times(timeout, 2))
         if not states:
             return CheckOutcome(problems)
 
@@ -631,9 +632,14 @@ class StabilityChecker:
             state_start = ts
 
         if state_start:
-            from datetime import datetime
-            duration = now_utc() - state_start
-            if duration > timeout:
+            # past its timeout when the state began before the
+            # timeout, laid back from now, starts: the same measure a window
+            # takes, so a state that began inside the last month has not
+            # lasted a month. A state begun on 31 January is past a month on
+            # 1 March, a month back from 28 February being 28 January.
+            present = now_utc()
+            duration = present - state_start
+            if span_back(timeout, present) > state_start:
                 problems.append(Problem.from_entity(
                     entity=entity,
                     problem_type=f'transient_state_timeout:{indicator.name}',
@@ -645,7 +651,7 @@ class StabilityChecker:
                         'indicator': indicator.name,
                         'state': current_value,
                         'duration_seconds': duration.total_seconds(),
-                        'timeout_seconds': timeout.total_seconds(),
+                        'timeout_seconds': span_seconds_back(timeout, present),
                         'transient_states': indicator.transient_states,
                     },
                     confidence=1.0,

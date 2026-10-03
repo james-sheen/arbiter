@@ -28,7 +28,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from ...clock import as_naive_utc, now_utc
+from ...clock import as_naive_utc, now_utc, span_back, span_is_positive
 # `must_return_within` is a duration in the same vocabulary as
 # every `window:` in the format. Borrowed rather than re-parsed: a second
 # duration parser would accept a slightly different set of spellings and
@@ -221,14 +221,15 @@ class HomeostasisChecker:
 
         from ..domain_loader import parse_duration
         span = parse_duration(raw)
-        if span is None or span.total_seconds() <= 0:
+        if span is None or not span_is_positive(span):
             logger.warning(
                 "unusable must_return_within %r on indicator %r — ignored; "
                 "write a duration such as 15m or PT15M",
                 raw, getattr(indicator, "name", "?"))
             return value_history, []
 
-        cutoff = as_naive_utc(now_utc()) - span
+        # a span naming calendar months reaches that many back.
+        cutoff = span_back(span, as_naive_utc(now_utc()))
         reference = [(t, v) for t, v in value_history if t <= cutoff]
         excluded = [(t, v) for t, v in value_history if t > cutoff]
         if len(reference) < self.params.homeostasis_min_samples:

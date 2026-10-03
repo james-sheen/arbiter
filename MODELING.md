@@ -222,26 +222,46 @@ nothing to measure.
 ### Durations
 
 Every key that takes a span of time -- `timeout:`, `window:`, `horizon:`, `lookback:`,
-`align_tolerance:` and `homeostasis.must_return_within:` -- reads one duration, and reads the
-whole value:
+`align_tolerance:`, `homeostasis.must_return_within:`, `forecast.max_age:` and a rule's
+`temporal.propagation_delay:` -- reads one duration, and reads the whole value:
 
 | Written | Read as |
 |---|---|
 | `90s`, `15m`, `2h`, `90d`, `13w` | seconds, minutes, hours, days or weeks; abbreviated (`sec`, `min`, `hr`, `wk`) or spelled out (`hours`, `days`) |
 | `1h30m`, `2 days 6 hours`, `1.5h` | several joined, and summed; a decimal is allowed |
 | `PT15M`, `P90D`, `P2W`, `P1DT12H` | ISO 8601 |
+| `1mo`, `3 months`, `1y`, `P1M`, `P1Y2M10D` | calendar months and years, below |
 
-**Months and years are refused**, spelled out or as ISO `P3M` and `P1Y`. Neither has a fixed
-length, and choosing one would be choosing the model's number for it: write a quarter as `13w`
-or `91d`. A bare number (`600`) is refused for want of a unit, and a zero duration because
-it declares no time at all -- except under `align_tolerance:`, where zero asks for readings
-taken at the same instant.
+**A month is a calendar month.** It has no fixed length, so the engine does not pick one: it
+lays the months on the calendar at the instant the key is measured from, keeping the day of
+the month and clamping it to that month's last day. A month back from 31 March is 28 February,
+29 in a leap year; a month forward from 31 January is 28 February too. `window:`, `lookback:`,
+`timeout:`, `homeostasis.must_return_within:` and `forecast.max_age:` count back from now, so a
+state is past a one-month `timeout:` once it began before the month back from now: one begun
+on 31 January is past it on 1 March, a month back from 28 February being 28 January.
+`horizon:` counts forward from now. A causal delay counts back from the finding in
+`hypothesize`, where a path's delays are summed, months with months, and laid back from the
+finding once. Where the engine simulates -- `traverse`, `rollout` and `plan` -- each edge's delay
+is its months forward from now, taken in seconds when the topology is built, and a path adds
+those seconds. The months apply first and any days or hours after them; a year is twelve
+months; instants are UTC.
+
+On a series captured monthly this is the difference that matters: `30d` back from a capture on
+1 March is 30 January, and `1 month` is 1 February.
+
+A fraction of a month is refused, since a month has no length to take a fraction of --
+`1.5 months`, `P0.5M` -- and so is a capital `M` outside ISO 8601: `1M` is a month in some
+conventions and a minute in others, so write `mo` or `min`. `align_tolerance:` refuses months
+and years, because it compares two readings' stamps and needs a fixed length. A bare number
+(`600`) is refused for want of a unit, and a zero duration because it declares no time at all
+-- except under `align_tolerance:`, where zero asks for readings taken at the same instant.
 
 Each refusal is a `malformed_value` row in `unread_fields`, naming the key, what was written
 and what came of it. A refused `timeout:` declares none, so STABILITY declines the state as
 above; a refused `window:` falls back to an hour; the others are treated as not written. Until
 0.2.23 the value was read as a prefix -- `3 months` as three minutes -- and whatever could not
-be read became the key's default without a word.
+be read became the key's default without a word; from 0.2.23 to 0.2.33 months and years were
+refused, and `1M` was read as a minute.
 
 ### A type that extends another: `extends:`
 
@@ -842,6 +862,20 @@ With this declared, `traverse` in a value mode reports what the downstream
 value BECOMES rather than only who is reachable, and `rollout` steps that
 forward under actions.
 
+**The dead time can be written as a duration instead**, under
+`propagation_delay:` -- `90s`, `2h`, and the only way to declare one in calendar
+months:
+
+```yaml
+    temporal:
+      propagation_delay: 1 month   # read as Durations above says, on the calendar
+```
+
+A rule declares its delay once. Both keys on one rule contradict each other, so
+neither is applied, the rule declares no delay, and `unread_fields` names the
+pair; a value `propagation_delay:` cannot read is named there too, and a bare
+number points at `propagation_delay_s:`, which takes seconds.
+
 **A key this engine does not read is reported, not ignored.** Every key of a
 relationship rule -- at its own level and inside `temporal:`, `transition:` and
 `causal:` -- and every key inside `planning:` is compared against the set the
@@ -1333,10 +1367,12 @@ matching on it is unsupported.
 
 **A cause is read at its declared delay.** A finding is found at one instant,
 and a cause some declared hops upstream acted earlier. When a causal edge's rule
-declares `temporal: {propagation_delay_s: ...}`, `hypothesize` reads every entity
-upstream of the finding at the finding's instant minus the dead times declared
-along its path, on a copy of the session the live one never sees, and ranks on
-that evidence. `read_at` names the instants, and each candidate's own `read_at`
+declares `temporal: {propagation_delay_s: ...}` or `{propagation_delay: ...}`,
+`hypothesize` reads every entity upstream of the finding at the finding's instant
+minus the dead times declared along its path, on a copy of the session the live
+one never sees, and ranks on that evidence. A delay in calendar months is laid
+back on the calendar: one month from a finding captured on 31 March reads the
+cause on 28 February, and two monthly edges read it on 31 January. `read_at` names the instants, and each candidate's own `read_at`
 says when it was read. Measured on a pump feeding a tank feeding a basin, 60 s
 per edge: a tank fault one delay back, cleared by the finding's instant, puts the
 pump first at 0.808 against the tank's 0.415, where read at the finding the tank

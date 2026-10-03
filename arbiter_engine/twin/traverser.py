@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, FrozenSet, List, Optional, Set, Tuple
 
-from ..clock import now_utc
+from ..clock import now_utc, span_seconds_forward
 from ..assumptions import (
     DECLARED_COUPLING_NOT_PROBABILITY_PRUNED,
     EXOGENOUS_INPUTS_HELD,
@@ -248,7 +248,7 @@ def _project_declared(values, spec, horizon_s: float):
         detail = str(getattr(fitted, "detail", "") or
                      f"the declared {name} model could not be fitted")
         return None, (reason, detail), None
-    horizon = float(spec.horizon.total_seconds()
+    horizon = float(span_seconds_forward(spec.horizon, now_utc())
                     if getattr(spec, "horizon", None) else horizon_s)
     try:
         forecast = fitted.forecast(horizon)

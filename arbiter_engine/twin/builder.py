@@ -14,7 +14,8 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from ..interfaces import Entity, RelationshipGraph
 from ..types import Axiom, Severity
 from ..temporal.temporal_edge import (
-    TemporalAnnotationStore, ResponseModel, resolve_number,
+    TemporalAnnotationStore, ResponseModel, declared_delay, delay_seconds,
+    resolve_number,
     resolve_response_model,
 )
 from ..propagation.weight_learner import LearnedWeight
@@ -436,8 +437,9 @@ class TopologyBuilder:
             # reports it.
             temporal_block = {}
         if temporal_block:
-            edge.propagation_delay_s = _number_or(temporal_block.get(
-                'propagation_delay_s'), edge.propagation_delay_s)
+            # `propagation_delay_s` or `propagation_delay`.
+            edge.propagation_delay_s = delay_seconds(
+                temporal_block, edge.propagation_delay_s)
             edge.time_constant_s = _number_or(temporal_block.get(
                 'time_constant_s'), edge.time_constant_s)
             edge.coupling_strength = _number_or(temporal_block.get(
@@ -481,8 +483,10 @@ class TopologyBuilder:
         declared = temporal_block if isinstance(temporal_block, dict) else {}
         # a value that is not a number is left to the engine as
         # surely as an absent one, so the question is asked of it too.
+        # the delay is declared under either of its keys.
         return tuple(k for k in TIME_COURSE_KEYS
-                     if resolve_number(declared.get(k))[0] is None)
+                     if (declared_delay(declared) if k == "propagation_delay_s"
+                         else resolve_number(declared.get(k))[0]) is None)
 
     @staticmethod
     def _time_course_gap(edge: 'TwinEdge', temporal_block: Dict[str, Any],
@@ -707,8 +711,7 @@ class TopologyBuilder:
         if not isinstance(temporal_block, dict):
             temporal_block = {}           # as in `_apply_declared_rule`
         if temporal_block:
-            prop_delay = _number_or(
-                temporal_block.get('propagation_delay_s'), prop_delay)
+            prop_delay = delay_seconds(temporal_block, prop_delay)
             time_const = _number_or(
                 temporal_block.get('time_constant_s'), time_const)
             coupling = _number_or(

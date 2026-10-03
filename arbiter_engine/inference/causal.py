@@ -36,7 +36,8 @@ import math
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from ..temporal.temporal_edge import resolve_number
+from ..clock import CalendarSpan
+from ..temporal.temporal_edge import declared_delay, resolve_number
 from ..types import DEFAULT_CAUSAL_ROOT_PRIOR, read_causal_root_prior
 
 __all__ = ["EdgeWeight", "CausalGraph", "causal_subgraph",
@@ -109,7 +110,9 @@ class CausalGraph:
     latents: Dict[Tuple[str, str], str] = field(default_factory=dict)
     entity_type: Dict[str, str] = field(default_factory=dict)
     #: the dead time each edge's rule DECLARES, in seconds, and its
-    #: time constant: `None` wherever nothing was declared. Never the engine's
+    #: time constant: `None` wherever nothing was declared. A delay
+    #: declared as a duration naming calendar months is a `CalendarSpan`, which
+    #: the walk applies at the finding's instant. Never the engine's
     #: own 60 s, which a transition falls back to and stamps: a read shifted by
     #: a number nobody declared would place the evidence at an instant the
     #: model never named, and on a monthly series it is last month's reading.
@@ -286,4 +289,10 @@ def _declared_time_course(rule: Dict[str, Any]
             return None
         return value
 
-    return declared("propagation_delay_s"), declared("time_constant_s")
+    # the delay under either key, through the resolver every reader
+    # of it shares; a span naming months is kept whole for the walk to apply.
+    delay = declared_delay(block)
+    if not isinstance(delay, CalendarSpan) and delay is not None and (
+            not math.isfinite(delay) or delay < 0):
+        delay = None
+    return delay, declared("time_constant_s")

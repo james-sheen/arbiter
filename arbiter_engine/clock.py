@@ -37,12 +37,17 @@ twice the threshold and so also escalated the severity. One instant, three
 verdicts, decided by the reporter's timezone.
 """
 
+import calendar as _calendar
 from contextlib import contextmanager
 from contextvars import ContextVar
-from datetime import datetime, timezone
-from typing import Callable, Iterator
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from typing import Callable, Iterator, Union
 
-__all__ = ["as_naive_utc", "now_utc", "as_of", "clock_is_frozen"]
+__all__ = ["as_naive_utc", "now_utc", "as_of", "clock_is_frozen",
+           "CalendarSpan", "shift_months", "span_back", "span_forward",
+           "span_seconds_back", "span_seconds_forward", "span_times",
+           "span_is_positive"]
 
 
 def _system_now() -> datetime:
@@ -153,3 +158,99 @@ def as_naive_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value
     return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+# ---------------------------------------------------------------------------
+# a span that names calendar months.
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class CalendarSpan:
+    """A duration that names calendar months, which no number of seconds is.
+
+    A month has no fixed length, so a span naming one cannot be a `timedelta`:
+    it is a count of calendar months and a fixed remainder, applied at the
+    instant it is measured from. `n` months from an instant moves its calendar
+    month by `n` and keeps the day, clamped to that month's last; the months
+    apply first, then the fixed part. A year is twelve months.
+
+    Measured on engine 0.2.33, a month written as 30 days on a monthly series
+    read the previous capture when the captures fell at month end and the one
+    before it when they fell on the 1st or the 15th -- the same declared number
+    right or wrong by the day of the month.
+
+    A duration naming no month stays a `timedelta`, so nothing that was read
+    before changes. Every reader applies either through `span_back` and
+    `span_forward`.
+    """
+    months: int
+    fixed: timedelta = timedelta(0)
+    #: As the author wrote it, for what the engine reports back.
+    written: str = ""
+
+    def back_from(self, instant: datetime) -> datetime:
+        return shift_months(instant, -self.months) - self.fixed
+
+    def forward_from(self, instant: datetime) -> datetime:
+        return shift_months(instant, self.months) + self.fixed
+
+    def __str__(self) -> str:
+        return self.written or f"{self.months}mo {self.fixed}"
+
+
+#: What a duration key holds: a fixed span, or one naming calendar months.
+Span = Union[timedelta, CalendarSpan]
+
+
+def shift_months(instant: datetime, months: int) -> datetime:
+    """`instant` moved by whole calendar months, its day clamped to the last of
+    the month it lands in: Mar 31 back one month is Feb 28 (29 in a leap year),
+    and Jan 31 forward one month is the same."""
+    if not months:
+        return instant
+    index = instant.year * 12 + (instant.month - 1) + months
+    year, month0 = divmod(index, 12)
+    day = min(instant.day, _calendar.monthrange(year, month0 + 1)[1])
+    return instant.replace(year=year, month=month0 + 1, day=day)
+
+
+def span_back(span: Span, instant: datetime) -> datetime:
+    """The instant `span` before `instant`: where a window measured back from
+    it starts."""
+    if isinstance(span, CalendarSpan):
+        return span.back_from(instant)
+    return instant - span
+
+
+def span_forward(span: Span, instant: datetime) -> datetime:
+    """The instant `span` after `instant`: where a horizon from it ends."""
+    if isinstance(span, CalendarSpan):
+        return span.forward_from(instant)
+    return instant + span
+
+
+def span_seconds_back(span: Span, instant: datetime) -> float:
+    """How many seconds `span` covers measured back from `instant` -- the one
+    length a span naming months has, and only at that instant."""
+    return (instant - span_back(span, instant)).total_seconds()
+
+
+def span_seconds_forward(span: Span, instant: datetime) -> float:
+    """How many seconds `span` covers measured forward from `instant`."""
+    return (span_forward(span, instant) - instant).total_seconds()
+
+
+def span_times(span: Span, factor: int) -> Span:
+    """`span` taken `factor` times: its months and its fixed part each scaled."""
+    if isinstance(span, CalendarSpan):
+        return CalendarSpan(span.months * factor, span.fixed * factor,
+                            f"{factor} x {span}")
+    return span * factor
+
+
+def span_is_positive(span: Span) -> bool:
+    """Whether `span` declares any time at all."""
+    if isinstance(span, CalendarSpan):
+        return span.months > 0 or span.fixed > timedelta(0)
+    return span > timedelta(0)
+

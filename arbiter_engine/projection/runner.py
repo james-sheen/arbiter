@@ -22,6 +22,7 @@ from datetime import timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..axiom_thresholds import effective_thresholds
+from ..clock import now_utc, span_seconds_back, span_seconds_forward
 from ..derived.indicator import alignment_evidence
 from ..interfaces import IndicatorSpec
 from ..subenvelope import Decline, SubEnvelope
@@ -170,7 +171,7 @@ def run_projection(session, horizon_s: float = 3600.0,
                 declines.append(Decline(
                     "insufficient_samples", scope,
                     evidence={"n": len(series), "required": MINIMUM_SAMPLES,
-                              "lookback_s": lookback.total_seconds(),
+                              "lookback_s": span_seconds_back(lookback, now_utc()),
                               **alignment_evidence(history, entity.id,
                                                    spec.property_name,
                                                    lookback)}))
@@ -181,8 +182,11 @@ def run_projection(session, horizon_s: float = 3600.0,
                 declines.append(fitted)
                 continue
 
+            # a horizon naming calendar months ends that many
+            # months ahead of now, so its length is read from now.
             horizon = float(
-                spec.horizon.total_seconds() if spec.horizon else horizon_s)
+                span_seconds_forward(spec.horizon, now_utc())
+                if spec.horizon else horizon_s)
             forecast = fitted.forecast(horizon)
             checked["forecasts_issued"] += 1
             checked["observations_assimilated"] += len(series)

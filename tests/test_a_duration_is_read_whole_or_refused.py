@@ -16,6 +16,13 @@ the timeout:
 or weeks, joined or ISO 8601, read whole; months and years are refused by name,
 having no fixed length; every refusal is a `malformed_value` row; and a refused
 `timeout:` is not a declared one.
+
+Since 0.2.34 the one refusal that cost the author a correct answer is
+reversed: months and years are calendar units, laid at the instant each reader
+measures from, as `test_a_month_is_a_calendar_month.py` pins. What is still
+refused here is what still has no reading -- a fraction of a month, a capital `M`
+that is a month to some and a minute to others, and a month under
+`align_tolerance:`.
 """
 
 from __future__ import annotations
@@ -49,10 +56,9 @@ READ = [
 ]
 
 REFUSED = [
-    ("3 months", "months or years"),
-    ("1y", "months or years"),
-    ("P3M", "months or years"),
-    ("P1Y", "months or years"),
+    ("1.5 months", "fraction of a month"),
+    ("P0.5M", "fraction of a month"),
+    ("3M", "`mo` for a month"),
     ("600", "no unit"),
     ("1 ms", "'ms'"),
     ("3 fortnights", "'fortnights'"),
@@ -78,7 +84,7 @@ class TestTheWholeValueIsRead:
 
     def test_no_prefix_of_a_value_is_read_as_the_value(self):
         """The defect in one line each: what the prefix read used to return."""
-        assert parse_duration("3 months") is None       # was three minutes
+        assert parse_duration("3 months").months == 3   # was three minutes
         assert parse_duration("1h30m") == timedelta(minutes=90)   # was one hour
         assert parse_duration("1 ms") is None           # was one minute
 
@@ -120,18 +126,20 @@ def _judged(timeout_line, readings):
 
 class TestStabilityTimesOnlyWhatWasDeclared:
 
-    @pytest.mark.parametrize("timeout", ["timeout: 12w", "timeout: 90d", "timeout: P90D"])
+    @pytest.mark.parametrize("timeout", ["timeout: 12w", "timeout: 90d", "timeout: P90D",
+                                         "timeout: 3 months"])
     def test_a_long_timeout_does_not_fire_on_two_hours(self, timeout):
         _, fired, declined = _judged(timeout, TWO_HOURS)
         assert fired == [] and declined == []
 
-    @pytest.mark.parametrize("timeout", ["timeout: 12w", "timeout: 90d", "timeout: P90D"])
+    @pytest.mark.parametrize("timeout", ["timeout: 12w", "timeout: 90d", "timeout: P90D",
+                                         "timeout: 3 months"])
     def test_and_fires_on_five_months_of_monthly_captures(self, timeout):
         _, fired, _ = _judged(timeout, FIVE_MONTHS)
         assert len(fired) == 1
 
     @pytest.mark.parametrize("readings", [TWO_HOURS, FIVE_MONTHS])
-    @pytest.mark.parametrize("timeout", ["timeout: 3 months", "timeout: 1y", "timeout: 0s"])
+    @pytest.mark.parametrize("timeout", ["timeout: 1.5 months", "timeout: 3M", "timeout: 0s"])
     def test_a_refused_timeout_declares_none_and_the_decline_says_what_was_written(
             self, timeout, readings):
         _, fired, declined = _judged(timeout, readings)
@@ -143,9 +151,9 @@ class TestStabilityTimesOnlyWhatWasDeclared:
 class TestEachRefusalIsReported:
 
     @pytest.mark.parametrize("key, written, consequence", [
-        ("timeout", "3 months", "STABILITY declines"),
+        ("timeout", "1.5 months", "STABILITY declines"),
         ("window", "a while", "engine's own 1h"),
-        ("horizon", "1y", "not written"),
+        ("horizon", "1M", "not written"),
         ("lookback", "600", "not written"),
         ("align_tolerance", "1 ms", "not written"),
     ])
@@ -171,10 +179,10 @@ class TestEachRefusalIsReported:
             "id": "durations", "name": "durations", "entity_types": ["Unit"],
             "indicators": {"Unit": [{"name": "load", "type": "NUMERIC",
                                      "axioms": ["HOMEOSTASIS"],
-                                     "homeostasis": {"must_return_within": "2 months"}}]}}})
+                                     "homeostasis": {"must_return_within": "2.5 months"}}]}}})
         [row] = [r for r in session.model.unread_fields()
                  if r["field"] == "homeostasis.must_return_within"]
-        assert row["reason"] == "malformed_value" and row["value"] == "2 months"
+        assert row["reason"] == "malformed_value" and row["value"] == "2.5 months"
 
     def test_a_refused_window_is_the_hour_it_was_before_and_now_says_so(self):
         session, _, _ = _judged("window: a while", TWO_HOURS)

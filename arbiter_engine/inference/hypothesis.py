@@ -42,7 +42,8 @@ inference this project removed from `role:` and from flow direction.
 TIME, AND THE READING THAT WOULD CHANGE THE ANSWER. A finding is
 found at an instant, and a cause some declared hops upstream acted earlier by
 the dead times declared along the way. So when a causal edge DECLARES a
-`propagation_delay_s`, every entity upstream of the finding is read at the
+`propagation_delay_s` -- or, since 0.2.34, a `propagation_delay`, which may
+name calendar months -- every entity upstream of the finding is read at the
 finding's instant minus the dead times summed along its path, on a scratch
 copy of the session the live one never sees, and the ranking rests on that
 aligned evidence. Measured on a pump feeding a tank feeding a basin, 60 s per
@@ -94,7 +95,7 @@ from typing import (Any, Callable, Dict, List, NamedTuple, Optional, Sequence,
 from ..assumptions import (ASSUMPTION_STAMPS, EVIDENCE_READ_AT_DECLARED_DELAY,
                            FAULTS_VISIBLE_ALONG_CHANNELS, READ_AT_DEAD_TIME,
                            READ_AT_EACH_PATH_DELAY, TIME_COURSE_NOT_DECLARED)
-from ..clock import now_utc
+from ..clock import CalendarSpan, now_utc, shift_months
 from ..subenvelope import Decline, SubEnvelope
 from ..types import (DEFAULT_CAUSAL_MAX_HOPS, Severity,
                      read_causal_max_hops)
@@ -119,7 +120,35 @@ READ_LOOKBACK = timedelta(days=30)
 
 #: A walk's summary: the dead time declared along it, whether an edge on it
 #: declared none, and whether one declared a time constant.
-_Walk = Tuple[float, bool, bool]
+#:
+#: the dead time is a PAIR, calendar months and seconds. A delay
+#: declared as months has no length in seconds until it is laid back from an
+#: instant, so a walk adds the months and the seconds separately and the read
+#: instant applies them once, months first: two monthly edges are two months
+#: before the finding, which is not one month before one month before.
+_Dead = Tuple[int, float]
+_Walk = Tuple[_Dead, bool, bool]
+_NO_DEAD: _Dead = (0, 0.0)
+
+
+def _dead_plus(dead: _Dead, delay: Any) -> _Dead:
+    """`dead` with one edge's declared delay added: seconds, a `CalendarSpan`,
+    or None for an edge that declared none."""
+    months, seconds = dead
+    if isinstance(delay, CalendarSpan):
+        return months + delay.months, seconds + delay.fixed.total_seconds()
+    return months, seconds + (delay or 0.0)
+
+
+def _moved(dead: _Dead) -> bool:
+    """Whether a walk's dead time moves the read at all."""
+    return dead[0] != 0 or dead[1] > 0
+
+
+def _read_instant(anchor: datetime, dead: _Dead) -> datetime:
+    """The instant a walk with dead time `dead` reads at: the months, then the
+    seconds, laid back from the finding's instant."""
+    return shift_months(anchor, -dead[0]) - timedelta(seconds=dead[1])
 
 
 def _ancestors(graph: CausalGraph, node: str, max_hops: int = MAX_HOPS
@@ -157,7 +186,7 @@ def _walks(graph: CausalGraph, subject: str, max_hops: int
     adds nothing and marks its walk; the ENGINE'S dead time is never added.
     """
     found: Dict[str, Set[_Walk]] = {}
-    level: Dict[str, Set[_Walk]] = {subject: {(0.0, False, False)}}
+    level: Dict[str, Set[_Walk]] = {subject: {(_NO_DEAD, False, False)}}
     for _hop in range(max_hops):
         nxt: Dict[str, Set[_Walk]] = {}
         for child, summaries in level.items():
@@ -166,7 +195,7 @@ def _walks(graph: CausalGraph, subject: str, max_hops: int
                 tau = graph.time_constants.get((parent, child))
                 for dead, undeclared, lagged in summaries:
                     nxt.setdefault(parent, set()).add(
-                        (dead + (delay or 0.0), undeclared or delay is None,
+                        (_dead_plus(dead, delay), undeclared or delay is None,
                          lagged or bool(tau)))
         for parent, summaries in nxt.items():
             found.setdefault(parent, set()).update(summaries)
@@ -320,9 +349,9 @@ def _aligned_evidence(session: Any, graph: CausalGraph, subject: str,
     shifts = {node: sorted({walk[0] for walk in summaries})
               for node, summaries in walks.items()}
     instants = sorted({dead for dead_times in shifts.values()
-                       for dead in dead_times if dead > 0})
+                       for dead in dead_times if _moved(dead)})
     states = {dead: _states_at(session, graph,
-                               anchor - timedelta(seconds=dead), severities,
+                               _read_instant(anchor, dead), severities,
                                check)
               for dead in instants}
     live = dict(observed)
@@ -331,17 +360,17 @@ def _aligned_evidence(session: Any, graph: CausalGraph, subject: str,
     declines: List[Decline] = []
     for node, dead_times in sorted(shifts.items()):
         if node == subject or node not in graph.nodes \
-                or not any(dead > 0 for dead in dead_times):
+                or not any(_moved(dead) for dead in dead_times):
             continue
         readings: List[Tuple[Optional[int], Optional[str], bool,
                              Optional[Dict[str, Any]]]] = []
         for dead in dead_times:
-            if dead > 0:
+            if _moved(dead):
                 readings.append(states[dead][node])
             else:
                 readings.append((None if node in left_out else observed.get(node),
                                  severity.get(node), False, base.get(node)))
-        read_at[node] = [(anchor - timedelta(seconds=dead)).isoformat()
+        read_at[node] = [_read_instant(anchor, dead).isoformat()
                          for dead in dead_times]
         if any(state == 1 for state, _sev, _unread, _summary in readings):
             value: Optional[int] = 1
@@ -561,7 +590,7 @@ def _upward(session: Any, entity_id: str, check: Optional[Callable[[Any], Any]],
     # read, and a model declaring none gets exactly the evidence it always did.
     severities, _declared, _unusable = evidence_severities(session.model)
     walks = _walks(graph, entity_id, hop_bound)
-    aligned = any(walk[0] > 0 for summaries in walks.values() for walk in summaries)
+    aligned = any(_moved(walk[0]) for summaries in walks.values() for walk in summaries)
     stamps: Set[str] = set()
     evidence: Optional[Evidence] = None
     read_at: Dict[str, List[str]] = {}
@@ -577,7 +606,7 @@ def _upward(session: Any, entity_id: str, check: Optional[Callable[[Any], Any]],
         cone = [walk for summaries in walks.values() for walk in summaries]
         if any(undeclared for _dead, undeclared, _lagged in cone):
             stamps.add(TIME_COURSE_NOT_DECLARED)
-        if any(dead > 0 and lagged for dead, _undeclared, lagged in cone):
+        if any(_moved(dead) and lagged for dead, _undeclared, lagged in cone):
             stamps.add(READ_AT_DEAD_TIME)
         if any(len({walk[0] for walk in summaries}) > 1
                for summaries in walks.values()):
@@ -661,8 +690,8 @@ def hypothesize(session: Any, entity_id: str, *,
         dead_times = sorted({walk[0] for walk in walks.get(node, ())})
         # A cause read only in the past is a claim about that instant, and the
         # ledger grades it there; one read at the finding is a claim about now.
-        when = (anchor - timedelta(seconds=dead_times[0])
-                if aligned and dead_times and dead_times[0] > 0 else None)
+        when = (_read_instant(anchor, dead_times[0])
+                if aligned and dead_times and _moved(dead_times[0]) else None)
         sub = run_inference(session, Query(target=node), report_above=None,
                             evidence=evidence, predicted_at=when)
         payload = sub.to_dict()

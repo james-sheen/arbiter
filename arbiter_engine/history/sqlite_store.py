@@ -27,7 +27,7 @@ import threading
 from datetime import datetime, timedelta
 from typing import Any, List, Optional, Tuple
 
-from ..clock import as_naive_utc, now_utc
+from ..clock import as_naive_utc, now_utc, span_back
 from ..interfaces import Observation, ObservationHistory
 
 __all__ = ["SqliteObservationHistory"]
@@ -113,7 +113,7 @@ class SqliteObservationHistory(ObservationHistory):
         into every step of a backtest.
         """
         present = _to_seconds(now_utc())
-        cutoff = _to_seconds(now_utc() - window)
+        cutoff = _to_seconds(span_back(window, now_utc()))
         with self._lock:
             rows = self._connection.execute(
                 "SELECT ts, value_num FROM obs WHERE entity_id = ? AND property = ?"
@@ -126,7 +126,7 @@ class SqliteObservationHistory(ObservationHistory):
         """State observations inside `window`, ending NOW -- see `get_values`
         for why the upper bound is there."""
         present = _to_seconds(now_utc())
-        cutoff = _to_seconds(now_utc() - window)
+        cutoff = _to_seconds(span_back(window, now_utc()))
         with self._lock:
             rows = self._connection.execute(
                 "SELECT ts, value_num, value_str FROM obs WHERE entity_id = ?"

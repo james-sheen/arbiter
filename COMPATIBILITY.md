@@ -148,6 +148,15 @@ return, `not_followed`, with `assumptions` on `RootCauseResult` and `ImpactForec
 same two on the list `discover_gaps` returns. One change is a defect fix the changelog lists
 rather than an addition: `predict_all` returns each finding once, where it returned one per
 walk that reached it.
+From 0.2.34: the rule key `temporal.propagation_delay`, and `propagation_delay` on each channel
+`model_describe` lists under `causal` -- the delay as written where it names calendar months,
+with `propagation_delay_s` null there. A model that uses the key, or writes months or years
+under a duration key, needs 0.2.34: an earlier engine names the key `unknown_key` and applies
+no delay, and refuses the months with a `malformed_value` row. `read_duration` and
+`parse_duration` return a `CalendarSpan` for months and years, where they returned none; it
+has no fixed length, so measure it from an instant with `span_back` or `span_forward`, all
+three in `clock`. One change is a defect fix the changelog lists rather than an addition:
+`1M` is refused where it read as one minute.
 
 Three things about it are promises and not accidents:
 

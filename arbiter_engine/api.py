@@ -26,7 +26,7 @@ from datetime import datetime, timedelta, timezone
 from typing import (Any, Dict, Iterable, List, Optional, Sequence, Set,
                     Tuple)
 
-from .clock import as_naive_utc, as_of, clock_is_frozen, now_utc
+from .clock import CalendarSpan, as_naive_utc, as_of, clock_is_frozen, now_utc
 from arbiter_engine.axiom_thresholds import (
     AXIOM_THRESHOLD_OVERRIDES_KEY, DECLARED_THRESHOLDS_KEY,
     OVERRIDE_CONSULTED_BY, OVERRIDE_DECLARED_BUT_UNREACHABLE,
@@ -1109,7 +1109,12 @@ def _causal_coverage(model) -> Dict[str, Any]:
             "leak": weight.leak,
             # the same predicate the inference stamps by.
             "leak_source": weight.leak_source,
-            "propagation_delay_s": delay,
+            # a delay naming calendar months has no length in
+            # seconds until it is laid back from an instant: shown as written.
+            "propagation_delay_s": (None if isinstance(delay, CalendarSpan)
+                                    else delay),
+            "propagation_delay": (str(delay) if isinstance(delay, CalendarSpan)
+                                  else None),
             "time_constant_s": tau,
             # the end of the relation where a failure starts.
             "cause": end,

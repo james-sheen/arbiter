@@ -21,10 +21,10 @@ up where the prefix cannot be seen.
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
-from ..clock import now_utc
+from ..clock import now_utc, span_seconds_back
 from ..projection.projector import BASELINE_MODEL_ID, SOURCE_ENGINE
 from ..subenvelope import Decline, SubEnvelope
 from .shadow import run_shadow_check
@@ -133,7 +133,7 @@ def run_forecasts(session: Any, *,
         # is no check until somebody declares the number.
         max_age = config.get("max_age")
         if max_age is not None:
-            seconds = _seconds(max_age)
+            seconds = _seconds(max_age, present)
             if seconds is None:
                 declines.append(Decline(
                     "stale_forecast", scope,
@@ -232,12 +232,17 @@ def run_forecasts(session: Any, *,
                        declines, questions)
 
 
-def _seconds(raw: Any) -> Optional[float]:
-    """A duration in seconds, from a number or the short forms the model uses."""
+def _seconds(raw: Any, present: datetime) -> Optional[float]:
+    """A duration in seconds, from a number or the short forms the model uses.
+
+    an age is measured back from now, so a `max_age:` naming
+    calendar months is as long as those months are, counted back from
+    `present`. It raised here before, and the leg read as unanswered.
+    """
     if isinstance(raw, bool):
         return None
     if isinstance(raw, (int, float)):
         return float(raw)
     from ..ontology.domain_loader import parse_duration
     parsed = parse_duration(str(raw))
-    return parsed.total_seconds() if parsed is not None else None
+    return span_seconds_back(parsed, present) if parsed is not None else None

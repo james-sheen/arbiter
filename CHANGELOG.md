@@ -34,6 +34,32 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+## [0.2.34] — 2026-10-03
+
+### Changed
+
+- **A month is a calendar month.** `1mo`, `3 months`, `1y`, `P1M` and `P1Y2M10D` are read under
+  every duration key but `align_tolerance:`, laid on the calendar from the instant each key counts
+  from -- back for `window`, `lookback`, `timeout`, `must_return_within`, `forecast.max_age` and
+  a cause's delay, forward for `horizon` -- with the day clamped to the month's last. Refused
+  since 0.2.23, they were written as days, and a monthly series then read the wrong month by the
+  day of the month it was captured on. `read_duration` returns a `CalendarSpan`, from `clock`.
+
+### Added
+
+- **`temporal.propagation_delay:`**, a rule's dead time written as a duration, months included,
+  beside `propagation_delay_s:`. Both on one rule contradict, so neither applies and
+  `unread_fields` names the pair. `model_describe`'s `causal` rows gain `propagation_delay`, the
+  delay as written where it names months.
+
+### Fixed
+
+- **`1M` is refused**, where it was read as one minute: outside ISO 8601 a capital `M` is a month
+  to some and a minute to others. The remedy offers `mo` and `min`.
+- **The RDF loader reads durations as the YAML loader does.** Its own parser dropped `P30D`,
+  `P1W` and `12w` without a word; it reads through `read_duration` now and reports what it
+  cannot read.
+
 ## [0.2.33] — 2026-10-03
 
 ### Added
