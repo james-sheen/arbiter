@@ -25,6 +25,13 @@ def greedy_set_cover(
 ) -> SetCoverResult:
     """Standard greedy set cover with score-based tiebreaking.
 
+    A TIE IN COVERAGE AND SCORE GOES TO THE LOWER ID. The loop kept
+    the first of two such candidates in the order `candidates` was built, and
+    the callers build it from sets, whose order follows the process's string
+    hashing: on a four-node chain, eight hash seeds named `N0` and `N3` six
+    times and `N1` and `N0` twice. The id decides now, so one input gets one
+    answer in every process.
+
     Args:
         candidates: Mapping candidate_id -> set of elements it covers.
         universe: The full set of elements to cover.
@@ -59,7 +66,9 @@ def greedy_set_cover(
             count = len(new_coverage)
             score = scores.get(cid, 0.0)
             if count > best_count or (
-                count == best_count and count > 0 and score > best_score
+                count == best_count and count > 0 and (
+                    score > best_score
+                    or (score == best_score and str(cid) < str(best_id)))
             ):
                 best_id = cid
                 best_coverage = frozenset(new_coverage)

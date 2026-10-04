@@ -34,6 +34,17 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+## [0.2.35] — 2026-10-04
+
+### Fixed
+
+- **A tie in the root-cause cover goes to the lower id.** `find_root_causes` and
+  `RootCauseIdentifier` kept the first of two candidates tied in coverage and probability in the
+  order they were collected, from sets, so one input named different roots in different
+  processes: a four-node chain named `N0` and `N3` under six of eight hash seeds, and `N1` and
+  `N0` under two. The lower id takes the tie, and a footprint's mean is summed exactly
+  (`footprint_mean`), so equal footprints tie whatever order their walks found them in.
+
 ## [0.2.34] — 2026-10-03
 
 ### Changed

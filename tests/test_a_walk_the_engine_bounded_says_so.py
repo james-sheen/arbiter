@@ -96,13 +96,12 @@ def _named(record, kind):
 class TestFindRootCauses:
 
     def test_the_cover_its_floor_cut_says_so(self):
-        """Two roots on a chain whose head explains all four. WHICH two is a
-        tie the cover breaks by set order -- `N0` and `N3`, or `N1` and `N0` --
-        so the test holds what every order agrees on."""
+        """Two roots on a chain whose head explains all four. Which two was a
+        tie the cover broke by set order -- `N0` and `N3`, or `N1` and `N0` --
+        until the lower id took it."""
         session, nodes = _chain(4)
         answer = _traverser(session).find_root_causes(set(nodes))
-        roots = [c.entity_id for c in answer.root_causes]
-        assert len(roots) == 2 and "N0" in roots
+        assert [c.entity_id for c in answer.root_causes] == ["N0", "N3"]
         assert answer.assumptions == [WALK_FLOOR_NOT_DECLARED]
         assert ("N0", "N2", "N3", 3) in _named(answer.not_followed, "below_floor")
         assert answer.not_followed["below_floor"]["bound"] == 0.05

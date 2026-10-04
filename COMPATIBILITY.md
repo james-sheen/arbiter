@@ -157,6 +157,9 @@ no delay, and refuses the months with a `malformed_value` row. `read_duration` a
 has no fixed length, so measure it from an instant with `span_back` or `span_forward`, all
 three in `clock`. One change is a defect fix the changelog lists rather than an addition:
 `1M` is refused where it read as one minute.
+From 0.2.35: nothing is added. One change is a defect fix the changelog lists: on a tie in
+coverage and probability, `find_root_causes` and `RootCauseIdentifier` name the lower entity id,
+where they named whichever candidate the process's string hashing put first.
 
 Three things about it are promises and not accidents:
 

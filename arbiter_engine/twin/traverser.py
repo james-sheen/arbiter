@@ -40,6 +40,7 @@ from ..propagation.impact_estimator import DownstreamImpact, ImpactForecast
 from ..propagation.root_cause import (
     RootCauseResult,
     collect_upstream_candidates,
+    footprint_mean,
     select_root_causes_via_set_cover,
 )
 
@@ -885,12 +886,10 @@ class TopologyTraverser:
                     float(s.hop) for s in result.steps
                     if s.node_id in covered
                 ]
-                footprint_probs[cid] = (
-                    sum(probs) / len(probs) if probs else 0.0
-                )
-                footprint_hops[cid] = (
-                    sum(hops_list) / len(hops_list) if hops_list else 0.0
-                )
+                # an order-free mean, so equal footprints tie
+                # exactly and the cover's tie-break by id decides.
+                footprint_probs[cid] = footprint_mean(probs)
+                footprint_hops[cid] = footprint_mean(hops_list)
 
         answer = select_root_causes_via_set_cover(
             footprints=footprints,

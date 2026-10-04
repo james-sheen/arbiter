@@ -16,6 +16,7 @@ and answers: *"Which entities most likely caused these N anomalies?"*
 """
 
 import logging
+import math
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -113,6 +114,19 @@ class RootCauseResult:
 # inline code; abstraction differences (RelationshipGraph vs TwinEdge) live
 # in the call sites via the predecessor callable.
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+def footprint_mean(values: List[float]) -> float:
+    """The mean of a footprint's values, the same whatever order they came in.
+
+    A footprint's probabilities arrive in the order its walk found
+    them, and `sum` before Python 3.12 adds in that order: the engine's own 0.3
+    powers `1.0, 0.3, 0.09, 0.027, 0.0081` average to `0.28502` or
+    `0.28501999999999994` by order alone. That last bit decided which of two
+    equal candidates the cover took. `math.fsum` is exact on every version, so
+    equal footprints score equal and the cover's tie-break by id decides.
+    """
+    return math.fsum(values) / len(values) if values else 0.0
 
 
 def collect_upstream_candidates(
@@ -564,7 +578,7 @@ class RootCauseIdentifier:
 
                 queue.append((target_id, new_hop, new_prob))
 
-        avg_prob = sum(probs) / len(probs) if probs else 0.0
-        avg_hops = sum(hops) / len(hops) if hops else 0.0
+        avg_prob = footprint_mean(probs)
+        avg_hops = footprint_mean(hops)
 
         return covered, avg_prob, avg_hops
