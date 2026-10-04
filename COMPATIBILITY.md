@@ -160,6 +160,9 @@ three in `clock`. One change is a defect fix the changelog lists rather than an 
 From 0.2.35: nothing is added. One change is a defect fix the changelog lists: on a tie in
 coverage and probability, `find_root_causes` and `RootCauseIdentifier` name the lower entity id,
 where they named whichever candidate the process's string hashing put first.
+From 0.2.36: `cases` on each `plan` candidate -- per open case, `case_id`, `first_clear_s` and
+`clear_to_end_from_s` -- and `cases` on a case's `plan` attachment. Empty with no open case, and
+on a candidate whose actions were all refused. No ranking changes.
 
 Three things about it are promises and not accidents:
 

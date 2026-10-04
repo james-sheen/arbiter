@@ -1752,6 +1752,21 @@ cases whose last walk holds an entity the candidate acts on at its frontier, rea
 from the case book's attachments; it is empty with no case book, and it changes
 no ranking either.
 
+**Each candidate says what it does to each open case, and is not ranked by it.**
+`cases` holds one row per case open on the session: `first_clear_s`, the first
+step whose imagined check found nothing on the case's indicator, on the case's
+subject, at or above the case's own `severity`, and `clear_to_end_from_s`, where
+the run of such steps that lasts to the horizon begins -- null when the horizon
+ends breached. A step that declined the indicator is not clear. A case's
+criterion is not an objective: it says when a case closes on checks, and a
+rollout has steps, so *clear first* and *clear at the end* are different plans --
+on the planning example with a case on the tank, the plan `expected_findings`
+ranks first is clear from 600 s and ends under the setpoint band, and the second
+is clear from 780 s to the end. Both instants are reported and the ranking stays
+the declared objective's. A model with `cases:` and no `planning:` gets the rows
+on unranked candidates. A candidate whose actions were all refused has none, as
+it has no objective. A case's `plan` attachment keeps the chosen plan's rows.
+
 **The cost of a finding is derived from `Severity.priority_score`, not declared
 again.** A second severity table is how two parts of one engine come to
 disagree about which finding is worse.

@@ -2538,7 +2538,12 @@ def _stage_reference(stage: str, leg: Dict[str, Any]) -> Dict[str, Any]:
                 "decisive": chosen.get("decisive"),
                 "reaches": [{"entity": r.get("entity"), "hops": r.get("hops")}
                             for r in chosen.get("reaches") or []
-                            if isinstance(r, dict)]}
+                            if isinstance(r, dict)],
+                # and what the chosen plan did to each open case.
+                "cases": [{key: r.get(key) for key in
+                           ("case_id", "first_clear_s", "clear_to_end_from_s")}
+                          for r in chosen.get("cases") or []
+                          if isinstance(r, dict)]}
     if stage == "act":
         return {"execution_id": leg.get("id"), "action": leg.get("action"),
                 "pairs_filed": (leg.get("checked") or {}).get("pairs_filed")}
@@ -2744,6 +2749,18 @@ def _open_frontiers(session: EngineSession) -> Dict[str, List[str]]:
     return out
 
 
+def _open_cases(session: EngineSession) -> List[Dict[str, Any]]:
+    """The session's open cases as a plan measures against them.
+
+    The subject, the indicator and the severity each case was opened at, in
+    the book's order. With no case book there are none."""
+    book = _case_book_of(session)
+    return [{"case_id": case.case_id, "entity_id": case.entity_id,
+             "indicator": case.indicator, "severity": case.severity}
+            for case in (book.cases() if book is not None else ())
+            if case.status == "open"]
+
+
 def _declared_spec(session: EngineSession, entity_type: str,
                    indicator: str) -> Any:
     for spec in ((session.model.indicators or {}).get(entity_type) or ()):
@@ -2913,7 +2930,8 @@ def plan(session: EngineSession,
             horizon_s=horizon_s, step_s=step_s,
             max_transitions=max_transitions,
             seed_mode=seed,
-            file_predictions=file_predictions)
+            file_predictions=file_predictions,
+            cases=_open_cases(session))
     except Exception as exc:  # noqa: BLE001 - see `_raised`
         sub = _raised("simulation", exc,
                       {"rollouts_run": 0, "candidates_evaluated": 0})
@@ -3012,6 +3030,10 @@ def plan(session: EngineSession,
             # plan acts on at its frontier. No ranking moves.
             "on_frontier_of": sorted({case_id for a in c.actions
                                       for case_id in frontiers.get(a.entity_id, ())}),
+            # what its own rollout did to each open
+            # case: the first clear step, and where the clear run lasting to
+            # the horizon begins. Measured, not ranked on.
+            "cases": [dict(row) for row in c.cases],
             "checked": dict(c.checked),
         }
         for c in result.candidates

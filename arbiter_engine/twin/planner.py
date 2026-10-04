@@ -144,6 +144,15 @@ class PlanCandidate:
     #: largest share of that value's declared variance. `None` exactly when
     #: `margin_sigmas` is: no declared spread reached the trajectory.
     decisive: Optional[Dict[str, Any]] = None
+    #: WHAT IT DOES TO EACH OPEN CASE. One row per case
+    #: open on the session: `first_clear_s`, the first step whose imagined
+    #: check found nothing on the case's indicator at or above the case's
+    #: severity, and `clear_to_end_from_s`, where the run of such steps that
+    #: lasts to the horizon begins -- null when the horizon ends breached.
+    #: Instants, not a verdict: a case's criterion is not an objective, and
+    #: no ranking moves. Empty when its actions were all refused, as its
+    #: objective is: a plan nobody simulated is not measured against a case.
+    cases: List[Dict[str, Any]] = field(default_factory=list)
     checked: Dict[str, Any] = field(default_factory=dict)
     rollouts: int = 0
 
@@ -425,6 +434,52 @@ def _decisive(envelope: Any) -> Optional[Dict[str, Any]]:
             "margin_sigmas": sigmas, **shares[0]}
 
 
+def _case_outcomes(envelope: Any, cases: Sequence[Dict[str, Any]]
+                   ) -> List[Dict[str, Any]]:
+    """Each open case's two instants on this rollout.
+
+    A step is CLEAR for a case when its imagined check found nothing on the
+    case's subject and indicator at or above the case's severity -- the
+    predicate the case book records a check `found` by -- and did not decline
+    that indicator: silence is not health, as `not_looked` says in the book.
+    Measured on the planning example with a case on the tank: the plan
+    `expected_findings` ranks first is clear from 600 s and ends breached, and
+    the second is clear from 780 s to the end. Which of those *solved* the
+    case is not the engine's to say, so both instants are reported and
+    neither is ranked on.
+    """
+    from ..residual.predict_vs_mirror import _problem_indicator
+
+    steps = list(getattr(envelope, "steps", []) or [])
+    rows: List[Dict[str, Any]] = []
+    for case in cases:
+        threshold = Severity(case["severity"]).priority_score
+        where = f"{case['entity_id']}.{case['indicator']}"
+
+        def clear(step: Any) -> bool:
+            if any(d.location == where and d.reason != "partially_checked"
+                   for d in getattr(step, "declines", []) or []):
+                return False
+            return not any(
+                getattr(p, "entity_id", None) == case["entity_id"]
+                and _problem_indicator(p) == case["indicator"]
+                and Severity(getattr(p.severity, "value", p.severity))
+                .priority_score <= threshold
+                for p in getattr(step, "findings", []) or [])
+
+        flags = [clear(step) for step in steps]
+        first = next((step.at_s for step, ok in zip(steps, flags) if ok), None)
+        end_from = None
+        if flags and flags[-1]:
+            start = len(flags) - 1
+            while start > 0 and flags[start - 1]:
+                start -= 1
+            end_from = steps[start].at_s
+        rows.append({"case_id": case["case_id"], "first_clear_s": first,
+                     "clear_to_end_from_s": end_from})
+    return rows
+
+
 def _reaches(envelope: Any, actions: Sequence[ActionInstance]
              ) -> List[Dict[str, Any]]:
     """ -- the entities downstream of the acted-on ones, along the
@@ -612,8 +667,13 @@ def search(session: Any, topology: Any, *,
            monte_carlo_samples: int = 100,
            seed: int = 0,
            seed_mode: str = "current",
-           file_predictions: bool = False) -> PlanResult:
+           file_predictions: bool = False,
+           cases: Optional[Sequence[Dict[str, Any]]] = None) -> PlanResult:
     """Greedy receding-horizon search over candidate actions.
+
+    `cases` are the session's open cases -- `case_id`, `entity_id`,
+    `indicator`, `severity` -- and each simulated candidate reports what its
+    own rollout did to each (`PlanCandidate.cases`).
 
     Each round rolls every remaining candidate forward ON TOP of the plan
     chosen so far, keeps the best by the declared objective, and advances. The
@@ -756,6 +816,8 @@ def search(session: Any, topology: Any, *,
         # whole point rather than a failure, so it is asked about its actions
         # rather than its results.
         anything_ran = any(step.actions_applied for step in envelope.steps)
+        if not actions or anything_ran:
+            candidate.cases = _case_outcomes(envelope, cases or ())
         if result.objective and (not actions or anything_ran):
             value, interval, stamps = score(
                 candidate, result.objective, result.min_severity,

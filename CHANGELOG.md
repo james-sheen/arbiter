@@ -34,6 +34,18 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+## [0.2.36] — 2026-10-04
+
+### Added
+
+- **A plan says what each candidate does to each open case.** `plan` knew nothing of a case's
+  outcome: on the planning example with a case on the tank's level, `expected_findings` ranked
+  first a plan that ends with the case open, and with no `planning:` the reply never named the
+  case. Each simulated candidate now carries `cases`, one row per open case -- `first_clear_s`
+  and `clear_to_end_from_s` from its own rollout, by the case's own severity -- and a case's
+  `plan` attachment keeps the chosen plan's rows. No ranking changes: a case's criterion is not
+  an objective.
+
 ## [0.2.35] — 2026-10-04
 
 ### Fixed
