@@ -234,9 +234,11 @@ class TestEachCandidateCarriesItsOwnAssumptions:
     the per-candidate fact was dropped, so a reader saw both
     `deterministic_transitions` and `declared_gain_spread_sampled` on one plan
     with no way to attribute either. That is the same unattributed shape the
-    refused-candidate `declines` had, and `interval` does not disambiguate it:
-    `[0.0, 0.0]` is what a deterministic candidate reports AND what a sampled
-    one reports when no sample cleared.
+    refused-candidate `declines` had, and `interval` did not disambiguate it
+    while it was a normal approximation: `[0.0, 0.0]` was what a deterministic
+    candidate reported AND what a sampled one reported when no sample cleared.
+    The exact interval gives the second `[0.0, 0.036]` at a hundred samples;
+    the stamp is still what says which a candidate is.
     """
 
     def _plan(self, level=86.0):

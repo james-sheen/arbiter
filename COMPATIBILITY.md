@@ -167,6 +167,11 @@ From 0.2.37: `coverage_90_band` among a forecaster's figures, beside every grade
 and `model_id` on a `stale_forecast` decline. Two changes are defect fixes the changelog lists:
 `stale_forecast` judges each producer's newest forecast for a pair, where it judged every record the
 ledger kept, and `meta.engine_version` is `null` when the installed engine is not the code running.
+From 0.2.38: `exact_interval` in `twin.monte_carlo_predictor`. Two changes are defect fixes the
+changelog lists rather than additions: `confidence_interval_95` is the exact interval, where it was
+a normal approximation that read `[1.0, 1.0]` whenever every sample showed the outcome, and a
+sampled `plan` candidate's `interval` is that interval, so one that never cleared no longer reads
+like a deterministic one.
 
 Three things about it are promises and not accidents:
 

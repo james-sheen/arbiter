@@ -34,6 +34,19 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+## [0.2.38] — 2026-10-06
+
+### Fixed
+
+- **A sampled probability's 95% interval is exact.** `confidence_interval_95` was the normal
+  approximation, which collapses at the ends: sixty samples that all showed an outcome read
+  `[1.0, 1.0]`, where the 95% lower bound is 0.940, and near a floor it was too generous. It is the
+  exact (Clopper-Pearson) interval now, also as `exact_interval`, so `meets_active_mode_threshold`
+  and a floor compared with the lower bound get the bound they name. No sample reads `[0.0, 1.0]`.
+- **A plan's `clearance_probability` interval follows it.** A candidate sampled from a declared
+  spread reports the exact interval of its count; one that never cleared reads `[0.0, 0.036]` at a
+  hundred samples, no longer the `[0.0, 0.0]` of a deterministic candidate, which keeps its point.
+
 ## [0.2.37] — 2026-10-06
 
 ### Added

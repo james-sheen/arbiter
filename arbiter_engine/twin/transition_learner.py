@@ -267,11 +267,11 @@ def _fit(x: np.ndarray, y: np.ndarray
     """Least squares `y = gain*x + intercept`, with a 95% band on the slope
     and the lag-1 autocorrelation of its own residuals.
 
-    The band is the normal approximation, matching
-    `MonteCarloOutcomeDistribution.confidence_interval_95` rather than
-    introducing a t-distribution and a second convention. `scipy` is not a
-    dependency of this package and a slope interval does not justify becoming
-    one.
+    The band is the normal approximation rather than the t-distribution.
+    `scipy` is not a dependency of this package and a slope interval does not
+    justify becoming one. (A sampled probability's interval,
+    `MonteCarloOutcomeDistribution.confidence_interval_95`, is exact: a count's
+    exact interval needs only the binomial, and a slope's needs the t.)
 
     AND THE STANDARD ERROR'S OWN ASSUMPTION, MEASURED. That band
     assumes the residuals are uncorrelated, and on an `exponential` edge this

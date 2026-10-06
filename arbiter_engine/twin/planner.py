@@ -103,9 +103,11 @@ class PlanCandidate:
     #: plan-level list and the per-candidate fact dropped, so one plan
     #: carrying both `deterministic_transitions` and
     #: `declared_gain_spread_sampled` left a reader unable to say which row
-    #: was which -- and `interval` does not settle it, because `[0.0, 0.0]`
-    #: is what a deterministic candidate reports AND what a sampled one
-    #: reports when no sample cleared.
+    #: was which. `interval` could not settle it while the sampling interval
+    #: was a normal approximation: `[0.0, 0.0]` was what a deterministic
+    #: candidate reported AND what a sampled one reported when no sample
+    #: cleared. The exact interval gives the second `[0.0, 0.060]` at sixty
+    #: samples, but the stamp is still what says which a row is.
     assumptions: List[str] = field(default_factory=list)
     #: How close the nearest threshold decision was, in units of the
     #: value's OWN declared spread -- the closest any imagined value came to
@@ -374,6 +376,13 @@ def score(candidate: PlanCandidate, objective: str, min_severity: str,
     outcome = distribution.get("clear")
     if outcome is None:
         return None, None, assumptions
+    if margin is None:
+        # Every sample is the same constant, so nothing was uncertain: the
+        # interval is the point. A sampling interval here would publish a
+        # doubt the model never expressed -- [0.940, 1.0] for a clear it is
+        # certain of.
+        point = outcome.estimated_probability
+        return point, (point, point), assumptions
     return (outcome.estimated_probability,
             outcome.confidence_interval_95, assumptions)
 

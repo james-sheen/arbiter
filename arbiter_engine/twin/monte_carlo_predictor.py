@@ -2,7 +2,7 @@
 
 The estimator runs N randomised mutations and simulation calls over a
 topology snapshot and aggregates outcome frequencies into probability
-estimates with binomial-standard-error confidence bands.
+estimates with exact binomial confidence intervals.
 
 Design choices:
 
@@ -32,6 +32,8 @@ import random
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
+from ..causal.granger import betainc
+
 logger = logging.getLogger(__name__)
 
 
@@ -47,6 +49,53 @@ _MAX_SAMPLE_COUNT = 10000
 ACTIVE_MODE_AUTO_APPROVE_THRESHOLD = 0.85
 
 
+def exact_interval(observed: int, count: int,
+                   level: float = 0.95) -> Tuple[float, float]:
+    """The exact (Clopper-Pearson) interval for a proportion: `observed` of `count`.
+
+    THE NORMAL APPROXIMATION THIS REPLACES COLLAPSED AT THE ENDS. Its margin
+    is 1.96 standard errors, and when every sample shows the outcome the
+    standard error is 0: sixty clears of sixty read [1.0, 1.0], where the
+    95% lower bound is 0.940. Near a policy floor it was too generous too --
+    at 56 of 60 it read 0.870 against a floor of 0.85 that the exact bound,
+    0.838, does not meet -- so an `active` gate approved what the bound it
+    names would refuse.
+
+    Each end is the probability at which the count observed would sit in the
+    tail of `(1 - level) / 2`, so the interval holds its level at every count
+    and every probability, which no approximation does. At the ends it has a
+    closed form: every sample showing the outcome gives a lower bound of
+    `((1 - level) / 2) ** (1 / count)`, and none gives that bound's
+    complement as the upper. No sample is no information: [0, 1].
+    """
+    n = int(count)
+    if n <= 0:
+        return (0.0, 1.0)
+    k = min(max(int(observed), 0), n)
+    tail = (1.0 - level) / 2.0
+    low = 0.0 if k == 0 else _beta_quantile(tail, k, n - k + 1)
+    high = 1.0 if k == n else _beta_quantile(1.0 - tail, k + 1, n - k)
+    return (low, high)
+
+
+def _beta_quantile(q: float, a: float, b: float) -> float:
+    """The x at which the regularized incomplete beta I_x(a, b) reaches `q`.
+
+    By bisection, which cannot fail to converge: I_x rises monotonically
+    from 0 to 1 across [0, 1].
+    """
+    lo, hi = 0.0, 1.0
+    for _ in range(200):
+        mid = (lo + hi) / 2.0
+        if betainc(a, b, mid) < q:
+            lo = mid
+        else:
+            hi = mid
+        if hi - lo < 1e-15:
+            break
+    return (lo + hi) / 2.0
+
+
 @dataclass
 class MonteCarloOutcomeDistribution:
     """Per-outcome probability estimate from N Monte Carlo
@@ -59,8 +108,8 @@ class MonteCarloOutcomeDistribution:
     - ``estimated_probability``: empirical frequency = samples_observed
       sample_count.
     - ``std_error``: binomial standard error sqrt(p*(1-p)/n).
-    - ``confidence_interval_95``: normal-approximation 95% CI [low, high]
-      clipped to [0, 1].
+    - ``confidence_interval_95``: the exact (Clopper-Pearson) 95% interval
+      for ``samples_observed`` of ``sample_count`` -- see `exact_interval`.
     - ``samples_observed``: raw count for callers that want the
       conjugate-prior input (Phase 2 Bayesian).
     """
@@ -80,12 +129,8 @@ class MonteCarloOutcomeDistribution:
 
     @property
     def confidence_interval_95(self) -> Tuple[float, float]:
-        """Normal-approximation 95% CI clipped to [0, 1]."""
-        # 1.96 is the standard normal z-score at 97.5th percentile
-        margin = 1.96 * self.std_error
-        low = max(0.0, self.estimated_probability - margin)
-        high = min(1.0, self.estimated_probability + margin)
-        return (low, high)
+        """The exact 95% interval for the observed count (`exact_interval`)."""
+        return exact_interval(self.samples_observed, self.sample_count)
 
     @property
     def meets_active_mode_threshold(self) -> bool:
