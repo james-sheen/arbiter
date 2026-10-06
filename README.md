@@ -478,10 +478,12 @@ The engine is open. The knowledge and the operations are not.
   horizon: a resident session, or a file you asked for. A one-shot command that loads a model,
   ingests a feed and exits will report `calibration` with every rate null, every time — correctly,
   because nothing in that run matured. Feeding forecasts that have ALREADY matured is not the way
-  around it either: on a model declaring `max_age:` the forecasts leg declines them
-  `stale_forecast`, since the leg is asking whether the producer is current and cannot tell *late*
-  from *here to be scored*. Written down because the number's absence otherwise reads as a defect
-  in the feed.
+  around it either: on a model declaring `max_age:` the forecasts leg declines a producer whose
+  newest forecast is past that age `stale_forecast`, since the leg is asking whether the producer
+  is current, and a matured forecast with nothing newer cannot tell *late* from *here to be
+  scored*. One a newer forecast from the same producer supersedes is history, not lateness, so
+  the records a file ledger keeps for grading are not judged. Written down because the number's
+  absence otherwise reads as a defect in the feed.
 - **Two facts about grading that cost an outside reviewer two attempts each**, and cost the author
   three, so they are here rather than only in a docstring. **A record is not gradeable the instant
   its horizon passes**: `grade_matured` returns nothing until `now` reaches `predicted_at +

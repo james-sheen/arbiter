@@ -445,7 +445,7 @@ is that nobody has said which pairs should carry one.
     expected: true
     models: [garch_v3, lstm_v1]   # optional ALLOW-LIST; an id outside it declines model_unknown
     expected_from: [garch_v3]     # optional OBLIGATION list; who owes one for every subject
-    max_age: 15m                  # optional; older than this declines stale_forecast
+    max_age: 15m                  # optional; newest per producer older than this: stale_forecast
 ```
 
 Both optional keys follow the same rule as every other line in this document: there is no check
@@ -478,6 +478,7 @@ scored would look like catastrophic miscalibration, so absent stays absent.
 | `forecasts_expected` | how many `forecast: {expected_from: [...]}` names this model for. ABSENT when nothing does — being in `models:` is permission to send one, not a debt, and deriving the figure from the allow-list charged every permitted producer with the whole book |
 | `graded_n` | how many have matured and been scored — the denominator for the two below |
 | `coverage_90` | the share of matured intervals that contained the outcome |
+| `coverage_90_band` | how far from 0.90 chance alone carries that share over `graded_n` forecasts -- the exact binomial band at 95%, so a producer covering exactly 0.90 lands farther than it at most one time in twenty |
 | `pinball_loss` | the quantile loss over the same records |
 | `forecast_age_s` | how long since this model last filed anything |
 
@@ -501,12 +502,19 @@ ForecastModel:
 
   # A DECLARED setpoint, and the rare case where the number is not a choice: a
   # q05-q95 interval covers 90% by the definition of those quantiles, so 0.90
-  # is what the model claimed about itself when it chose to emit them.
+  # is what the model claimed about itself when it chose to emit them. Nor is
+  # the tolerance: it is how far chance alone carries a rate over this many
+  # graded forecasts, published beside it. A fixed 0.05 warned on every
+  # producer with six or fewer graded, however well calibrated -- k of n
+  # cannot land within 0.05 of 0.90 below seven.
   - name: coverage_90
     type: NUMERIC
     axioms: [HOMEOSTASIS]
     window: 7d
-    homeostasis: {setpoint: 0.90, tolerance: 0.05}
+    homeostasis: {setpoint: 0.90, tolerance: {from_property: coverage_90_band}}
+  - name: coverage_90_band
+    type: NUMERIC
+    axioms: []
 
   # A LEARNED baseline, and the ordinary case. Nobody publishes an acceptable
   # pinball loss — it has no units a contract could name — so a declared bound

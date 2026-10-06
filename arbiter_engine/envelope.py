@@ -87,19 +87,59 @@ def engine_version() -> Optional[str]:
 
     READ, not restated. A literal here would be a second copy of the number
     in `pyproject.toml`, and a version written twice drifts -- this project
-    has paid for that more than once. `None` is the honest answer when the
-    engine runs from a source tree with no distribution installed: the
-    envelope says it does not know rather than inventing a version, and the
-    key is always present so a reader can branch on it.
+    has paid for that more than once. And read only for the code it
+    describes: an installed distribution's version says which engine judged
+    only when that distribution is what is running. A source tree imported
+    ahead of some other installed copy is not that copy, and naming the copy
+    would answer *which engine* with another engine's number. `None` is the
+    honest answer there, as it is for a source tree with nothing installed:
+    the envelope says it does not know rather than inventing a version, and
+    the key is always present so a reader can branch on it.
     """
     try:
-        from importlib.metadata import PackageNotFoundError, version
+        from importlib.metadata import PackageNotFoundError, distribution
     except ImportError:                                   # pragma: no cover
         return None
     try:
-        return version(_ENGINE_DISTRIBUTION)
+        dist = distribution(_ENGINE_DISTRIBUTION)
     except PackageNotFoundError:
         return None
+    return dist.version if _runs_from(dist) else None
+
+
+def _runs_from(dist: Any) -> bool:
+    """Whether this module is the installed distribution's own code.
+
+    A regular install puts this file where the distribution locates it. An
+    editable install leaves it in a source directory, which the distribution
+    records as PEP 610 describes (https://peps.python.org/pep-0610/), in
+    `direct_url.json`. Anything else -- a source tree first on the path, or a
+    different tree altogether -- is code the installed version does not
+    describe.
+    """
+    import json
+    from pathlib import Path, PurePosixPath
+    from urllib.parse import urlparse
+    from urllib.request import url2pathname
+
+    here = Path(__file__).resolve()
+    own = PurePosixPath(*__name__.split(".")).with_suffix(".py")
+    try:
+        if Path(dist.locate_file(own)).resolve() == here:
+            return True
+    except (OSError, TypeError, ValueError):
+        pass
+    try:
+        direct = json.loads(dist.read_text("direct_url.json") or "{}")
+    except (OSError, TypeError, ValueError):
+        return False
+    if not isinstance(direct, dict):
+        return False
+    url, info = direct.get("url"), direct.get("dir_info")
+    if not (isinstance(info, dict) and info.get("editable")
+            and isinstance(url, str) and url.startswith("file:")):
+        return False
+    return here.is_relative_to(Path(url2pathname(urlparse(url).path)).resolve())
 
 
 @dataclass(frozen=True)

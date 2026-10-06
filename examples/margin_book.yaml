@@ -219,15 +219,21 @@ domain:
       # HOMEOSTASIS against a DECLARED setpoint, and this is the rare case
       # where the number is not invented. A q05-q95 interval covers 90% of
       # outcomes by the definition of those quantiles, so 0.90 is what the
-      # model claimed about itself when it chose to emit them. The tolerance
-      # is invented; the setpoint is arithmetic.
+      # model claimed about itself when it chose to emit them. The tolerance is
+      # arithmetic too: how far chance alone carries a rate over this many
+      # graded forecasts, which the engine publishes as `coverage_90_band`. A
+      # fixed 0.05 warned on every producer with six or fewer graded.
       - name: coverage_90
         type: NUMERIC
         axioms: [HOMEOSTASIS]
         window: 7d
         homeostasis:
           setpoint: 0.90
-          tolerance: 0.05
+          tolerance: {from_property: coverage_90_band}
+
+      - name: coverage_90_band
+        type: NUMERIC
+        axioms: []
 
       # HOMEOSTASIS against a LEARNED baseline, and this is the ordinary case.
       # Nobody publishes an acceptable pinball loss -- it has no units a

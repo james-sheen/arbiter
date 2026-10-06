@@ -34,6 +34,26 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+## [0.2.37] — 2026-10-06
+
+### Added
+
+- **`coverage_90_band` beside `coverage_90`.** The guide's fixed `tolerance: 0.05` warned on every
+  producer with six or fewer graded forecasts however well calibrated, because k of n cannot land
+  within 0.05 of 0.90 below seven. The band is the exact binomial one at 95%; the guide's example
+  and `margin_book.yaml` take their tolerance from it, and a model keeping 0.05 behaves as before.
+
+### Fixed
+
+- **`meta.engine_version` and `__version__` name the installed engine only when it is the one
+  running.** Both reported the installed `arbiter-engine` version whatever code ran, so a source
+  checkout imported ahead of an installed copy carried that copy's number. They now report it for
+  the installed code itself or its editable source, and are `null` otherwise.
+- **`stale_forecast` judges a producer on its newest forecast for the pair.** Every record in the
+  ledger was held against `max_age`, so a producer that had just sent a forecast was declined for
+  an older one, and a ledger kept on a file for grading declined everything an earlier run filed.
+  A superseded forecast is not judged, and the decline names the producer as `model_id`.
+
 ## [0.2.36] — 2026-10-04
 
 ### Added

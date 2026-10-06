@@ -7,7 +7,7 @@ unpromised, and those paths may move without a major version.
 This file is generated. Edits here are overwritten by the next build;
 the exports below are a declared contract rather than a hand-written list.
 `__version__` is part of that contract and is read from installed
-metadata, so it is None when this package runs from a source tree.
+metadata, so it is None unless the installed distribution is what runs.
 """
 
 from . import api
@@ -23,10 +23,11 @@ from .twin.traverser import TopologyTraverser
 from .types import Axiom, Severity
 from .envelope import engine_version as _engine_version
 
-#: The installed distribution's version, or None when this package
-#: runs from a source tree with no distribution. Read from metadata
-#: through the same function the envelope reports, so the two cannot
-#: disagree about which engine produced a judgment.
+#: The installed distribution's version, or None when the code
+#: running is not that distribution's -- a source tree, with or
+#: without another copy installed. Read from metadata through the
+#: same function the envelope reports, so the two cannot disagree
+#: about which engine produced a judgment.
 __version__ = _engine_version()
 
 __all__ = [

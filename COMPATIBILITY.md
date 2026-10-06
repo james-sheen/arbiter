@@ -163,6 +163,10 @@ where they named whichever candidate the process's string hashing put first.
 From 0.2.36: `cases` on each `plan` candidate -- per open case, `case_id`, `first_clear_s` and
 `clear_to_end_from_s` -- and `cases` on a case's `plan` attachment. Empty with no open case, and
 on a candidate whose actions were all refused. No ranking changes.
+From 0.2.37: `coverage_90_band` among a forecaster's figures, beside every graded `coverage_90`,
+and `model_id` on a `stale_forecast` decline. Two changes are defect fixes the changelog lists:
+`stale_forecast` judges each producer's newest forecast for a pair, where it judged every record the
+ledger kept, and `meta.engine_version` is `null` when the installed engine is not the code running.
 
 Three things about it are promises and not accidents:
 

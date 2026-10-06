@@ -38,10 +38,66 @@ indicator whose property is missing declines, which is the true answer.
 
 from __future__ import annotations
 
+from math import exp, lgamma, log
 from typing import Any, Dict, Optional
 
 from ..clock import now_utc
 from ..projection.projector import SOURCE_ENGINE
+
+#: What a q05-q95 interval claims to cover, by the definition of its quantiles.
+_NOMINAL_COVERAGE_90 = 0.90
+
+#: The band `coverage_90_band` publishes holds the rate a producer covering
+#: exactly the nominal reaches this often, over its graded forecasts.
+_BAND_LEVEL = 0.95
+
+#: The places the ledger rounds `coverage_90` to. The band is computed from the
+#: rates as published, so a rate it admits is never pushed past it by rounding.
+_PUBLISHED_PLACES = 6
+
+
+def coverage_band(graded_n: int, nominal: float = _NOMINAL_COVERAGE_90,
+                  level: float = _BAND_LEVEL) -> Optional[float]:
+    """How far from `nominal` chance alone carries a coverage rate over `graded_n`.
+
+    A RATE IS k OF n, AND n DECIDES WHAT IT CAN SAY. With six or fewer graded
+    forecasts a rate can only be 1.0 or at most 0.833, so a fixed band of 0.05
+    around 0.90 warned on every such producer however well calibrated it was;
+    and the normal approximation's band still warns on a calibrated one more
+    than one time in twenty at five of the first ten counts, one in ten at a
+    single forecast. This is the exact binomial band: the
+    smallest distance from `nominal` such that a producer whose intervals cover
+    exactly `nominal` lands farther than it with probability at most
+    `1 - level`. One graded forecast can never show miscalibration at that
+    level, and the band says so by reaching every rate one can produce.
+
+    None for no graded forecast, where there is no rate to judge.
+    """
+    n = int(graded_n)
+    if n < 1:
+        return None
+    alpha = 1.0 - level
+
+    def mass(k: int) -> float:
+        if k == 0:
+            return (1.0 - nominal) ** n
+        if k == n:
+            return nominal ** n
+        return exp(lgamma(n + 1) - lgamma(k + 1) - lgamma(n - k + 1)
+                   + k * log(nominal) + (n - k) * log(1.0 - nominal))
+
+    outcomes = sorted(((abs(round(k / n, _PUBLISHED_PLACES) - nominal), mass(k))
+                       for k in range(n + 1)), reverse=True)
+    band, beyond, i = outcomes[0][0], 0.0, 0
+    while i < len(outcomes):
+        distance = outcomes[i][0]
+        if beyond > alpha:
+            break
+        band = distance
+        while i < len(outcomes) and outcomes[i][0] == distance:
+            beyond += outcomes[i][1]
+            i += 1
+    return band
 
 
 def model_figures(session: Any) -> Dict[str, Dict[str, float]]:
@@ -79,6 +135,11 @@ def model_figures(session: Any) -> Dict[str, Dict[str, float]]:
         if scored:
             properties["graded_n"] = float(scored["n"])
             properties["coverage_90"] = float(scored["coverage_90"])
+            # THE BAND TRAVELS WITH THE RATE, as the denominator does: what a
+            # rate means depends on how many forecasts it was taken over, and
+            # a model declares `tolerance: {from_property: coverage_90_band}`
+            # to judge it against that rather than against a fixed number.
+            properties["coverage_90_band"] = float(coverage_band(scored["n"]))
             properties["pinball_loss"] = float(scored["pinball"])
         if model_id in expected:
             properties["forecasts_expected"] = float(expected[model_id])

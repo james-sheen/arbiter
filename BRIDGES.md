@@ -507,15 +507,18 @@ the other one.
 and they are separated because the repairs differ — feed more history, against
 look at the series you fed.
 
-**What you cannot do from a one-shot process.** The prediction ledger is in
-memory. `grade_matured` scores a record only if it is still in the live session
-when its horizon passes, so a process that starts, ingests and exits reports
-`calibration` with every rate null — correctly. Feeding an already-matured
-forecast declines `stale_forecast` rather than back-scoring it, because the leg
-cannot tell *late* from *here to be scored*. Either keep a session resident
-across the horizon, or treat calibration as out of reach and say so in your
-artifact rather than printing an empty block that reads as *nothing beat the
-baseline*.
+**What a one-shot process needs.** `grade_matured` scores a record only if it
+is still in the session's ledger when its horizon passes, and the default ledger
+is in memory, so a process that starts, ingests and exits reports `calibration`
+with every rate null — correctly. Hand the session a ledger that outlives it,
+`EngineSession(ledger=SqlitePredictionLedger(path))`, and the next run on the
+same file grades what this one filed. Staleness is judged on each producer's
+newest forecast for the pair, so the earlier records that file keeps are history,
+not lateness; an already-matured forecast fed with nothing newer still declines
+`stale_forecast` rather than being back-scored, because the leg cannot tell
+*late* from *here to be scored*. Otherwise keep a session resident across the
+horizon, or treat calibration as out of reach and say so in your artifact rather
+than printing an empty block that reads as *nothing beat the baseline*.
 
 ---
 

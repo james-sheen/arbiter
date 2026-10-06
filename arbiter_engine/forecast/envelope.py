@@ -111,6 +111,7 @@ def run_forecasts(session: Any, *,
                         "and no forecast for it has been filed")))
 
     present = now_utc()
+    newest = _newest_issued(distributions, present)
     for record in distributions:
         scope = {"entity": record.entity_id, "indicator": str(record.indicator)}
         entity = session.entities.get(record.entity_id)
@@ -131,18 +132,29 @@ def run_forecasts(session: Any, *,
         # SAME RULE FOR STALENESS. How old is too old is a property of the
         # engagement -- a minute for a quote, a day for a balance -- so there
         # is no check until somebody declares the number.
+        #
+        # AND IT IS THE PRODUCER'S, judged on its newest forecast for the pair.
+        # A ledger keeps every record a producer ever filed -- grading needs it
+        # to outlive the horizon -- and judging each one declined a producer
+        # that had sent a forecast five minutes ago for the one it sent forty
+        # minutes ago: a ledger kept for grading declined every record an
+        # earlier run filed. A superseded forecast is history, not
+        # lateness, and the decline names the producer that is late.
+        superseded = record.predicted_at < newest.get(
+            (record.entity_id, str(record.indicator), str(record.model_id)),
+            record.predicted_at)
         max_age = config.get("max_age")
-        if max_age is not None:
+        if max_age is not None and not superseded:
             seconds = _seconds(max_age, present)
             if seconds is None:
                 declines.append(Decline(
-                    "stale_forecast", scope,
+                    "stale_forecast", dict(scope, model_id=record.model_id),
                     detail=(f"`forecast.max_age` is {max_age!r}, which is not "
                             f"a duration this engine reads")))
             elif (present - record.predicted_at).total_seconds() > seconds:
                 age = (present - record.predicted_at).total_seconds()
                 declines.append(Decline(
-                    "stale_forecast", scope,
+                    "stale_forecast", dict(scope, model_id=record.model_id),
                     detail=(f"issued {age:.0f}s ago, past the declared "
                             f"`max_age` of {seconds:.0f}s"),
                     evidence={"age_s": round(age, 3), "max_age_s": seconds}))
@@ -230,6 +242,23 @@ def run_forecasts(session: Any, *,
     # evidence about anything.
     return SubEnvelope("forecasts", checked, list(shadow.findings),
                        declines, questions)
+
+
+def _newest_issued(records: List[Any], present: datetime
+                   ) -> Dict[Tuple[str, str, str], datetime]:
+    """When each producer last issued a forecast for each pair, by `present`.
+
+    Keyed (entity, indicator, model id). A record issued after `present` -- a
+    ledger read at an earlier instant -- supersedes nothing at that instant.
+    """
+    newest: Dict[Tuple[str, str, str], datetime] = {}
+    for record in records:
+        if record.predicted_at > present:
+            continue
+        key = (record.entity_id, str(record.indicator), str(record.model_id))
+        if key not in newest or record.predicted_at > newest[key]:
+            newest[key] = record.predicted_at
+    return newest
 
 
 def _seconds(raw: Any, present: datetime) -> Optional[float]:
