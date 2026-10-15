@@ -457,6 +457,11 @@ class RelationshipGraph:
     )
     # Maximum edges per entity to prevent unbounded growth from
     # aggressive relationship discovery (e.g., temporal correlation mining).
+    # it bounds DISCOVERED edges only, per entity and direction: an
+    # edge somebody declared is never evicted. It bounded every edge, and a hub
+    # with more than 200 declared ones lost the oldest from one direction's
+    # index without a word: the FAA case's agency kept 200 of the 314 edges
+    # that reach it, and which 200 depended on the order they were fed in.
     max_edges_per_entity: int = 200
 
     # Authoritative relationship types that should be evicted last.
@@ -476,6 +481,8 @@ class RelationshipGraph:
     # operators can verify cleanup is happening + diagnose if a future
     # refactor regresses it.
     _metadata_orphans_cleaned: int = 0
+    # discovered edges the cap evicted, both halves at once.
+    evicted_discovered_edges: int = 0
 
     def add_relationship(
         self,
@@ -487,6 +494,7 @@ class RelationshipGraph:
         discovered_at: Optional[datetime] = None,
         source_domain: Optional[str] = None,
         target_domain: Optional[str] = None,
+        discovered: bool = False,
     ) -> None:
         """Add a relationship to the graph.
 
@@ -508,47 +516,69 @@ class RelationshipGraph:
         ``get_cross_domain_neighbors`` lookups. Backward-compat:
         defaults preserve the existing single-domain shape.
         """
+        # `discovered` marks an edge a discovery process proposed;
+        # every other edge is declared, and an edge declared once stays declared
+        # whoever reports it discovered later. Only discovered edges count
+        # against `max_edges_per_entity`, and one evicted leaves both indices.
+        key = (source_id, relation_type, target_id)
+        prior = self._edge_metadata.get(key)
+        discovered = bool(discovered) and (prior is None or bool(prior.get("discovered")))
         if source_id not in self.edges:
             self.edges[source_id] = []
         edge_tuple = (relation_type, target_id)
         if edge_tuple not in self.edges[source_id]:
-            # + Enforce max edges per entity to bound memory.
-            # Evict non-authoritative (discovered/temporal) edges first
-            # to preserve structurally critical ownership edges.
-            # pass owner_id + direction so the evictor can also
-            # clean up the corresponding ``_edge_metadata`` entry (was
-            # silently orphaning metadata previously).
-            if len(self.edges[source_id]) >= self.max_edges_per_entity:
-                self._evict_lowest_priority_edge(
-                    self.edges[source_id],
-                    owner_id=source_id,
-                    direction="outgoing",
-                )
+            if discovered:
+                self._make_room_for_discovered(source_id, "outgoing")
             self.edges[source_id].append(edge_tuple)
 
         if target_id not in self.reverse_edges:
             self.reverse_edges[target_id] = []
         reverse_tuple = (relation_type, source_id)
         if reverse_tuple not in self.reverse_edges[target_id]:
-            if len(self.reverse_edges[target_id]) >= self.max_edges_per_entity:
-                self._evict_lowest_priority_edge(
-                    self.reverse_edges[target_id],
-                    owner_id=target_id,
-                    direction="incoming",
-                )
+            if discovered:
+                self._make_room_for_discovered(target_id, "incoming")
             self.reverse_edges[target_id].append(reverse_tuple)
 
         # always populate metadata, even when called with no
         # extra kwargs. Consumers can rely on the dict having
         # properties / strength / discovered_at keys. An internal ruling adds
         # source_domain / target_domain keys for cross-domain edges.
-        self._edge_metadata[(source_id, relation_type, target_id)] = {
+        self._edge_metadata[key] = {
             "properties": dict(properties) if properties else {},
             "strength": strength,
             "discovered_at": discovered_at,
             "source_domain": source_domain,
             "target_domain": target_domain,
+            "discovered": discovered,
         }
+
+    def _make_room_for_discovered(self, owner_id: str, direction: str) -> None:
+        """ -- at the cap, evict one discovered edge of this entity's list,
+        the oldest non-authoritative first, then the oldest. A list
+        holding only declared edges is never trimmed."""
+        if self.max_edges_per_entity is None:
+            return
+        if direction == "outgoing":
+            held = [(owner_id, rel, other) for rel, other in self.edges.get(owner_id, ())]
+        else:
+            held = [(other, rel, owner_id) for rel, other in self.reverse_edges.get(owner_id, ())]
+        held = [k for k in held if (self._edge_metadata.get(k) or {}).get("discovered")]
+        if len(held) < self.max_edges_per_entity:
+            return
+        victim = next((k for k in held if k[1] not in self.AUTHORITATIVE_RELATIONS), held[0])
+        self._drop_edge(*victim)
+
+    def _drop_edge(self, source_id: str, relation_type: str, target_id: str) -> None:
+        """One edge out of both indices and its metadata -- never half of it."""
+        out = self.edges.get(source_id)
+        if out is not None and (relation_type, target_id) in out:
+            out.remove((relation_type, target_id))
+        inc = self.reverse_edges.get(target_id)
+        if inc is not None and (relation_type, source_id) in inc:
+            inc.remove((relation_type, source_id))
+        if self._edge_metadata.pop((source_id, relation_type, target_id), None) is not None:
+            self._metadata_orphans_cleaned += 1
+        self.evicted_discovered_edges += 1
 
     def get_edge_metadata(
         self,
@@ -572,6 +602,7 @@ class RelationshipGraph:
             "discovered_at": meta.get("discovered_at"),
             "source_domain": meta.get("source_domain"),
             "target_domain": meta.get("target_domain"),
+            "discovered": bool(meta.get("discovered", False)),       #
         }
 
     def get_cross_domain_neighbors(
@@ -1689,3 +1720,39 @@ def calculate_trend(
         'r2': float(r2),
         'intercept': float(intercept)
     }
+
+
+def level_shift_at(values: List[Tuple[datetime, float]], r2: float,
+                   min_r2: float) -> Optional[int]:
+    """ -- where a window's readings changed level, when a change of level explains them.
+
+    Two accounts of the same readings: the straight line ``calculate_trend`` fitted (``r2`` is
+    its R-squared), and the best single step -- one level, then another. The readings changed
+    level when the step leaves no more unexplained than the line, and explains them by the same
+    R-squared, ``min_r2``, a line must reach to be called a trend; then the index of the first
+    reading at the new level is returned, otherwise None. A line through two flat levels has a
+    steep slope and a high R-squared, and projecting it toward a limit read a set-point change as a
+    climb nothing was on. A ramp is the other way round: a step through it leaves each half's own
+    slope unexplained, so the line explains more. And noise is neither: some split always fits it a
+    little, never by ``min_r2``.
+    """
+    import numpy as np
+
+    y = np.array([v[1] for v in values], dtype=float)
+    n = len(y)
+    if n < 3:
+        return None
+    total = float(np.sum((y - y.mean()) ** 2))
+    if total <= 0.0:
+        return None
+    line = max(0.0, (1.0 - r2) * total)
+    sums, squares = np.cumsum(y), np.cumsum(y * y)
+    k = np.arange(1, n)                            # the first k readings, then the rest
+    left = squares[k - 1] - sums[k - 1] ** 2 / k
+    rest = n - k
+    right = (squares[-1] - squares[k - 1]) - (sums[-1] - sums[k - 1]) ** 2 / rest
+    best = int(np.argmin(left + right))
+    step = float((left + right)[best])
+    if step <= line + 1e-9 * total and 1.0 - step / total >= min_r2:   # the tolerance is rounding's
+        return best + 1
+    return None

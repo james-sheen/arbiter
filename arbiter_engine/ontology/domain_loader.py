@@ -860,7 +860,7 @@ class DomainModel:
                 continue          # refused whole, and told so already
             label = str(template.get("name") or "?")
             report("action_templates", template,
-                   _KNOWN_ACTION_TEMPLATE_KEYS, label)
+                   _KNOWN_ACTION_TEMPLATE_KEYS | _NON_ENGINE_TEMPLATE_KEYS, label)
             schema = template.get("parameters_schema")
             if isinstance(schema, dict):
                 for parameter, spec in sorted(schema.items()):
@@ -1456,6 +1456,22 @@ _NON_ENGINE_MODEL_KEYS = frozenset({
     "knowledge_anchors", "knowledge_mapping", "metric_mappings",
     "observation_mappings", "property_schema", "section_templates",
     "traversal_rules",
+    # the orchestrator's registry keeps it and its document
+    # extraction grounds a proposed link on it. No model beside this
+    # engine declared it when the set above was measured; the HealthCare.gov
+    # case study's was the first, and was told nothing would read it.
+    "relationship_aliases",
+})
+
+#: the keys the orchestrator's action planner takes off a template
+#: (`load_templates_from_config`), let through by name on a template THIS engine
+#: accepted. A template written in that schema alone is refused whole, by name;
+#: one written in both -- the ACME case study's hire, so that the Core proposes
+#: it and the engine can file it -- had each of these reported as read by
+#: nothing. A misspelling of one is still reported.
+_NON_ENGINE_TEMPLATE_KEYS = frozenset({
+    "type", "risk", "blast_radius", "categories", "entity_types",
+    "applicable_patterns", "params", "preconditions", "duration",
 })
 
 #: the `calendar:` block and each of its sessions, as

@@ -901,7 +901,7 @@
         },
         "stages": {
           "type": "object",
-          "description": "check, hypothesize, plan, act and learn, each a list of what was attached, oldest first; an empty list means nothing was. A check entry carries its `outcome` -- `found`, `clean` or `not_looked` -- and the run length after it; any other entry carries a `reference` and the reasons the stage `declined`."
+          "description": "check, hypothesize, plan, act and learn, each a list of what was attached, oldest first; an empty list means nothing was. A check entry carries its `outcome` -- `found`, `clean` or `not_looked` -- and the run length after it; any other entry carries a `reference` and the reasons the stage `declined`. Every entry carries `seq`, its place in the case's history across every stage, 1 first: the order a confirmation is read against the walks attached before it."
         }
       }
     },

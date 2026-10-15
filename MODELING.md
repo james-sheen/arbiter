@@ -361,7 +361,7 @@ against every indicator that declares it. A violation becomes a problem.
 | Axiom | The invariant it asserts |
 |---|---|
 | **STABILITY** | The system tends toward equilibrium. Flags oscillation and state-bouncing |
-| **BOUNDEDNESS** | Quantities stay within limits. Threshold breach, and trend toward exhaustion |
+| **BOUNDEDNESS** | Quantities stay within limits. Threshold breach, and trend toward exhaustion. A window one step explains as well as a line is a change of level, not a trend: only the readings since the step are projected, and only when there are five or more |
 | **CONNECTIVITY** | Required relationships hold. Orphaned entities, missing edges |
 | **CONSISTENCY** | State is internally coherent. Logical impossibilities — a negative count, a percentage above 100 |
 | **RESPONSIVENESS** | Things respond to input. Unresponsive entities, degrading latency |
@@ -1546,7 +1546,23 @@ says what it was held to. Without the block, `open_case` declines
 `missing_config`; a severity off the finding scale, or a count below one, is
 refused the same way and named. **A check counts only if it looked**: one in
 which every axiom the indicator declares declined for that entity restarts the
-count, because a silent check is not a clean one. The rest of the loop is
+count, because a silent check is not a clean one. **A line withdrawn is not
+silence**: a check whose only want is a line the entity no longer carries --
+every line the indicator declares read off a property (`{from_property: ...}`)
+the entity has stopped carrying, while its reading is there -- counts toward
+closing as a clean one does, and a case that closes on one says so. A resolved
+case's `resolved_by` says what crossed where a declared line decided it: `by`
+is `reading`, `bound` or `both` -- the reading crossed the line, the line
+crossed the reading, or it took the two -- or `withdrawn`, with the two
+readings and the lines compared; the book counts each kind. A line still
+standing beside it, or a property there and unreadable, is not withdrawn.
+**A unit that has left can be retired**: `retire_entity` takes it out of the
+session and the graph with every relationship to or from it, so no check, walk
+or plan sees it again, and each case open on it resolves at that instant,
+`resolved_by: {by: retired, basis}` with the caller's basis. Nothing is recorded
+as a check, the history keeps its readings, and added again it is a new unit.
+The book consults itself even where the session no longer holds the unit; a
+unit neither knows is refused `missing_entity`. The rest of the loop is
 attached by the caller with `attach_stage` -- the ranking, the plan, the
 execution, the adoption -- by reference, with any decline, and the book calls
 none of them itself. `model_describe` reports, per stage, whether the model
@@ -1586,6 +1602,14 @@ ledger and nothing else gives the same row:
 | `walk_state` | that walk's state |
 | `basis` | the confirmation's own `basis`, as the person gave it |
 | `walks_before` | how many rankings the case held before the confirmation |
+| `confirmed_by` | who confirmed it: the reference's `by`, as the caller recorded it; null when it recorded none |
+| `confirmed_at` | when: the confirmation's own stamp |
+
+*Before* is the order the case's entries were attached in, not their stamps. Every entry a case
+keeps carries `seq`, its place in the case's history across every stage, 1 first. A walk is stamped
+at the instant its data describes and a confirmation when a person makes it, so on data older than
+now the stamps would put every walk before every confirmation. A confirmation in a book written
+before entries carried `seq` is read by its stamp.
 
 `by_standing` counts the rows at each standing, and `confirmed_after_screened`
 those whose cause the walk had screened: the walk's own surprise, which says the
@@ -1717,6 +1741,13 @@ and not searched, and a caller may pass candidate actions to `plan` instead.
 planner that cannot return *leave it alone* will always recommend acting; and
 where acting buys nothing the model can measure, recommending it is worse than
 recommending none, because a person has to carry it out.
+
+**A model with no lever gets no plan.** Doing nothing is a candidate beside the
+actions a plan chooses between, not a plan of its own: where no template
+declares `candidates:` and the caller passes none, there is nothing to choose
+between, and the plan declines `no_candidates` and ranks nothing. *Leave it
+alone* is a recommendation, and a model that declares no lever has not offered
+one to choose.
 
 **A tie that survives both then breaks toward the wider margin.** Two
 candidates can share an objective AND an action count, and before this rule the

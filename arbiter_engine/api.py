@@ -30,7 +30,7 @@ from .clock import CalendarSpan, as_naive_utc, as_of, clock_is_frozen, now_utc
 from arbiter_engine.axiom_thresholds import (
     AXIOM_THRESHOLD_OVERRIDES_KEY, DECLARED_THRESHOLDS_KEY,
     OVERRIDE_CONSULTED_BY, OVERRIDE_DECLARED_BUT_UNREACHABLE,
-    THRESHOLD_FIELDS,
+    THRESHOLD_FIELDS, effective_thresholds,
 )
 from arbiter_engine.envelope import (
     CheckedSummary, Envelope, build_envelope, unavailable_envelope,
@@ -167,7 +167,8 @@ class EngineSession:
 
     def add_observations(self, entity_id: str, property_name: str,
                          values: Sequence[Any],
-                         interval_seconds: float = 60.0) -> None:
+                         interval_seconds: float = 60.0, *,
+                         arrived: bool = True) -> None:
         """Feed a series. Two shapes, because real telemetry has two.
 
         ``[1.0, 2.0, 3.0]`` — bare readings, spaced ``interval_seconds`` apart
@@ -204,6 +205,17 @@ class EngineSession:
         every reading to `float`, so the front door could not carry the fourth
         input kind at all: STABILITY's state arm declined for ever on a series
         that existed, and the only way round it was the history underneath.
+
+        **``arrived=False``: readings that are not new**. A session
+        rebuilt from what a store already holds -- the Core builds one for every
+        walk, from every reading its cluster was ever posted -- is handed readings
+        each of which went through the history's production record when it
+        arrived, and filing them again counts a rebuild as an ingest. Timestamped
+        samples are then stored in bulk, exactly as they would be one by one --
+        the same casts, in the same order, a reading refused partway leaving the
+        ones before it stored -- and no record is filed. Bare readings are stamped
+        now, so they are always an arrival, and so is a history without
+        ``add_restored``.
         """
         samples = list(values)
         if not samples:
@@ -219,6 +231,17 @@ class EngineSession:
             )
 
         reading = self._reading_for(entity_id, property_name)
+        restore = None if arrived else getattr(self.history, "add_restored", None)
+        if all(paired) and callable(restore):
+            rows: List[Any] = []
+            try:
+                for when, value in samples:
+                    # The value is cast before the instant is read, as the call below evaluates them.
+                    cast = reading(value)
+                    rows.append((_as_timestamp(when), cast))
+            finally:
+                restore(entity_id, property_name, rows)
+            return
         if all(paired):
             for when, value in samples:
                 self.history.add(
@@ -2394,21 +2417,19 @@ def _executed_instant(value: Any) -> datetime:
 
 
 def _readings_after(session: EngineSession, when: datetime) -> int:
-    """How many readings this session holds timestamped after `when`."""
-    history = session.reading_history()
-    if not hasattr(history, "series_keys"):
-        return 0
-    span = now_utc() - when
-    if span.total_seconds() <= 0:
-        return 0
+    """How many readings this session holds timestamped after `when`.
+
+    Counted in the store as FED, by the range every store answers, on
+    no clock. It asked the reading view for a span ending at the clock, and
+    each half hid what it is here to count: a model declaring a derived
+    indicator reads through a view that names no series, so every such model
+    counted none; and under a clock pinned to `executed_at`, as a replay files,
+    the span was empty, since no reading answers later than the clock.
+    """
     later = 0
-    for key in history.series_keys():
-        try:
-            entity_id, prop = key
-        except (TypeError, ValueError):
-            continue
-        for ts, _ in history.get_values(entity_id, prop, span) or []:
-            if isinstance(ts, datetime) and ts > when:
+    for entity_id in session.entities:
+        for observation in session.history.get_observations(entity_id, when, datetime.max) or []:
+            if isinstance(observation.timestamp, datetime) and observation.timestamp > when:
                 later += 1
     return later
 
@@ -2481,11 +2502,58 @@ def open_case(session: EngineSession, entity_id: str, indicator: str,
                    "beside it"))
     if declines:
         return _case_envelope(session, "case", {"cases_opened": 0}, declines)
+    # the reading and lines it opens on: a walk opens a case after the
+    # check that found it, so no check in the case's own history carries them.
+    opened_with = _reading_and_bounds(
+        entity, _declared_spec(session, entity.type, indicator)) or None
     case = book.open(entity_id=entity_id, indicator=indicator,
                      opened_at=now_utc().isoformat(), basis=basis,
-                     severity=severity, consecutive_checks=count)
+                     severity=severity, consecutive_checks=count,
+                     opened_with=opened_with)
     return _case_envelope(session, "case", {"cases_opened": 1}, [],
                           case.to_dict())
+
+
+def retire_entity(session: EngineSession, entity_id: str,
+                  basis: str = "") -> Envelope:
+    """Retire one entity: a unit that has left the world the model describes.
+
+    An entity added stayed for good: a unit that closed could be held
+    only with no values, and then every check declined on it, every walk that
+    reached it counted it as an open cause, and every case open on it restarted
+    its count for ever. Retired, it is gone from the session's entities and from
+    the graph with every relationship to or from it, so no check, walk or plan
+    sees it, and each case open on it resolves at this instant, saying so
+    (`resolved_by: {by: retired, basis}`). The history keeps its readings and
+    the book what was found while it stood. Added again, it is a new unit, and a
+    case on it again a reopening.
+
+    The book is consulted even where the session no longer holds the unit: a
+    Core builds each walk's session from the units still fed, so the case is all
+    that is left of a unit retired there. Refused as `missing_entity` only when
+    neither the session nor the book knows it.
+    """
+    for value, name in ((entity_id, "entity_id"), (basis, "basis")):
+        if not isinstance(value, str):
+            raise TypeError(f"retire_entity({name}=...) takes text; got "
+                            f"{type(value).__name__}")
+    book = _case_book_of(session)
+    open_cases = [case for case in (book.cases() if book is not None else ())
+                  if case.entity_id == entity_id and case.status == "open"]
+    entity = session.entities.pop(entity_id, None)
+    if entity is None and not open_cases:
+        return _case_envelope(session, "retire", {"entities_retired": 0}, [Decline(
+            "missing_entity", {"location": entity_id},
+            detail=f"this session holds no entity {entity_id!r} and its book no "
+                   f"case open on one")])
+    edges = (len(session.graph.edges.get(entity_id, ()))
+             + len(session.graph.reverse_edges.get(entity_id, ())))
+    session.graph.remove_entity(entity_id)
+    at = now_utc().isoformat()
+    resolved = [book.retire(case, at=at, basis=basis).case_id for case in open_cases]
+    return _case_envelope(session, "retire", {"entities_retired": 1}, [], {
+        "entity_id": entity_id, "removed": entity is not None,
+        "relationships_removed": edges, "cases_resolved": resolved})
 
 
 #: The payload leg each attachable stage answers in, and what a case keeps of
@@ -2561,7 +2629,8 @@ def _stage_reference(stage: str, leg: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def attach_stage(session: EngineSession, case_id: str, stage: str,
-                 envelope: Any = None, *, reference: Any = None) -> Envelope:
+                 envelope: Any = None, *, reference: Any = None,
+                 include_case: bool = True) -> Envelope:
     """Attach what a stage did to a case, by reference.
 
     THE BOOK CALLS NO STAGE: the caller ran `hypothesize`, `plan` or
@@ -2584,6 +2653,11 @@ def attach_stage(session: EngineSession, case_id: str, stage: str,
     verb that could not run at all, which answers an unavailable envelope:
     that stage is attached as `precondition_unmet`, with the verb's own
     sentence as `detail`, so `declined` holds published names only.
+
+    `include_case=False` answers the attachment with the case's id
+    and status instead of the case. A caller that reads only what was
+    attached -- a walk attaches three stages to every case a finding names --
+    is not handed a copy of the case's whole history each time.
     """
     from arbiter_engine.residual.cases import STAGES
 
@@ -2662,7 +2736,8 @@ def attach_stage(session: EngineSession, case_id: str, stage: str,
         entry["reference"] = json.loads(json.dumps(reference, default=str))
     book.attach(case, stage, entry)
     return _case_envelope(session, "case", {"stages_attached": 1}, [],
-                          case.to_dict())
+                          case.to_dict() if include_case else
+                          {"case_id": case.case_id, "status": case.status})
 
 
 def case_book(session: EngineSession) -> Envelope:
@@ -2791,8 +2866,10 @@ def _record_into_cases(session: EngineSession, result: Any) -> None:
     `found` when a finding on the case's entity and indicator is at or above
     the declared severity; `not_looked` when every axiom the indicator
     declares declined for that entity -- nothing was judged, and silence is
-    not evidence of health; `clean` otherwise. Only `clean` extends a case's
-    run of checks.
+    not evidence of health; `clean` otherwise. -- `withdrawn` where
+    every decline was the line's own absence and the reading is there
+    (`_withdrawn_lines`): the model stopped drawing the line, the unit did not
+    fall silent. `clean` and `withdrawn` extend a case's run of checks.
     """
     from arbiter_engine.residual.predict_vs_mirror import \
         _problem_indicator
@@ -2820,17 +2897,73 @@ def _record_into_cases(session: EngineSession, result: Any) -> None:
                 if entity is not None else None)
         declared = {getattr(a, "value", str(a))
                     for a in (getattr(spec, "relevant_axioms", None) or ())}
-        silent = {getattr(d.axiom, "value", str(d.axiom)) for d in declines
+        theirs = [d for d in declines
                   if d.entity_id == case.entity_id and d.indicator == case.indicator
-                  and d.reason != NotEvaluatedReason.PARTIALLY_CHECKED}
+                  and d.reason != NotEvaluatedReason.PARTIALLY_CHECKED]
+        silent = {getattr(d.axiom, "value", str(d.axiom)) for d in theirs}
+        withdrawn: List[str] = []
         if found:
             outcome = "found"
         elif entity is None or not declared or declared <= silent:
-            outcome = "not_looked"
+            if entity is not None and spec is not None and declared and all(
+                    d.reason == NotEvaluatedReason.NO_THRESHOLD for d in theirs):
+                withdrawn = _withdrawn_lines(entity, spec)
+            outcome = "withdrawn" if withdrawn else "not_looked"
         else:
             outcome = "clean"
-        book.record_check(case, {"at": at, "findings": found},
-                          outcome=outcome, at=at)
+        entry: Dict[str, Any] = {"at": at, "findings": found}
+        # and the reading and the declared lines it was judged against,
+        # when the check could look, so the case can say which crossed.
+        if outcome in ("found", "clean") and spec is not None:
+            entry.update(_reading_and_bounds(entity, spec))
+        elif withdrawn:
+            entry.update(reading=float(_reading_of(entity, spec)), withdrawn=withdrawn)
+        book.record_check(case, entry, outcome=outcome, at=at)
+
+
+def _reading_of(entity: Any, spec: Any) -> Any:
+    return entity.get_property(getattr(spec, "property_name", None) or spec.name)
+
+
+def _withdrawn_lines(entity: Any, spec: Any) -> List[str]:
+    """ -- the lines `spec` reads off `entity` that it no longer carries, when
+    those are all the lines it declares and the entity carries its reading.
+
+    Empty when a line still stands -- a literal, an instance bound, or a property
+    the entity still carries, a number or not -- or the reading is not a number:
+    then the check could not look for some other want, and silence is not health.
+    """
+    sources = dict(getattr(spec, "threshold_sources", None) or {})
+    if not sources:
+        return []
+    values, _origins, _detail = effective_thresholds(entity, spec)
+    if any(value is not None for value in values.values()):
+        return []
+    table = getattr(entity, "properties", None) or {}
+    name = getattr(spec, "property_name", "") or getattr(spec, "name", "")
+    instances = table.get(DECLARED_THRESHOLDS_KEY) or {}
+    if any(table.get(source) is not None for source in sources.values()) \
+            or any(instances.get((name, field)) is not None for field in THRESHOLD_FIELDS):
+        return []
+    reading = _reading_of(entity, spec)
+    if isinstance(reading, bool) or not isinstance(reading, (int, float)):
+        return []
+    return [field for field in THRESHOLD_FIELDS if field in sources]
+
+
+def _reading_and_bounds(entity: Any, spec: Any) -> Dict[str, Any]:
+    """ -- ``{"reading", "bounds"}`` for one indicator on one entity, as
+    BOUNDEDNESS reads them: the entity's value, and every declared bound resolved
+    for it -- a literal, or one read off the entity (`{from_property:...}`).
+    Empty when the indicator declares no bound or carries no number: with no line
+    there is nothing to have crossed."""
+    from arbiter_engine.axiom_thresholds import effective_thresholds
+    values, _origins, _unresolved = effective_thresholds(entity, spec)
+    bounds = {line: value for line, value in values.items() if value is not None}
+    reading = entity.get_property(getattr(spec, "property_name", None) or spec.name)
+    if not bounds or isinstance(reading, bool) or not isinstance(reading, (int, float)):
+        return {}
+    return {"reading": float(reading), "bounds": bounds}
 
 
 # `_ROLLOUT_NON_AXIOM` is gone. It existed to subtract the rollout's
@@ -3034,6 +3167,10 @@ def plan(session: EngineSession,
             # case: the first clear step, and where the clear run lasting to
             # the horizon begins. Measured, not ranked on.
             "cases": [dict(row) for row in c.cases],
+            # each declared line the plan's writes move. Ranked as
+            # every option is, by findings: this says which options clear one
+            # by moving the line rather than the unit.
+            "moves_bounds": _bounds_moved_by(session, c.actions),
             "checked": dict(c.checked),
         }
         for c in result.candidates
@@ -3051,6 +3188,46 @@ def plan(session: EngineSession,
             plan_payload["calibration"] = session.ledger.calibration()
     payload["plan"] = plan_payload
     return _WithPayload(envelope, payload)
+
+
+def _bounds_moved_by(session: EngineSession, actions: Sequence[Any]) -> List[Dict[str, Any]]:
+    """ -- each declared bound an action's write reaches on the entity it acts
+    on: the property the template writes, or one a derived indicator computes from
+    it, read by a `{from_property:...}` bound. ``through`` is the path, the written
+    property first. A plan ranks options by the findings they leave, and lowering a
+    line clears a finding as surely as mending the unit does: the FAA case's plan
+    ranked adopting a staffing model first by lowering the targets its floors read.
+    """
+    from arbiter_engine.derived.indicator import operands_of
+    from arbiter_engine.twin.actions import load_templates
+    model = session.model
+    templates, _refused = load_templates(model)
+    rows: List[Dict[str, Any]] = []
+    for action in actions:
+        template = templates.get(getattr(action, "template", None))
+        entity = session.entities.get(getattr(action, "entity_id", None))
+        if template is None or entity is None:
+            continue
+        specs = list((model.indicators or {}).get(entity.type) or ())
+        names = list(getattr(action, "parameters", None) or {}) \
+            or list(getattr(template, "parameters_schema", None) or {})
+        reach = {template.property_for(name)[0]: [template.property_for(name)[0]]
+                 for name in names}
+        computed = {(s.property_name or s.name): operands_of(s.derived)
+                    for s in specs if getattr(s, "derived", None)}
+        grew = True
+        while grew:
+            grew = False
+            for prop, operands in computed.items():
+                via = next((o for o in operands if o in reach), None)
+                if prop not in reach and via is not None:
+                    reach[prop], grew = reach[via] + [prop], True
+        for s in specs:
+            for line, source in sorted((getattr(s, "threshold_sources", None) or {}).items()):
+                if source in reach:
+                    rows.append({"template": action.template, "entity_id": action.entity_id,
+                                 "indicator": s.name, "bound": line, "through": reach[source]})
+    return rows
 
 
 def _undeclared_channels(session: EngineSession, entity_id: str,

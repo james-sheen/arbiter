@@ -30,6 +30,9 @@ import threading
 from dataclasses import dataclass
 from datetime import datetime
 from ..clock import as_naive_utc, now_utc
+# the wall clock, which `as_of` does not move: an arrival is an event in the process's time, not in
+# the data's, and a replay inside `as_of` must not move the liveness signal into the past it replays.
+from ..clock import _system_now as _arrival_clock
 
 from typing import Dict, List, Optional
 
@@ -189,12 +192,17 @@ def reset_ingest_caller_tags_for_test() -> None:
 
 
 def _bump_ingest_heartbeat(now: Optional[datetime] = None) -> None:
-    """Record that an ingest reached the substrate. Unconditional by design."""
+    """Record that an ingest reached the substrate. Unconditional by design.
+
+    Stamped at its ARRIVAL, on the wall clock, unless a caller names the instant. It took
+    the reading's own `observed_at`, so a feed of past data read as a feed stalled since its last
+    reading: on the reference VPS, three hours after the hearing offices case was fed, `seconds_since_last_ingest`
+    read 348 days, the age of the case's last reading."""
     global _INGEST_COUNT_TOTAL, _LAST_INGEST_AT
     tag = _classify_ingest_caller() if DT_INGEST_CALLER_TAG_ENABLED else None
     with _PRODUCTION_LOCK:
         _INGEST_COUNT_TOTAL += 1
-        _LAST_INGEST_AT = as_naive_utc(now) if now else now_utc()
+        _LAST_INGEST_AT = as_naive_utc(now) if now else _arrival_clock()
         if tag is not None:  #
             _INGEST_CALLER_TAGS[tag] = _INGEST_CALLER_TAGS.get(tag, 0) + 1
 
@@ -212,7 +220,7 @@ def get_seconds_since_last_ingest() -> Optional[float]:
     """
     if _LAST_INGEST_AT is None:
         return None
-    return max(0.0, (now_utc() - _LAST_INGEST_AT).total_seconds())
+    return max(0.0, (_arrival_clock() - _LAST_INGEST_AT).total_seconds())
 
 
 def reset_ingest_heartbeat_for_test() -> None:
@@ -259,8 +267,9 @@ def record_observation(
         return None
     # heartbeat FIRST. Every ingest that reaches a live substrate counts,
     # whatever the policy then decides to store. Moving this below the policy
-    # check would reproduce the exact silence it exists to detect.
-    _bump_ingest_heartbeat(observed_at)
+    # check would reproduce the exact silence it exists to detect. -- at
+    # its arrival, not at `observed_at`: the record keeps the reading's own instant.
+    _bump_ingest_heartbeat()
     policy = resolve_production_observation_emit_policy(emit_policy)
     if policy == PRODUCTION_OBSERVATION_EMIT_POLICY_SUPPRESSED:
         return None

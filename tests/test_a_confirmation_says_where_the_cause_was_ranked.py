@@ -97,7 +97,8 @@ class TestWhereTheConfirmedCauseStood:
         # An internal ruling added what the ranking rested on and the entity comparison:
         # this chain declares strengths, so its ranking is by posterior.
         # An internal ruling added where the cause stood on that walk: both causes unread,
-        # so open, on an open walk.
+        # so open, on an open walk. An internal ruling added who confirmed it and when:
+        # nobody recorded, at the instant the confirmation was stamped.
         assert _confirmed(session) == {
             "confirmations": 1, "ranked_first": 1, "ranked": 1, "not_ranked": 0,
             "ranked_by_posterior": 1, "ranked_first_by_posterior": 1,
@@ -111,6 +112,7 @@ class TestWhereTheConfirmedCauseStood:
                       "ranked_by": "posterior",
                       "standing": "open", "walk_state": "open",
                       "basis": "site visit", "walks_before": 1,
+                      "confirmed_by": None, "confirmed_at": "2026-09-28T12:02:00",
                       "named_by": "strengths",
                       "named_reading_settled_it": True,
                       "named_reading": "tank-1.level_pct",

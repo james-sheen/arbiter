@@ -228,7 +228,16 @@ def _clone_history(session: Any) -> Tuple[Any, int, Optional[SimulationDecline]]
     clone = InMemoryObservationHistory()
     seeded = 0
     source = session.reading_history()
-    if not hasattr(source, "series_keys"):
+    # THE KEYS FROM THE STORE, THE VALUES THROUGH THE VIEW. A model
+    # declaring one derived indicator wraps its store in a view that answers
+    # derived names and lists none, and this declined `precondition_unmet` on
+    # every such model: each rollout ran with no past behind it. The view's
+    # store holds the keys; what the model says they mean is still read
+    # through the view, as before.
+    keyed = source
+    while keyed is not None and not hasattr(keyed, "series_keys"):
+        keyed = getattr(keyed, "inner", None)
+    if keyed is None:
         # REPORTED, not silently empty. A history without
         # `series_keys` cannot be enumerated, so the rollout steps forward
         # with no imagined past behind it and every windowed axiom declines
@@ -247,7 +256,7 @@ def _clone_history(session: Any) -> Tuple[Any, int, Optional[SimulationDecline]]
     # range, not a property, and reading it as a per-series call is a
     # TypeError that only fires once a session actually holds history -- which
     # a first test with no observations will never reach.
-    for key in source.series_keys():
+    for key in keyed.series_keys():
         try:
             entity_id, property_name = key
         except (TypeError, ValueError):
@@ -260,10 +269,14 @@ def _clone_history(session: Any) -> Tuple[Any, int, Optional[SimulationDecline]]
         # windowed axiom would have noticed, and quietly. A history this
         # engine cannot read is worth a raised error, which `api.rollout`
         # catches at its boundary and reports as `internal_error`.
-        for when, value in source.get_values(
-                entity_id, property_name, _CLONE_WINDOW):
-            clone.add(entity_id, property_name, value, when)
-            seeded += 1
+        readings = list(source.get_values(entity_id, property_name, _CLONE_WINDOW))
+        # COPIED, NOT ARRIVED. Each of these went through the
+        # production record when the session took it; through `add` the copy
+        # filed every one again, for every option a plan rolled out -- 3,566,245
+        # times in one run of the TSA case, the record switched on. In bulk
+        # now, filing nothing; the copy is the same reading for reading.
+        clone.add_restored(entity_id, property_name, readings)
+        seeded += len(readings)
     return clone, seeded, None
 
 
@@ -378,6 +391,7 @@ def run(session: Any, topology: Any, *,
         max_transitions: int = 100_000,
         start_nodes: Optional[Sequence[str]] = None) -> RolloutResult:
     """Step the model forward, evaluating the axioms on each imagined state."""
+    from ..clock import as_of
     result = RolloutResult()
 
     if step_s <= MIN_STEP_S:
@@ -419,6 +433,11 @@ def run(session: Any, topology: Any, *,
     if unreadable is not None:
         result.declines.append(unreadable)
     now = _now(session)
+    # what each step is judged THROUGH: the clone, with the model's
+    # derived indicators answering over its imagined operands, as `check`
+    # reads the live store through `reading_history()`.
+    derived = _derived_by_type(getattr(session, "model", None), entities)
+    judged = _derived_view(history, session.model) if derived else history
     #: ONE id for everything this rollout files. A rollout is one
     #: trajectory however many instants it reports, so the records it files
     #: are one episode -- which is what `traversal_id` has always meant on an
@@ -1220,15 +1239,27 @@ def run(session: Any, topology: Any, *,
                 + arrived.get(key, 0.0))
         received = arrived
 
-        # 3. Write the imagined state into the clone, at the imagined time.
+        # 3. Write the imagined state into the clone, at the imagined time --
+        #    each derived indicator first recomputed from this step's values.
+        _derive(state, entities, derived)
         stamp = now + timedelta(seconds=at_s)
+        # imagined, so never an ingest: stored as `add` would, with
+        # no production record filed.
+        put = getattr(history, "add_imagined", history.add)
         for entity_id, values in state.items():
             for prop, value in values.items():
-                history.add(entity_id, prop, float(value), stamp)
+                put(entity_id, prop, float(value), stamp)
 
-        # 4. The eight axioms, over the imagined state and the imagined past.
-        findings, declines, attempted = _evaluate(
-            session, state, entities, history)
+        # 4. The eight axioms, over the imagined state and the imagined past,
+        # judged AT this step's instant. -- every window ends at the
+        #    engine's clock, and the clock stood where the rollout began, so
+        #    each step read the real past and none of the series written above:
+        #    a balance an action closed was judged on the readings it closed,
+        #    and HOMEOSTASIS, STABILITY and MONOTONICITY never saw an imagined
+        #    value. `as_of` nests, so a caller's own `as_of` is restored after.
+        with as_of(stamp):
+            findings, declines, attempted = _evaluate(
+                session, state, entities, judged)
         step.findings.extend(findings)
         step.declines.extend(declines)
         step.invariants = attempted
@@ -1283,6 +1314,49 @@ def run(session: Any, topology: Any, *,
         if assumption and assumption not in result.assumptions:
             result.assumptions.append(assumption)
     return result
+
+
+def _derived_by_type(model: Any, entities: Dict[str, Any]) -> Dict[str, List[Any]]:
+    """The declared derived indicators of each entity type present, where any."""
+    if model is None:
+        return {}
+    from ..derived.indicator import derived_specs
+    found: Dict[str, List[Any]] = {}
+    for entity in entities.values():
+        kind = getattr(entity, "type", "")
+        if kind not in found:
+            found[kind] = derived_specs(model, kind)
+    return {kind: specs for kind, specs in found.items() if specs}
+
+
+def _derived_view(history: Any, model: Any) -> Any:
+    from ..derived.indicator import DerivedHistoryView
+    return DerivedHistoryView(history, model)
+
+
+def _derive(state: Dict[str, Dict[str, float]], entities: Dict[str, Any],
+            derived: Dict[str, List[Any]]) -> None:
+    """ -- recompute each derived indicator over THIS step's values.
+
+    The state was seeded from the entities' properties, where the last `check`
+    left each derived value, and nothing moved it after: an action writing an
+    operand left the expression where it was, so a gap the action closed was
+    still imagined open and `plan` ranked closing it level with doing nothing.
+    A derived value is its expression at every instant, the imagined ones too;
+    one whose operands are missing at a step is absent there, as `check` makes
+    it.
+    """
+    if not derived:
+        return
+    from ..derived.indicator import compute_current
+    for entity_id, values in state.items():
+        for spec in derived.get(getattr(entities.get(entity_id), "type", ""), ()):
+            name = spec.property_name or spec.name
+            value, _missing = compute_current(spec, values)
+            if value is None:
+                values.pop(name, None)
+            else:
+                values[name] = value
 
 
 def _evaluate(session: Any, state: Dict[str, Dict[str, float]],

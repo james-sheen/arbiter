@@ -362,13 +362,27 @@ def _factors(graph: CausalGraph) -> List[Factor]:
 def run_inference(session, query: Query,
                   report_above: Optional[float] = None, *,
                   evidence: Optional["Evidence"] = None,
-                  predicted_at: Optional[Any] = None) -> SubEnvelope:
+                  predicted_at: Optional[Any] = None,
+                  graph: Optional[CausalGraph] = None,
+                  shared: Optional[Dict[Any, Any]] = None,
+                  asked: Optional[Set[Tuple[Any, Any]]] = None) -> SubEnvelope:
     """Answer one query over the declared causal subgraph.
 
     `evidence` replaces what the last `check()` said, for a caller
     that read the graph at other instants: `hypothesize` reads each cause at
     its declared delay. `predicted_at` is the instant the answered posterior
     is a claim about, when that is not now. Both absent, nothing changes.
+
+    for a caller asking many queries of one session that does not
+    change between them, as `hypothesize` asks one for every candidate cause:
+    `graph` is the causal subgraph it has already built for that session;
+    `shared` is a dict it keeps across the queries, where the graph's cycle and
+    each node's evidence are kept once read; `asked` holds the questions it has
+    already collected, as ``(gap type, location)``, and none of those is built
+    again. Each answer is the one the query gets alone, less those questions.
+    On the hearing offices case the nation's walk asked 165 queries, and each
+    built the subgraph, read every node's evidence and wrote a question for
+    every edge again: most of a late month's 1.3 to 1.5 s on the reference deployment.
     """
     checked: Dict[str, Any] = {"queries": 1, "answered": 0, "method": "exact_ve"}
     declines: List[Decline] = []
@@ -379,7 +393,8 @@ def run_inference(session, query: Query,
         return SubEnvelope("inference", {"queries": 0}, source="unavailable",
                            reason="no domain model loaded")
 
-    graph = causal_subgraph(session.model, session.graph, session.entities)
+    if graph is None:
+        graph = causal_subgraph(session.model, session.graph, session.entities)
     checked["causal_edges"] = len(graph.weights)
     checked["cpts"] = graph.sources()
     scope = {"query": query.text}
@@ -390,7 +405,13 @@ def run_inference(session, query: Query,
             reason=(f"{query.target!r} is on no edge declared "
                     f"`edge_direction: causal` or with a `cause:` end"))
 
-    loop = graph.cycle()
+    if shared is None:
+        loop = graph.cycle()
+    else:
+        key = ("cycle", id(graph))
+        if key not in shared:
+            shared[key] = graph.cycle()
+        loop = list(shared[key]) if shared[key] else shared[key]
     if loop:
         declines.append(Decline(
             "cycle_unsupported", scope,
@@ -426,7 +447,14 @@ def run_inference(session, query: Query,
 
     severities, floor_declared, floor_unusable = \
         evidence_severities(session.model)
-    if evidence is None:
+    if evidence is None and shared is not None and working is graph:
+        key = ("node_evidence", id(graph), severities)
+        if key not in shared:
+            shared[key] = node_evidence(session, working, severities)
+        # Copies: `observed` is changed below, and the next query reads the same evidence.
+        observed, unobserved, summaries = (dict(shared[key][0]), list(shared[key][1]),
+                                           dict(shared[key][2]))
+    elif evidence is None:
         observed, unobserved, summaries = node_evidence(session, working, severities)
     else:
         observed, unobserved = dict(evidence.observed), list(evidence.unobserved)
@@ -490,6 +518,8 @@ def run_inference(session, query: Query,
             evidence={"edges": defaulted, "default_weight": working.weights[
                 (relevant[0][0], relevant[0][1])].weight}))
         for edge in defaulted:
+            if asked is not None and (GapType.MISSING_THRESHOLD.value, edge) in asked:
+                continue
             questions.append(_question(
                 GapType.MISSING_THRESHOLD, edge,
                 "no causal weight declared on an edge the query depends on",

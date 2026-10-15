@@ -179,4 +179,10 @@ class TestTheValuesDidNotMove:
         candidates = _run("plan", BASE)["plan"]["candidates"]
         assert [c["objective"] for c in candidates] == [
             pytest.approx(0.0), pytest.approx(0.0), pytest.approx(0.0),
-            pytest.approx(3.6666666666666665), pytest.approx(9.666666666666666)]
+            # 3.667 and 9.667 until each step was judged at its own
+            # instant, then 7.167 and 11.667: a step to 3000 rpm read as a trend
+            # toward the pump's and the tank's critical lines, and a step to 800
+            # toward the pump's floor. the pump's set-point step is a
+            # change of level, not a trend, either way; the tank's rise, sampled
+            # every minute, still is one. The order holds.
+            pytest.approx(5.166666666666667), pytest.approx(9.666666666666666)]

@@ -85,6 +85,9 @@ class InMemoryObservationHistory(ObservationHistory):
         self._total_per_key_trim_waves: int = 0
         self._total_per_key_observations_trimmed: int = 0
 
+        # moves on, under the lock, wherever the readings may have changed (`version`).
+        self._version: int = 0
+
     def add(
         self,
         entity_id: str,
@@ -97,43 +100,7 @@ class InMemoryObservationHistory(ObservationHistory):
         key = (entity_id, property_name)
 
         with self._lock:
-            self._history[key].append((timestamp, value))
-            self._observation_counts[key] += 1
-            self._total_observation_count += 1
-
-            # Enforce per-key max observations
-            if len(self._history[key]) > self.max_observations:
-                trimmed = len(self._history[key]) - self.max_observations
-                self._history[key] = self._history[key][-self.max_observations:]
-                self._total_observation_count -= trimmed
-                # surface per-key trim activity via lifetime
-                # counters + first-occurrence INFO log + heartbeat every
-                # 10000 waves (per-key trim is high-frequency on
-                # flood-heavy keys; 10k cadence balances visibility vs
-                # log volume).
-                self._total_per_key_trim_waves += 1
-                self._total_per_key_observations_trimmed += trimmed
-                first_wave = self._total_per_key_trim_waves == 1
-                every_10k = self._total_per_key_trim_waves % 10000 == 0
-                if first_wave or every_10k:
-                    logger.info(
-                        "InMemoryObservationHistory per-key trim "
-                        "for %r: trimmed %d observations this wave "
-                        "(wave=%d, total_observations_trimmed=%d, "
-                        "key now at %d observations). Repeated trims on "
-                        "the same key indicate a flood — single-key "
-                        "floods are absorbed in-place by per-key trim "
-                        "and do NOT trigger global eviction.",
-                        key,
-                        trimmed,
-                        self._total_per_key_trim_waves,
-                        self._total_per_key_observations_trimmed,
-                        len(self._history[key]),
-                    )
-
-            # Enforce global memory bound by evicting oldest keys
-            if self._total_observation_count > self._max_total_observations:
-                self._evict_oldest_keys()
+            self._store(key, timestamp, value)
 
         # emit per-observation production record
         # for source-health monitoring. `record_observation` internally checks
@@ -155,6 +122,103 @@ class InMemoryObservationHistory(ObservationHistory):
             )
         except Exception:  # noqa: BLE001 — defensive; substrate-unavailable
             pass
+
+    def add_restored(
+        self,
+        entity_id: str,
+        property_name: str,
+        readings: List[Tuple[Optional[datetime], Any]],
+    ) -> None:
+        """ -- readings that arrived before, stored as `add` stores them one by one, in bulk.
+
+        A history rebuilt from what a store already holds -- the session the Core builds for each walk
+        from every reading a cluster was posted, the hybrid discovery's merge of every cluster -- is
+        handed readings each of which went through the production record when it ARRIVED. Through
+        `add` every rebuild filed them all again: on the reference VPS the DT observation surface counted 39 million
+        ingests in under eight hours, and the record was 0.41 to 0.62 s of a late month's walk. So this
+        files no record, and takes the lock once a series rather than once a reading.
+
+        What is stored is exactly what `add` would store, reading by reading: the same normalised
+        instants, in order, the same counts. Where that order would trim the key at
+        ``max_observations`` or evict at the global bound, each reading is stored in turn, so the trims
+        and evictions fall exactly where `add`'s would.
+        """
+        rows = [(as_naive_utc(ts) if ts else now_utc(), value) for ts, value in readings]
+        if not rows:
+            return
+        key = (entity_id, property_name)
+        with self._lock:
+            held = len(self._history.get(key, ()))
+            if (held + len(rows) <= self.max_observations
+                    and self._total_observation_count + len(rows) <= self._max_total_observations):
+                # Nothing trims and nothing is evicted on the way, so one extend is each `add` in turn.
+                self._history[key].extend(rows)
+                self._observation_counts[key] += len(rows)
+                self._total_observation_count += len(rows)
+                self._version += 1
+                return
+            for timestamp, value in rows:
+                self._store(key, timestamp, value)
+
+    def add_imagined(
+        self,
+        entity_id: str,
+        property_name: str,
+        value: Any,
+        timestamp: Optional[datetime] = None,
+    ) -> None:
+        """ -- a reading a rollout imagines, stored as `add` stores it, filing no production record.
+
+        A plan's rollout writes each step's imagined state into its private copy of the session's
+        history, so the step's windows read the past it imagines. Through `add` every such reading was
+        filed as an ingest: one run of the TSA case's plans, the record switched on, filed 1,849,000
+        imagined readings, beside the 3,566,245 their copies filed again. Nothing about it arrived.
+        """
+        timestamp = as_naive_utc(timestamp) if timestamp else now_utc()
+        with self._lock:
+            self._store((entity_id, property_name), timestamp, value)
+
+    def _store(self, key: Tuple[str, str], timestamp: datetime, value: Any) -> None:
+        """One reading appended, the key trimmed and the store evicted where its bounds say. Called
+        with ``self._lock`` held, by `add` and by `add_restored` alike."""
+        self._version += 1
+        self._history[key].append((timestamp, value))
+        self._observation_counts[key] += 1
+        self._total_observation_count += 1
+
+        # Enforce per-key max observations
+        if len(self._history[key]) > self.max_observations:
+            trimmed = len(self._history[key]) - self.max_observations
+            self._history[key] = self._history[key][-self.max_observations:]
+            self._total_observation_count -= trimmed
+            # surface per-key trim activity via lifetime
+            # counters + first-occurrence INFO log + heartbeat every
+            # 10000 waves (per-key trim is high-frequency on
+            # flood-heavy keys; 10k cadence balances visibility vs
+            # log volume).
+            self._total_per_key_trim_waves += 1
+            self._total_per_key_observations_trimmed += trimmed
+            first_wave = self._total_per_key_trim_waves == 1
+            every_10k = self._total_per_key_trim_waves % 10000 == 0
+            if first_wave or every_10k:
+                logger.info(
+                    "InMemoryObservationHistory per-key trim "
+                    "for %r: trimmed %d observations this wave "
+                    "(wave=%d, total_observations_trimmed=%d, "
+                    "key now at %d observations). Repeated trims on "
+                    "the same key indicate a flood — single-key "
+                    "floods are absorbed in-place by per-key trim "
+                    "and do NOT trigger global eviction.",
+                    key,
+                    trimmed,
+                    self._total_per_key_trim_waves,
+                    self._total_per_key_observations_trimmed,
+                    len(self._history[key]),
+                )
+
+        # Enforce global memory bound by evicting oldest keys
+        if self._total_observation_count > self._max_total_observations:
+            self._evict_oldest_keys()
 
     def add_observation(self, observation: Observation) -> None:
         """Add an Observation object."""
@@ -390,6 +454,37 @@ class InMemoryObservationHistory(ObservationHistory):
 
         return sorted(observations, key=lambda o: o.timestamp)
 
+    def reading_span(self) -> Tuple[int, Optional[datetime], Optional[datetime]]:
+        """How many readings this history holds, and its first and last instants.
+
+        what `get_all_observations(datetime.min, datetime.max)` would
+        give as its length and its two ends, without building an observation per
+        reading and sorting them. The Core asked for exactly that once for every
+        problem it planned, to say whether a cluster was warm, and one of the FAA
+        case's problems took over two seconds of it. ``(0, None, None)`` when empty.
+        """
+        count, first, last = 0, None, None
+        with self._lock:
+            for values in self._history.values():
+                for ts, _value in values:
+                    count += 1
+                    if first is None or ts < first:
+                        first = ts
+                    if last is None or ts > last:
+                        last = ts
+        return count, first, last
+
+    @property
+    def version(self) -> int:
+        """ -- a number that moves on whenever the readings this history holds may have changed.
+
+        A reader that derives something from every reading -- the Core's warmup of a cluster, asked once
+        for every problem its periodic cycle plans -- keeps the number beside what it derived, and
+        derives it again only once the number has moved. Read it BEFORE reading the history: a reading
+        stored in between then moves the number past the one kept, and the next reader derives again.
+        """
+        return self._version
+
     def get_observation_count(
         self,
         entity_id: str,
@@ -486,6 +581,8 @@ class InMemoryObservationHistory(ObservationHistory):
                 # Remove empty entries
                 if not self._history[key]:
                     del self._history[key]
+            if pruned:
+                self._version += 1
 
         return pruned
 
@@ -618,6 +715,8 @@ class InMemoryObservationHistory(ObservationHistory):
         removed = 0
         with self._lock:
             keys_to_remove = [k for k in self._history if k[0] == entity_id]
+            if keys_to_remove:
+                self._version += 1
             for k in keys_to_remove:
                 removed += len(self._history[k])
                 del self._history[k]
@@ -628,6 +727,7 @@ class InMemoryObservationHistory(ObservationHistory):
     def clear(self) -> None:
         """Clear all history."""
         with self._lock:
+            self._version += 1
             self._history.clear()
             self._observation_counts.clear()
             self._entity_metadata.clear()

@@ -30,8 +30,8 @@ import pytest
 
 from arbiter_engine import api
 from arbiter_engine.ontology.domain_loader import (
-    _KNOWN_CALENDAR_KEYS, _KNOWN_ENTAILMENT_RULE_KEYS, _KNOWN_SESSION_KEYS,
-    _MODEL_KEYS, _NON_ENGINE_MODEL_KEYS, is_domain_model, load_domain)
+    _KNOWN_CALENDAR_KEYS, _KNOWN_ENTAILMENT_RULE_KEYS, _KNOWN_SESSION_KEYS, _MODEL_KEYS,
+    _NON_ENGINE_MODEL_KEYS, is_domain_model, load_domain)
 
 SESSION = {"days": ["mon", "tue"], "open": "09:00", "close": "17:00", "tz": "UTC"}
 
@@ -57,6 +57,29 @@ class TestTheTopLevelIsChecked:
     def test_the_orchestrators_keys_pass_by_name(self):
         assert _named(property_schema={"A": {}}, classification_mappings={},
                       approval_chain=[]) == {}
+
+    def test_a_link_s_other_words_pass_and_a_misspelling_of_them_does_not(self):
+        """ -- the orchestrator's extraction grounds a link on them."""
+        assert _named(relationship_aliases={"lead": "r"}) == {}
+        assert "relationship_aliasses" in _named(relationship_aliasses={"lead": "r"})
+
+
+class TestATemplateInBothSchemasIsQuiet:
+    """ -- a template this engine accepts may carry the orchestrator
+    planner's keys beside its own, as the ACME case study's hire does."""
+
+    TEMPLATE = {"name": "hire", "applies_to": "A", "effect": "add",
+                "parameters_schema": {"n": {"type": "number", "entity_property": "x"}},
+                "type": "hire", "risk": "LOW", "blast_radius": "custom",
+                "categories": ["STAFFING"], "entity_types": ["A"], "params": {"n": {"type": "int"}},
+                "duration": 30}
+
+    def test_the_planner_s_keys_pass_by_name(self):
+        assert _named(action_templates=[self.TEMPLATE]) == {}
+
+    def test_a_misspelling_of_one_is_still_named(self):
+        named = _named(action_templates=[{**self.TEMPLATE, "categoires": ["STAFFING"]}])
+        assert list(named) == ["action_templates.categoires"]
 
     def test_a_key_nothing_reads_anywhere_is_reported(self):
         assert _named(flow_types=["mass"]) == {"flow_types": None}
@@ -151,6 +174,11 @@ def _model_files():
     domains = here.parents[2] / "domains"
     if domains.is_dir():
         others += sorted(domains.glob("*.yaml"))
+    # and the case studies' models, which declare what the orchestrator
+    # reads beside what this engine does.
+    cases = here.parents[2] / "playground" / "case_studies"
+    if cases.is_dir():
+        others += sorted(cases.glob("*/model.yaml"))
     return ([p for p in examples if is_domain_model(p)],
             [p for p in others if is_domain_model(p)])
 

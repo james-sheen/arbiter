@@ -22,13 +22,36 @@ what it was held to. A check that could not look -- every axiom on the
 indicator declined for the entity -- is not a clean check: it restarts the
 count, because silence is not evidence of health.
 
+WHAT RESOLVED IT, when a line decided it. -- a bound read off the entity
+(`{from_property:...}`) moves when its property does, so a line that moved below
+a unit closed its case exactly as a unit that recovered: the FAA case's 59
+facilities whose target fell while their controllers did not rise read as
+recoveries. A check records the reading and the declared bounds it was judged
+against, and a case that resolves says which crossed: the reading crossed the
+line, the line crossed the reading, or both.
+
+A LINE WITHDRAWN IS NOT SILENCE. -- a line read off the entity that the
+entity stops carrying leaves its check nothing to judge against while the reading
+is there: the model has stopped drawing the line, and the unit has not gone quiet.
+Counted as silence, it held open for good every case opened on it -- on the
+nursing homes case, 232 cases on lines a court had struck down. A check that finds
+the reading and no line -- every line the indicator declares read off a property
+the entity no longer carries -- is `withdrawn`, extends the run as a clean one
+does, and a case that closes on one says the line was withdrawn. A line still
+standing, or a property there and unreadable, is not withdrawn.
+
+A RETIRED UNIT TAKES ITS CASES WITH IT. -- a unit that leaves the world
+the model describes is retired (`api.retire_entity`), and each case open on it
+resolves at that instant and says so, with the caller's basis. Nothing is
+recorded as a check, because nothing was checked; what was found while it stood
+stays in the case.
+
 KEPT BESIDE THE LEDGER, and durable when it is: the in-memory ledger holds an
 in-memory book, and the SQLite ledger keeps its book in the same file.
 """
 
 from __future__ import annotations
 
-import copy
 import json
 import uuid
 from dataclasses import asdict, dataclass, field
@@ -58,7 +81,14 @@ class Case:
     consecutive_checks: int
     status: str = OPEN
     resolved_at: Optional[str] = None
-    #: Checks in a row that looked and found nothing at or above `severity`.
+    #: the reading and declared lines it opened on (`_reading_and_bounds`),
+    #: or None where the indicator declares no line.
+    opened_with: Optional[Dict[str, Any]] = None
+    #: what resolved it, when a declared line decided both the check that
+    #: last found it and the one that closed it (`resolution_of`); None otherwise.
+    resolved_by: Optional[Dict[str, Any]] = None
+    #: Checks in a row that looked and found nothing at or above `severity`, or
+    #: found the reading with its line withdrawn.
     clean_streak: int = 0
     #: stage -> the attachments, oldest first. Every stage is present; an
     #: empty list means nothing has been attached for it.
@@ -66,7 +96,10 @@ class Case:
         default_factory=lambda: {stage: [] for stage in STAGES})
 
     def to_dict(self) -> Dict[str, Any]:
-        return copy.deepcopy(asdict(self))
+        # `asdict` builds every container anew and deep-copies every leaf, so its answer
+        # shares nothing with the case. A deep copy over it copied a case's whole history twice, on
+        # every call: 70 percent of a late walk on the unemployment case.
+        return asdict(self)
 
 
 class CaseBook:
@@ -91,33 +124,48 @@ class CaseBook:
     # -- the three things that happen to a case ------------------------------
 
     def open(self, *, entity_id: str, indicator: str, opened_at: str,
-             basis: str, severity: str, consecutive_checks: int) -> Case:
+             basis: str, severity: str, consecutive_checks: int,
+             opened_with: Optional[Dict[str, Any]] = None) -> Case:
         case = Case(case_id=str(uuid.uuid4()), entity_id=entity_id,
                     indicator=indicator, opened_at=opened_at, basis=basis,
                     severity=severity,
-                    consecutive_checks=int(consecutive_checks))
+                    consecutive_checks=int(consecutive_checks),
+                    opened_with=dict(opened_with) if opened_with else None)
         self._store(case)
         return case
 
     def attach(self, case: Case, stage: str, entry: Dict[str, Any]) -> Case:
-        case.stages.setdefault(stage, []).append(dict(entry))
+        case.stages.setdefault(stage, []).append(dict(entry, seq=_next_seq(case)))
         self._store(case)
         return case
 
     def record_check(self, case: Case, entry: Dict[str, Any], *,
                      outcome: str, at: str) -> Case:
-        """One check, as the case saw it: `clean`, `found` or `not_looked`.
+        """One check, as the case saw it: `clean`, `found`, `not_looked` or
+        `withdrawn` -- the reading there and its line not.
 
-        Only `clean` extends the run; either of the others restarts it.
+        `clean` and `withdrawn` extend the run; either of the others restarts it.
         A resolved case records nothing more.
         """
         if case.status != OPEN:
             return case
-        case.clean_streak = case.clean_streak + 1 if outcome == "clean" else 0
+        case.clean_streak = case.clean_streak + 1 if outcome in _RUN_EXTENDED_BY else 0
         case.stages["check"].append(dict(entry, outcome=outcome,
-                                         clean_streak=case.clean_streak))
+                                         clean_streak=case.clean_streak,
+                                         seq=_next_seq(case)))
         if case.clean_streak >= case.consecutive_checks:
             case.status, case.resolved_at = RESOLVED, at
+            case.resolved_by = resolution_of(case)
+        self._store(case)
+        return case
+
+    def retire(self, case: Case, *, at: str, basis: str = "") -> Case:
+        """ -- the unit `case` is on was retired: the case resolves at `at`
+        and says so. A resolved case is left as it was."""
+        if case.status != OPEN:
+            return case
+        case.status, case.resolved_at = RESOLVED, at
+        case.resolved_by = {"by": "retired", "basis": basis}
         self._store(case)
         return case
 
@@ -130,9 +178,104 @@ class CaseBook:
             "resolved": sum(1 for c in cases if c.status == RESOLVED),
             "open": sum(1 for c in cases if c.status == OPEN),
             "reopened": reopened(cases),
+            # the resolutions a declared line decided, by what crossed it.
+            "resolved_by": {by: sum(1 for c in cases if (c.resolved_by or {}).get("by") == by)
+                            for by in RESOLVED_BY},
             "confirmed": confirmed_causes(cases),
             "cases": [c.to_dict() for c in cases],
         }
+
+
+#: what resolved a case: the reading crossed the line, the line crossed
+#: the reading, or it took both; -- or the line was withdrawn; -- or
+#: the unit was retired.
+RESOLVED_BY = ("reading", "bound", "both", "withdrawn", "retired")
+#: The check outcomes that extend a case's run toward closing.
+_RUN_EXTENDED_BY = ("clean", "withdrawn")
+#: The lines a case is held to, by its criterion: a critical case closes inside the
+#: critical lines; any other only inside every line declared.
+_LINES = {"critical": ("critical", "lower_critical")}
+_ALL_LINES = ("warning", "critical", "lower_warning", "lower_critical")
+
+
+def _inside(reading: float, bounds: Dict[str, Any], lines: tuple) -> Optional[bool]:
+    """Whether `reading` is inside every one of `lines` that `bounds` declares, as
+    BOUNDEDNESS reads them -- a reading ON a line is across it -- or None when
+    `bounds` declares none of them."""
+    held = [(line, bounds[line]) for line in lines
+            if isinstance(bounds.get(line), (int, float))]
+    if not held:
+        return None
+    return all(reading > bound if line.startswith("lower_") else reading < bound
+               for line, bound in held)
+
+
+def _withdrawn(case: Case, found: Dict[str, Any], closing: Dict[str, Any]) -> Dict[str, Any]:
+    """ -- what a case closed on a withdrawn line says: the reading it was last
+    found at and the one that closed it, and each line of its criterion it was found
+    against, or the closing check lacked, beside the nothing that closed it."""
+    lines = _LINES.get(str(case.severity).lower(), _ALL_LINES)
+    before = found.get("bounds") or {}
+    gone = set(closing.get("withdrawn") or ())
+
+    def number(value: Any) -> Optional[float]:
+        return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+    return {"by": "withdrawn", "reading": [number(found.get("reading")), number(closing.get("reading"))],
+            "bounds": {line: [before.get(line), None] for line in lines if line in before or line in gone}}
+
+
+def resolution_of(case: Case) -> Optional[Dict[str, Any]]:
+    """ -- what resolved `case`, read off two checks: the last that found it
+    (or, where none since it opened did, what it opened on), and the one that
+    closed it.
+
+    The reading crossed the line when the closing reading is inside the lines the
+    finding was judged against; the line crossed the reading when the finding's
+    reading is inside the closing lines; `both` when each would have done it
+    alone, or only the two together did. None unless a declared line decided both
+    checks -- the finding's reading across a line, the closing one inside every
+    line -- because a trend, a statistical baseline or another axiom has no line to
+    have crossed. -- a case closed by a check whose line was withdrawn says
+    so, with the two readings and the lines it was found against, none after.
+    """
+    checks = case.stages.get("check") or []
+    if not checks:
+        return None
+    closing = checks[-1]
+    # The last check that found it, or, where none since it opened did, what it opened on.
+    found = next((c for c in reversed(checks[:-1]) if c.get("outcome") == "found"),
+                 case.opened_with)
+    if closing.get("outcome") == "withdrawn":
+        return _withdrawn(case, found or {}, closing)
+    if found is None or not isinstance(found.get("reading"), (int, float)) \
+            or not isinstance(closing.get("reading"), (int, float)):
+        return None
+    lines = _LINES.get(str(case.severity).lower(), _ALL_LINES)
+    before, after = found.get("bounds") or {}, closing.get("bounds") or {}
+    r0, r1 = float(found["reading"]), float(closing["reading"])
+    if _inside(r0, before, lines) is not False or _inside(r1, after, lines) is not True:
+        return None
+    by_reading, by_line = _inside(r1, before, lines), _inside(r0, after, lines)
+    by = ("reading" if by_reading and not by_line
+          else "bound" if by_line and not by_reading else "both")
+    return {"by": by, "reading": [r0, r1],
+            "bounds": {line: [before.get(line), after.get(line)] for line in lines
+                       if line in before or line in after}}
+
+
+def _seq(entry: Dict[str, Any]) -> int:
+    """An entry's place in its case's history, or 0 when it was attached before
+    entries carried one."""
+    value = entry.get("seq")
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def _next_seq(case: Case) -> int:
+    """ -- the place the next entry takes in its case's history, 1 first,
+    across every stage: the order a confirmation is read in, which no stamp can
+    give when the stamps come from different clocks."""
+    return 1 + max((_seq(entry) for entries in case.stages.values()
+                    for entry in entries), default=0)
 
 
 def reopened(cases: List[Case]) -> int:
@@ -160,11 +303,12 @@ def confirmed_causes(cases: List[Case]) -> Dict[str, Any]:
     the one number that says whether a ranking is worth reading is
     how often the cause a person later confirms was near its top, and whether
     the reading it named was the one that settled it. Per confirmed case: the
-    cause's rank in the LAST `hypothesize` attachment before the confirmation
-    (`None` when it was not ranked there, or no ranking came first), how many
-    it was ranked among, and whether that ranking's discriminating reading
-    named the confirmed cause's entity. Counts beside the rows, never a rate:
-    a rate carries the denominator it was taken over, and here it is small.
+    cause's rank in the LAST `hypothesize` attachment before the confirmation,
+    in the order they were attached (`None` when it was not ranked there, or no
+    ranking came first), how many it was ranked among, and whether that
+    ranking's discriminating reading named the confirmed cause's entity. Counts
+    beside the rows, never a rate: a rate carries the denominator it was taken
+    over, and here it is small.
 
     THAT LAST FIELD IS NOT WHETHER THE READING SETTLED ANYTHING,
     and it keeps its published name and meaning because a patch release may
@@ -205,6 +349,11 @@ def confirmed_causes(cases: List[Case]) -> Dict[str, Any]:
     `confirmed_after_screened` the causes the walk had screened -- the walk's
     own surprise. `ranked_first` keeps its meaning: such a cause ranked first
     is still counted there, and the new total says the walk had screened it.
+
+    `confirmed_by`, the reference's `by` as the caller recorded it
+    (null when it recorded none), and `confirmed_at`, the confirmation's own
+    stamp: a confirmation is a person's judgement, and on a shared book the row
+    says whose and when.
     """
     rows: List[Dict[str, Any]] = []
     for case in cases:
@@ -212,8 +361,17 @@ def confirmed_causes(cases: List[Case]) -> Dict[str, Any]:
             reference = confirmation.get("reference") or {}
             cause = reference.get("cause")
             at = str(confirmation.get("at") or "")
+            # the walks attached before it, in the case's own order.
+            # By stamp, two clocks met: a walk is stamped at the instant its data
+            # describes, a confirmation when a person makes it, so on data older
+            # than now every walk stamped before every confirmation and each was
+            # read against the case's last walk. An entry from before `seq`
+            # existed reads as earlier than any that has one; a confirmation
+            # without one is read by stamp, as it always was.
+            position = _seq(confirmation)
             before = [entry for entry in case.stages.get("hypothesize") or []
-                      if str(entry.get("at") or "") <= at]
+                      if (_seq(entry) < position if position
+                          else str(entry.get("at") or "") <= at)]
             ranking = (before[-1].get("reference") or {}) if before else {}
             ranked_rows = [row for row in ranking.get("causes") or []
                            if isinstance(row, dict)]
@@ -233,6 +391,10 @@ def confirmed_causes(cases: List[Case]) -> Dict[str, Any]:
                 "standing": _standing(ranking, ranked_rows, cause),
                 "walk_state": walk.get("state") if isinstance(walk, dict) else None,
                 "basis": _text(reference.get("basis")),
+                # who confirmed it, as the caller recorded them, and when: the
+                # confirmation's own stamp.
+                "confirmed_by": _text(reference.get("by")),
+                "confirmed_at": str(confirmation.get("at") or "") or None,
                 "walks_before": sum(1 for entry in before
                                     if isinstance(entry.get("reference"), dict)),
                 "named_by": _text(discriminating.get("basis")),

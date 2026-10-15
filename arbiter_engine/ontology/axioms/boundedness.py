@@ -12,6 +12,9 @@ Mathematical formula for trend:
     slope = Σ(tᵢ - t̄)(Pᵢ - P̄) / Σ(tᵢ - t̄)²
     trend_severity = |slope| × R² / Var(P)
 
+A change of level is not a trend: when one step explains the window as well as the
+line does, and by the same R², only the readings since the step are fitted and projected.
+
 Parameters:
 - trend_min_r2 = 0.7: Minimum R² for significant trend
 - exhaustion_warning = 0.8: 80% of limit
@@ -29,6 +32,7 @@ from ...interfaces import (
     ObservationHistory,
     IndicatorSpec,
     calculate_trend,
+    level_shift_at,
     apply_property_confidence,
     CheckOutcome,
     absent_current_value,
@@ -384,6 +388,18 @@ class BoundednessChecker:
             # so large-value domains (e.g., temperatures in Kelvin) aren't
             # over-sensitive to tiny absolute slopes.
             slope_minimum = max(1e-6, abs(current) * 1e-4) if current else 1e-6
+            # a level that moved and stopped is on its way nowhere: a set-point step
+            # fitted as a line has a steep slope and a high R-squared, and both projections read
+            # it as a climb toward a limit. When one step explains the window as well as the line
+            # does, the readings since the step are judged on their own: still moving, they
+            # project; level, or too few to call a trend, they do not.
+            since = None
+            shift = level_shift_at(values, r2, self.params.boundedness_trend_min_r2)
+            if shift is not None:
+                since = values[shift:]
+                trend = (calculate_trend(since) if len(since) >= 5
+                         else {'slope': 0.0, 'r2': 0.0})
+                slope, r2 = trend['slope'], trend['r2']
             if slope > slope_minimum and r2 >= self.params.boundedness_trend_min_r2:
                 # Estimate time to critical — uses the same
                 # effective threshold the immediate-violation branch
@@ -409,6 +425,7 @@ class BoundednessChecker:
                                 'r2': r2,
                                 'time_to_critical_seconds': time_to_critical,
                                 'observations': len(values),
+                                **({'trend_since': since[0][0].isoformat()} if since else {}),
                             },
                             confidence=r2,
                             recommended_action=f"Expected to reach critical in {time_to_critical/60:.0f} minutes",
@@ -450,6 +467,7 @@ class BoundednessChecker:
                                 'time_to_critical_seconds': time_to_critical,
                                 'observations': len(values),
                                 'bound': 'lower',
+                                **({'trend_since': since[0][0].isoformat()} if since else {}),
                             },
                             confidence=r2,
                             recommended_action=(

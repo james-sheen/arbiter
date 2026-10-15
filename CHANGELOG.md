@@ -34,6 +34,93 @@ useful-looking document and the less trustworthy one.
 
 ## [Unreleased]
 
+## [0.2.39] — 2026-10-15
+
+### Fixed
+
+- **A rollout judges each step at its own instant.** Every windowed axiom read only the real past,
+  so a balance an action closed stayed open in `plan`, and a derived indicator kept the value the
+  last `check` left. Steps are judged as `check` judges the same series now: a plan sees balances,
+  and an imagined rise reads as the trend it is, so some objectives move (on one example, a 3,000 rpm
+  option 3.667 -> 5.167: the tank's rise it causes is now seen).
+- **A model declaring a derived indicator gives its rollouts their history.** They ran with none,
+  declining `precondition_unmet` on `<history>`.
+- **A confirmation is read against the walk attached before it.** The case book chose that walk by
+  stamp, and a walk is stamped at its data's instant while a confirmation is stamped when a person
+  makes it: on data older than now, every confirmation was read against the case's last walk. Every
+  case entry now carries `seq`, its place in the case's history, and the book reads by it.
+- **A change of level is not a trend toward a limit.** BOUNDEDNESS projected a line fitted over the
+  window, and a line through two flat levels is steep: a set-point step read as `approaching_limit`
+  or `approaching_floor` in `check`, and with the rollout fix above it would have in `plan` too.
+  When one step explains the window as well as the line, and by the same R-squared, only the readings
+  since the step are projected, and only five or more.
+- **An executed action is refused over readings that followed it, on any model and any clock.**
+  `file_action` counted none on a model declaring a derived indicator, or under `as_of(executed_at)`,
+  and filed a pair seeded from a state the action never met. It now counts every reading fed.
+- **A declared edge is never evicted.** The graph bounded every entity's edges at 200, and an entity
+  with more lost the oldest from one direction's index: readers of incoming edges missed links the
+  walk followed. The bound now applies to edges added with `discovered=True` alone.
+- **A case is copied once.** `Case.to_dict` deep-copied what `asdict` had already copied, so a case's
+  whole history was copied twice on every call -- in each `attach_stage` reply and for every case in
+  `case_book`. On a book holding cases open for years, those copies grew with each case's history.
+- **A key the orchestrator reads is no longer reported as read by nothing**: `relationship_aliases` at
+  a model's top level, and the planner's `type`, `risk`, `categories` and their kind on a template this
+  engine accepts, pass by name. A misspelling of one is still reported.
+- **A walk's ranking builds once what its candidates share.** `hypothesize` scores each candidate cause
+  with an inference of its own, and each built again the causal subgraph the walk had already built,
+  read every node's evidence and, where the model declares no strength, wrote a question for every edge
+  its answer depended on -- which the ranking then kept once per edge -- and serialized its whole answer
+  to read two fields. A unit with 165 declared causes paid that 165 times a walk. The answer is the same,
+  field for field; `run_inference` takes the walk's `graph`, a `shared` dict and the questions `asked`.
+- **An ingest is stamped when it arrives.** The heartbeat took each reading's own `observed_at`, so a
+  feed of past data read as a feed stalled since its last reading: 348 days, three hours after one was
+  fed. `seconds_since_last_ingest` counts from the arrival, on the wall clock, which `as_of` does not move.
+- **A plan's rollout files nothing as an ingest.** It copied the session's history for every option it
+  rolled out, and wrote every step it imagined, through `add`, which hands each reading to the production
+  record when that is switched on: one run of a case's plans filed 5.4 million readings, where the case
+  had posted 16,447. The copy goes in through `add_restored` and the steps through
+  `InMemoryObservationHistory.add_imagined`, filing nothing; the plans' answers are the same.
+
+- **A case on a line the entity no longer carries closes.** A check whose only want was a line read off
+  a property the entity had stopped carrying restarted the count as a silent one does, so such a case
+  never closed. With the reading there it now counts toward closing, and the case says so:
+  `resolved_by.by` is `withdrawn`, and `case_book`'s `resolved_by` counts gain that key.
+
+### Added
+
+- **A unit can be retired** (`retire_entity`): it leaves the session and the graph with its relationships,
+  and each case open on it resolves at that instant, `resolved_by.by` `retired` with the caller's basis; the
+  history keeps its readings. `case_book`'s `resolved_by` counts gain the key.
+
+- **A resolved case says what crossed: the reading, the line, or both** (`resolved_by`, its `by` one of
+  `RESOLVED_BY`, with the two readings and lines it compared). A check records the reading and the declared
+  bounds it was judged against, a case keeps those it opened on (`opened_with`), and the book counts each kind;
+  a line read off the entity no longer closes a case exactly as a recovery does. None where no declared line
+  decided both checks.
+- **A plan marks an option whose writes move a line** (`candidates[].moves_bounds`): the bound, its indicator,
+  and the path from the property the template writes, through any derived indicator, to the bound's source.
+  Nothing is ranked differently.
+- **A history counts its readings without building them**: `InMemoryObservationHistory.reading_span()`, the
+  count and the first and last instants that `get_all_observations` over all time would give, in one pass --
+  about twelve times faster on 300,000 readings.
+- **An attachment can answer without the case**: `attach_stage(..., include_case=False)` answers with
+  the case's id and status and what was attached, not the case. The default still answers with it.
+- **A confirmed row says who confirmed the cause and when**: `confirmed_by`, from the reference's
+  `by`, and `confirmed_at`, the confirmation's stamp. On a shared book a confirmation is a person's
+  judgement, and the row named neither.
+- **Readings that arrived before go in without being recorded again**: `add_observations(..., arrived=False)`
+  and `InMemoryObservationHistory.add_restored(...)` store a series in bulk, exactly as reading by reading,
+  and file no production record. For a history rebuilt from one that already holds the readings: through
+  `add`, every rebuild counted them as ingests again.
+- **A history says when its readings change**: `InMemoryObservationHistory.version`, a number that moves on
+  with every write that may change them and with no read. A reader that derives something from every
+  reading keeps the number beside it, and derives it again only once the number has moved.
+
+### Documentation
+
+- **A model with no lever gets no plan**, said in the spec beside *doing nothing is always a candidate*: with no
+  candidate action the plan declines `no_candidates` and ranks nothing, rather than recommending to leave it alone.
+
 ## [0.2.38] — 2026-10-06
 
 ### Fixed

@@ -24,6 +24,8 @@ from pathlib import Path
 import pytest
 
 from arbiter_engine import api
+from arbiter_engine.history.sqlite_store import \
+    SqliteObservationHistory
 from arbiter_engine.residual.sqlite_ledger import \
     SqlitePredictionLedger
 from arbiter_engine.subenvelope import VOCABULARIES
@@ -60,9 +62,9 @@ def _model(tolerance=None):
     return model
 
 
-def _session(ledger=None, tolerance=None):
-    session = api.EngineSession(ledger=ledger)
-    session.load_model(_model(tolerance))
+def _session(ledger=None, tolerance=None, model=None, history=None):
+    session = api.EngineSession(ledger=ledger, history=history)
+    session.load_model(model or _model(tolerance))
     session.add_entity("pump1", "Pump", {"speed_rpm": 3000.0})
     session.add_entity("tank1", "Tank", {"level_pct": 50.0})
     session.add_entity("valve1", "Valve", {"open_pct": 0.0})
@@ -240,6 +242,39 @@ class TestItRefusesByName:
                     if d["reason"] == "precondition_unmet")["evidence"] == {
                         "readings_after": 1}
         assert session.ledger.records() == []
+
+    def _derived(self):
+        model = _model()
+        model["domain"]["indicators"]["Tank"].append(
+            {"name": "level_frac", "derived": "level_pct / 100", "axioms": []})
+        return model
+
+    @pytest.mark.parametrize("build", [
+        pytest.param(lambda self: _session(), id="filed-on-the-clock-it-took-effect"),
+        pytest.param(lambda self: _session(model=self._derived()), id="a-model-with-a-derived-indicator"),
+        pytest.param(lambda self: _session(history=SqliteObservationHistory(":memory:")), id="a-durable-store"),
+    ])
+    def test_a_present_the_action_already_changed_however_the_session_reads(self, build):
+        """Filed as a replay files, on a clock pinned where the action
+        took effect, the guard looked back from that clock and found nothing
+        after it; and a model declaring a derived indicator reads through a
+        view naming no series, so it found nothing on any clock."""
+        session = build(self)
+        with api.as_of(AT + timedelta(minutes=10)):
+            session.add_observations("tank1", "level_pct", [
+                (AT + timedelta(minutes=5), 47.0)])
+        envelope = _file(session)
+        assert next(d for d in envelope["execution"]["not_checked"]
+                    if d["reason"] == "precondition_unmet")["evidence"] == {
+                        "readings_after": 1}
+        assert session.ledger.records() == []
+
+    def test_a_reading_at_the_instant_it_took_effect_is_the_state_it_met(self):
+        session = _session()
+        with api.as_of(AT):
+            session.add_observations("tank1", "level_pct", [(AT, 50.0)])
+        assert "precondition_unmet" not in self._reasons(_file(session))
+        assert session.ledger.records()
 
     def test_every_reason_is_one_the_simulation_vocabulary_publishes(self):
         session = _session()

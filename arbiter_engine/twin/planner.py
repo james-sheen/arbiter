@@ -451,6 +451,9 @@ def _case_outcomes(envelope: Any, cases: Sequence[Dict[str, Any]]
     case's subject and indicator at or above the case's severity -- the
     predicate the case book records a check `found` by -- and did not decline
     that indicator: silence is not health, as `not_looked` says in the book.
+    A step that declined it for want of a line the unit no longer carries is
+    not clear either: the book closes such a case as `withdrawn`,
+    which is the model's doing and not a plan's.
     Measured on the planning example with a case on the tank: the plan
     `expected_findings` ranks first is clear from 600 s and ends breached, and
     the second is clear from 780 s to the end. Which of those *solved* the

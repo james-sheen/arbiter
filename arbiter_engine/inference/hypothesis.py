@@ -686,6 +686,12 @@ def hypothesize(session: Any, entity_id: str, *,
     #: and never asked for it. Once per edge, however many candidates share it.
     questions: List[Any] = []
     asked: set = set()
+    #: WHAT EVERY CANDIDATE'S INFERENCE SHARES, built once: the walk's
+    #: own causal subgraph, the graph's cycle and each node's evidence, and the
+    #: questions already asked. Each of the nation's 165 causes on the hearing
+    #: offices case built them all again, and serialized its whole answer to
+    #: read two fields of it.
+    shared: Dict[Any, Any] = {}
     for node, hops, path in candidates:
         dead_times = sorted({walk[0] for walk in walks.get(node, ())})
         # A cause read only in the past is a claim about that instant, and the
@@ -693,11 +699,11 @@ def hypothesize(session: Any, entity_id: str, *,
         when = (_read_instant(anchor, dead_times[0])
                 if aligned and dead_times and _moved(dead_times[0]) else None)
         sub = run_inference(session, Query(target=node), report_above=None,
-                            evidence=evidence, predicted_at=when)
-        payload = sub.to_dict()
-        checked_here = payload.get("checked") or {}
+                            evidence=evidence, predicted_at=when,
+                            graph=graph, shared=shared, asked=asked)
+        checked_here = dict(sub.checked or {})
         posterior = checked_here.get("posterior")
-        stamps.update(payload.get("assumptions") or ())
+        stamps.update(sub.assumptions or ())
         reasons: set = set()
         for decline in getattr(sub, "not_checked", ()) or ():
             if decline.reason == "no_report_probability":

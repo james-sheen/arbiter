@@ -185,5 +185,10 @@ class TestNoReportedNumberMoved:
         assert by_speed["do_nothing"]["objective"] == pytest.approx(0.0)
         assert by_speed[1500]["objective"] == pytest.approx(0.0)
         assert by_speed[2200]["objective"] == pytest.approx(0.0)
+        # 2.5 once a rollout judged each step at its own instant: one line
+        # fitted through the flat past and the tank's jump (50 -> 61.0 -> 66.7) read
+        # as a trend toward its critical line. -- a jump with two readings
+        # after it is a change of level, too few readings since to call a trend;
+        # 2.0 again, as before either. Not a tie-break change.
         assert by_speed[3000]["objective"] == pytest.approx(2.0)
         assert by_speed[800]["objective"] == pytest.approx(16.0 / 3.0)

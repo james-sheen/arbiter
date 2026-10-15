@@ -164,5 +164,9 @@ class TestTheRankingIsUnchanged:
         assert plan["ranked"] is True
         by_speed = _by_speed(plan)
         assert by_speed["do_nothing"]["objective"] == pytest.approx(0.0)
+        # 2.5 once each step was judged at its own instant -- a line
+        # through the flat past and the tank's jump read as a trend at 1200 s.
+        # a jump with two readings since is a change of level, not a
+        # trend; 2.0 again.
         assert by_speed[3000]["objective"] == pytest.approx(2.0)
         assert by_speed[800]["objective"] == pytest.approx(16.0 / 3.0)

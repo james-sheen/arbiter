@@ -9,8 +9,8 @@ authors:
     alias: "james-sheen"
   - name: "The Arbiter Project Authors"
 license: Apache-2.0
-version: "0.2.38"
-date-released: "2026-10-06"
+version: "0.2.39"
+date-released: "2026-10-15"
 repository-code: "https://github.com/james-sheen/arbiter"
 url: "https://github.com/james-sheen/arbiter"
 keywords:

@@ -172,6 +172,17 @@ changelog lists rather than additions: `confidence_interval_95` is the exact int
 a normal approximation that read `[1.0, 1.0]` whenever every sample showed the outcome, and a
 sampled `plan` candidate's `interval` is that interval, so one that never cleared no longer reads
 like a deterministic one.
+From 0.2.39: `resolved_by` on a resolved case -- its `by` one of `RESOLVED_BY` (`reading`, `bound`,
+`both`, `withdrawn`, `retired`), with the readings and bounds it compared -- with `opened_with` on a
+case, `seq` on each entry of its history, and the `resolved_by` counts in `case_book`; `moves_bounds`
+on each `plan` candidate; and `confirmed_by` and `confirmed_at` on each `confirmed` row. As calls:
+`retire_entity`; `include_case` on `attach_stage`; `arrived` on `add_observations`; `graph`, `shared`
+and `asked` on `run_inference`; and `reading_span`, `version`, `add_restored` and `add_imagined` on
+`InMemoryObservationHistory`. The other changes are defect fixes the changelog lists rather than
+additions, and several move values a caller reads: a rollout judges each step at its own instant, so
+some objectives move; a step in level no longer reads as `approaching_limit` or `approaching_floor`; a
+confirmation is read against the walk attached before it; a case on a line the entity no longer
+carries closes, as `withdrawn`; and `seconds_since_last_ingest` counts from each reading's arrival.
 
 Three things about it are promises and not accidents:
 
